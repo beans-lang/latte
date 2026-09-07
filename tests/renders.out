@@ -1,0 +1,92 @@
+== 1. the first render mounts everything, once ==
+ok   components mounted (board + rows): 201
+ok   board renders: 1
+ok   rows that rendered exactly once: 201
+ok   total renders across the page: 201
+ok   faults: 0
+ok   first batch: one update per component: 201
+
+== 2. notifying one row runs ONE render, not two hundred ==
+ok   row 137 is a mounted component: 275
+ok   it bound exactly one handler slot: 276
+ok   dispatch found the handler: 1
+ok   exactly one component is dirty: 1
+ok   the dirty one is the row that owns the handler: 1
+ok   the flush ran exactly one render: 1
+ok   that row has now rendered twice: 2
+ok   the board has NOT re-rendered: 1
+ok   every other component is still at one: 200
+ok   total renders across the page: 202
+ok   the batch touches exactly one component: 1
+ok   one structural edit: 1
+ok   three edits in all, the other two being the cursor: 3
+ok   and this is the whole stream: in 0 | text 0 = r137/1 | out
+
+== 3. a parameter that did not change runs ZERO ==
+ok   the flush ran the board and nothing else: 1
+ok   the board has rendered twice: 2
+ok   row 137 is still at two: 2
+ok   total renders across the page: 203
+ok   on_params_set ran for every row anyway: 3
+ok   a board render that changed nothing sends nothing: 0
+
+== 4. a parameter that DID change runs exactly the rows it hit ==
+ok   the flush ran the board and one row: 2
+ok   the board has rendered three times: 3
+ok   the row whose label changed has rendered twice: 2
+ok   row 6 has not re-rendered: 1
+ok   row 8 has not re-rendered: 1
+ok   total renders across the page: 205
+
+== 5. a constant subtree is one frame, and is never walked ==
+ok   a row's frames, folded: 6
+ok   a row's frames, unfolded: 9
+ok   a row's frames, folded again: 6
+ok   and the two arms serialize to the same bytes: <li>only/0<em class="tag">row</em>.</li>
+ok   one render: 1
+ok   one structural edit for the whole row: 1
+ok   and none of it names the constant: 0
+
+== 6. an event on an unknown id changes nothing ==
+ok   dispatch refuses it: 0
+ok   nothing is dirty: 0
+ok   the flush runs nothing: 0
+ok   total renders is unchanged: 206
+
+== 7. a dirty ancestor swallows a dirty descendant ==
+ok   both are dirty: 2
+ok   the flush ran the board and the row ONCE each: 2
+ok   the board: 4
+ok   the row: 3
+ok   total renders across the page: 208
+ok   but only the row that changed sends anything: 1
+
+== 7b. a marked row under a marked parent whose parameter did NOT change ==
+ok   the click was dispatched: 1
+ok   both are dirty: 2
+ok   the flush ran the board and the row: 2
+ok   the board: 5
+ok   the row whose own state changed: 2
+ok   its neighbour did not: 1
+ok   two components send edits: 2
+ok   and this is the whole stream: in 0 | text 0 = board!! | out | in 0 | text 0 = r20/1 | out
+
+== 8. one appended row is one row's render and one insert ==
+ok   the flush ran the board and the new row: 2
+ok   the new row rendered once: 1
+ok   the board: 6
+ok   every other row is still at its first render: 198
+ok   the page now has one more component: 202
+ok   the board sends one structural edit: 1
+ok   and this is the whole stream: in 0 | insert 201 <- ref@0 | out | insert 0 <- ref@3
+
+== 9. a removed row is disposed, once, and its handler dies ==
+ok   the flush ran the board only: 1
+ok   the page has one fewer component: 201
+ok   the row is no longer mounted: 0
+ok   dispose ran exactly once: 1
+ok   its handler no longer dispatches: 0
+ok   and marking its id does nothing: 0
+ok   faults: 0
+
+renders: every count exact
