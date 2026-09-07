@@ -1,76 +1,32 @@
 package main
 
 import std.io
-import std.reflect
 
-pub class Grid<T> {
-    pub title: string = ""
+class Hint {
+    pub label: string = ""
     pub fn init() {}
-    pub fn touch() -> string { return "grid {self.title}" }
 }
 
-pub class Plain {
-    pub title: string = ""
+class Host {
     pub fn init() {}
-    pub fn touch() -> string { return "plain {self.title}" }
+    // T appears only inside a function-typed parameter — a METHOD.
+    pub fn apply<T>(rounds: int, setup: fn(T)) -> int { return rounds }
+    pub fn apply_value<T>(item: T, setup: fn(T)) -> int { setup(item); return 2 }
 }
+
+// The same two shapes as FREE functions.
+fn free_apply<T>(rounds: int, setup: fn(T)) -> int { return rounds }
+fn free_apply_value<T>(item: T, setup: fn(T)) -> int { setup(item); return 2 }
+fn free_plain<T>(item: T) -> int { return 1 }
+// T inside a function-typed parameter, but also as the RESULT.
+fn free_result<T>(item: T, setup: fn(T)) -> T { setup(item); return item }
 
 fn main() {
-    let closed: reflect.Type = type_of(Grid<int>)
-    io.println("closed qualified: {closed.qualified_name()} args {closed.type_arguments().len()}")
-    io.println("closed initializer: {closed.initializer().is_some()}")
-    match closed.method("touch") {
-        some(m) => {
-            io.println("touch declaring type: {m.declaring_type().qualified_name()}")
-            io.println("touch is_generic: {m.is_generic()}")
-        }
-        none => { io.println("no touch") }
-    }
-    let g: Grid<int> = new Grid<int>()
-    g.title = "orders"
-    let v: reflect.Value = reflect.value(g)
-    io.println("value type: {v.type().qualified_name()}")
-    io.println("value is_type(closed): {v.is_type(closed)}")
-    io.println("closed.is_assignable_from(value type): {closed.is_assignable_from(v.type())}")
-    match closed.method("touch") {
-        some(m) => {
-            match m.call(v.copy(), []) {
-                ok(r) => { io.println("reflective touch: {(r as? string).expect("s")}") }
-                err(e) => { io.println("reflective touch failed: {e.kind()}: {e.message()}") }
-            }
-        }
-        none => {}
-    }
-    // Field read/write through reflection on a closed generic.
-    match closed.field("title") {
-        some(f) => {
-            match f.get(v.copy()) {
-                ok(got) => { io.println("field read: {(got as? string).expect("s")}") }
-                err(e) => { io.println("field read failed: {e.kind()}: {e.message()}") }
-            }
-        }
-        none => { io.println("no title field") }
-    }
-    // The same three on a non-generic class, as the control.
-    let p: Plain = new Plain()
-    p.title = "control"
-    let pv: reflect.Value = reflect.value(p)
-    match type_of(Plain).method("touch") {
-        some(m) => {
-            match m.call(pv.copy(), []) {
-                ok(r) => { io.println("control touch: {(r as? string).expect("s")}") }
-                err(e) => { io.println("control touch failed: {e.kind()}: {e.message()}") }
-            }
-        }
-        none => {}
-    }
-    match type_of(Plain).field("title") {
-        some(f) => {
-            match f.get(pv.copy()) {
-                ok(got) => { io.println("control field read: {(got as? string).expect("s")}") }
-                err(e) => { io.println("control field read failed: {e.kind()}: {e.message()}") }
-            }
-        }
-        none => {}
-    }
+    let host: Host = new Host()
+    io.println("method, T only in fn(T):        {host.apply<Hint>(1, fn(x: Hint) { x.label = "a" })}")
+    io.println("method, T in a value too:       {host.apply_value<Hint>(new Hint(), fn(x: Hint) { x.label = "b" })}")
+    io.println("free,   T only in a value:      {free_plain<Hint>(new Hint())}")
+    io.println("free,   T only in fn(T):        {free_apply<Hint>(3, fn(x: Hint) { x.label = "c" })}")
+    io.println("free,   T in a value too:       {free_apply_value<Hint>(new Hint(), fn(x: Hint) { x.label = "d" })}")
+    io.println("free,   T in the result too:    {free_result<Hint>(new Hint(), fn(x: Hint) { x.label = "e" }).label}")
 }

@@ -1,0 +1,2 @@
+module p3_emitter_wall
+kind application

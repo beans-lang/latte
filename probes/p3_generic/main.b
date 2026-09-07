@@ -15,6 +15,7 @@ package main
 
 import std.io
 import std.reflect
+import std.time
 
 pub class Builder {
     pub out: string = ""
@@ -147,6 +148,90 @@ fn distinct(r: Renderer, b: Builder) -> bool {
     }
 }
 
+// ------------------------------------------------------------------ the cost
+//
+// `component<T>` sits inside `render`, so its cost is paid on every render of
+// every parent that holds a child component — not once at mount. Two numbers
+// decide whether the reflective spelling is affordable:
+//
+//   mount  — activate through type_of(T).initializer(), the first render only
+//   render — reach type_of(T) and dispatch to an already-mounted child
+//
+// against the same two through a factory closure the markup compiler could
+// emit instead, since it knows the concrete type at the call site.
+// These live on a class rather than at package scope on purpose: a FREE
+// generic function with a `fn(T)` parameter type-checks and runs but cannot be
+// built natively (BLOCKERS.md, B3). The same signature as a method emits.
+class Bench {
+    pub fn init() {}
+
+    pub fn reflect_mount<T>(rounds: int, setup: fn(T)) -> int {
+    let described: reflect.Type = type_of(T)
+    var kept: int = 0
+    let t0: int = time.monotonic_nanos()
+    for round: int in 0..rounds {
+        match described.initializer() {
+            some(ctor) => {
+                match ctor.call([]) {
+                    ok(made) => {
+                        match made as? T {
+                            some(instance) => { setup(instance); kept += 1 }
+                            none => {}
+                        }
+                    }
+                    err(e) => {}
+                }
+            }
+            none => {}
+        }
+    }
+    let spent: int = time.monotonic_nanos() - t0
+    if kept != rounds { return -1 }
+    return spent / rounds
+    }
+
+    // The per-render half: reach the descriptor and identify it, which is all
+    // a mounted child needs before its render call.
+    pub fn reflect_identify<T>(rounds: int) -> int {
+    var total: int = 0
+    let t0: int = time.monotonic_nanos()
+    for round: int in 0..rounds {
+        let described: reflect.Type = type_of(T)
+        total += described.qualified_name().len()
+    }
+    let spent: int = time.monotonic_nanos() - t0
+    if total <= 0 { return -1 }
+    return spent / rounds
+    }
+}
+
+fn bench_factory_mount(rounds: int) -> int {
+    var kept: int = 0
+    let t0: int = time.monotonic_nanos()
+    for round: int in 0..rounds {
+        let made: Hint = new Hint()
+        made.label = "keep going"
+        made.tone = 3
+        kept += 1
+    }
+    let spent: int = time.monotonic_nanos() - t0
+    if kept != rounds { return -1 }
+    return spent / rounds
+}
+
+fn bench_direct_render(rounds: int, b: Builder) -> int {
+    let mounted: Hint = new Hint()
+    mounted.label = "x"
+    let based: Component = mounted
+    let t0: int = time.monotonic_nanos()
+    for round: int in 0..rounds {
+        based.render(b)
+        b.out = ""
+    }
+    let spent: int = time.monotonic_nanos() - t0
+    return spent / rounds
+}
+
 fn main() {
     let r: Renderer = new Renderer()
     let b: Builder = new Builder()
@@ -184,4 +269,21 @@ fn main() {
     io.println("no zero-arg init: {fourth}")
     io.println("T that is not a Component: {fifth}")
     io.println("frames: {b.out}")
+
+    let rounds: int = 20000
+    let scratch: Builder = new Builder()
+    let bench: Bench = new Bench()
+    let reflect_mount: int = bench.reflect_mount<Hint>(rounds, fn(h: Hint) {
+        h.label = "keep going"
+        h.tone = 3
+    })
+    let reflect_identify: int = bench.reflect_identify<Hint>(rounds)
+    let factory_mount: int = bench_factory_mount(rounds)
+    let direct_render: int = bench_direct_render(rounds, scratch)
+    // Measurements, not claims: these differ per backend by design, and the
+    // native leg is the one that decides. The interpreter's numbers are
+    // dominated by interpretation — its plain `new Hint()` costs 10 us — so
+    // read them as an upper bound on the edit loop, not as latte's cost.
+    io.println("ns/op  reflective mount {reflect_mount}  type_of(T) identify {reflect_identify}  new+set {factory_mount}  a mounted child's render {direct_render}")
+    io.println("a 200-component page: mount {reflect_mount * 200 / 1000} us reflectively, {factory_mount * 200 / 1000} us with new; per render {reflect_identify * 200 / 1000} us of type_of(T)")
 }
