@@ -22,7 +22,7 @@
 //     by name — in both directions plus the resync — in `tests/diff.b` § 8, and
 //     a fuzz that included it would only be able to assert a weaker thing.
 //
-// The named cases in § 1 and § 2 are shapes this sweep found. They are pinned
+// The named cases in § 1 to § 3 are shapes this sweep found. They are pinned
 // by name because a fuzz that stops covering a shape goes quiet about it, and a
 // named case does not.
 package main
@@ -540,7 +540,7 @@ fn gen_node(g: Gen, depth: int, start: int, into: List<Tnode>) -> int {
     if kind == T_LOOP || kind == T_FRAGMENT || kind == T_BOUNDARY {
         if kind == T_LOOP {
             var pool: List<string> = row_pool()
-            let size: int = 3 + g.rng.below(4)
+            let size: int = 2 + g.rng.below(4)
             var index: int = 0
             for index < size {
                 node.pool.push(pool[index])
@@ -563,7 +563,7 @@ fn gen_node(g: Gen, depth: int, start: int, into: List<Tnode>) -> int {
     node.which = g.rng.below(2)
     node.label = g.pick(text_bodies())
     var pool: List<string> = row_pool()
-    let rows: int = g.rng.below(5)
+    let rows: int = g.rng.below(4)
     var index: int = 0
     for index < rows {
         node.rows.push(pool[index])
@@ -701,7 +701,7 @@ fn mutate_rows(g: Gen, node: Tnode) {
     var pool: List<string> = row_pool()
     var wanted: List<string> = []
     var index: int = 0
-    for index < 5 {
+    for index < 4 {
         if g.rng.chance(2) { wanted.push(pool[index]) }
         index += 1
     }
@@ -727,9 +727,14 @@ pub class Tree {
     pub fn init() {}
 }
 
-fn build_tree(g: Gen, depth: int) -> Tree {
+/// Most trees are small and a minority are large. A page's cost is what its
+/// LOOPS render, not how many template nodes it has, so a handful of big trees
+/// buys the deep shapes while the rest of the sweep buys structural variety —
+/// and ten thousand cases of one middling size would buy less of both.
+fn build_tree(g: Gen, depth: int, big: bool) -> Tree {
     let tree: Tree = new Tree()
-    g.budget = 12 + g.rng.below(12)
+    g.budget = 6 + g.rng.below(8)
+    if big { g.budget = 20 + g.rng.below(14) }
     let _: int = gen_list(g, depth, 0, tree.model.roots)
     tree.model.bits = g.rng.next() & 255
     for node: Tnode in tree.model.roots { collect(node, tree.nodes, tree.slots) }
@@ -840,7 +845,8 @@ pub class Verdict {
 /// between the two sides. This is `Harness.quiet_step()` from `tests/diff.b`
 /// with the checks it left implicit made explicit, because a sweep of ten
 /// thousand cases can only report what it was told to look at.
-fn one_case(fuzz: Fuzz, b: Builder, d: Differ, a: Applier, digest: Digest) -> Verdict {
+fn one_case(fuzz: Fuzz, b: Builder, d: Differ, a: Applier, digest: Digest,
+            weigh: bool) -> Verdict {
     let verdict: Verdict = new Verdict()
     b.render_root(fuzz)
     let batch: Batch = d.batch(b)
@@ -850,8 +856,10 @@ fn one_case(fuzz: Fuzz, b: Builder, d: Differ, a: Applier, digest: Digest) -> Ve
     let writer: Serializer = new Serializer()
     verdict.want = writer.page(b)
     verdict.got = a.html()
-    digest.push(verdict.want)
-    digest.push_int(verdict.edits)
+    if weigh {
+        digest.push(verdict.want)
+        digest.push_int(verdict.edits)
+    }
 
     if verdict.want != verdict.got { verdict.fail("the applier landed somewhere else") }
     else if d.faults.len() > 0 { verdict.fail("differ: {d.faults[0]}") }
@@ -1069,14 +1077,95 @@ fn boundary_takes_its_mounts(r: Report) {
     r.eqi("no faults", d.faults.len() + a.faults.len() + b.all_faults().len(), 0)
 }
 
-// ---------------------------------------------------------------- § 2
+/// A component that mounts a component. The inner one is what the report has
+/// to reach when the outer one is dropped by something other than the sweep.
+pub class Nest extends Component {
+    pub label: string = ""
+    pub quiet: bool = false
+    pub fn init() {}
+    pub override fn should_render() -> bool { return !self.quiet }
+    pub override fn render(b: Builder) {
+        b.open(0, "section")
+        b.component<Kid>(1, fn(c: Kid) { c.label = self.label })
+        b.close()
+    }
+}
+
+pub class Deep extends Component {
+    pub fail: bool = false
+    pub hush: bool = false
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "div")
+        b.boundary(1)
+        b.component<Nest>(0, fn(c: Nest) {
+            c.label = "n"
+            c.quiet = self.hush
+        })
+        if self.fail {
+            b.fail_boundary("boom")
+            b.text(0, "gone")
+        }
+        b.end_boundary()
+        b.close()
+    }
+}
+
+fn every_disposal_is_reported(r: Report) {
+    io.println("== 3 every component disposal reaches the applier")
+    // The applier holds one root node per mounted component. A component that
+    // leaves the page without the batch saying so leaves its root behind, and
+    // NOTHING can see it: no HTML changes, no fault fires, and the node sits
+    // there for the life of the page.
+    //
+    // The shape that gets there: a boundary fails and drops an outer component
+    // whose inner child did NOT re-render this pass, because it answered
+    // `should_render() == false`. A rule that only reported a component the
+    // CURRENT pass had not allocated would miss the inner one — a buffer that
+    // did not re-render cannot say which of its own slots are new, because its
+    // record of that is from whichever pass it last rendered in. So every
+    // disposal is reported and the applier drops what it holds.
+    let deep: Deep = new Deep()
+    let b: Builder = new Builder()
+    let a: Applier = new Applier()
+    let d: Differ = new Differ()
+
+    b.render_root(deep)
+    a.apply(d.batch(b))
+    let w1: Serializer = new Serializer()
+    r.eq("two levels of child rendered", a.html(), w1.page(b))
+    r.eq("the page", a.html(), "<div><section><em>n/1</em></section></div>")
+    r.eqi("the applier holds the page root and both children", a.roots.keys().len(), 3)
+
+    deep.hush = true
+    b.render_root(deep)
+    let nothing: Batch = d.batch(b)
+    a.apply(nothing)
+    r.eqi("silencing the inner child changes nothing", nothing.edit_count(), 0)
+    r.eqi("and it is still mounted", a.roots.keys().len(), 3)
+
+    deep.fail = true
+    b.render_root(deep)
+    let broke: Batch = d.batch(b)
+    io.print(broke.dump())
+    a.apply(broke)
+    let w2: Serializer = new Serializer()
+    r.eq("the boundary failed", a.html(), w2.page(b))
+    r.eq("the page is the fallback", a.html(), "<div>gone</div>")
+    r.eqi("BOTH components were reported disposed", broke.disposed.len(), 2)
+    r.eqi("and the applier holds only the page root now", a.roots.keys().len(), 1)
+    r.eqi("no buffers left in the builder either", b.nested.keys().len(), 0)
+    r.eqi("no faults", d.faults.len() + a.faults.len() + b.all_faults().len(), 0)
+}
+
+// ---------------------------------------------------------------- § 4
 
 const MASTER_SEED: int = 20260908
-const TREES: int = 100
+const TREES: int = 1000
 const STEPS: int = 10
 
 fn sweep(r: Report) {
-    io.println("== 3 {TREES} random trees, {STEPS} mutations each")
+    io.println("== 4 {TREES} random trees, {STEPS} mutations each")
     let digest: Digest = new Digest()
     var cases: int = 0
     var bad: int = 0
@@ -1093,7 +1182,7 @@ fn sweep(r: Report) {
         let seed: int = (MASTER_SEED + tree_index * 2654435761) & M32
         let g: Gen = new Gen(seed)
         let depth: int = 2 + (tree_index % 2)
-        let tree: Tree = build_tree(g, depth)
+        let tree: Tree = build_tree(g, depth, tree_index % 7 == 0)
         var kind: int = 0
         for kind < 8 {
             kinds[kind] = kinds[kind] + g.made[kind]
@@ -1109,7 +1198,13 @@ fn sweep(r: Report) {
         var step: int = 0
         for step < STEPS {
             if step > 0 { mutate(g, tree, b) }
-            let verdict: Verdict = one_case(fuzz, b, d, a, digest)
+            // Every case checks the invariant. The two O(a whole page) extras —
+            // the digest that puts the run into the golden, and the
+            // steady-state re-render — are sampled, on a stride that is coprime
+            // with STEPS so the sample walks across the mutation positions
+            // rather than always landing on the same one.
+            let weigh: bool = cases % 3 == 0
+            let verdict: Verdict = one_case(fuzz, b, d, a, digest, weigh)
             cases += 1
             total_edits += verdict.edits
             if verdict.edits > worst { worst = verdict.edits }
@@ -1127,7 +1222,7 @@ fn sweep(r: Report) {
                     io.println("   applier frames:")
                     io.print(a.dump())
                 }
-            } else {
+            } else if weigh {
                 let again: int = steady(fuzz, b, d, a)
                 steady_checked += 1
                 if again != 0 {
@@ -1150,9 +1245,10 @@ fn sweep(r: Report) {
     io.println("edits: {total_edits} total, worst batch {worst}")
     io.println("peak live components in one tree: {peak_components}")
     io.println("digest: {digest.value}")
-    r.eqi("every case in the sweep ran", cases, 1000)
+    r.eqi("ten thousand random cases", cases, 10000)
     r.eqi("every one applied to the serializer's html", bad, 0)
-    r.eqi("and every one was checked for a steady state", steady_checked, cases)
+    io.println("steady-state re-renders: {steady_checked}")
+    r.eqi("a third of the cases were re-rendered unchanged", steady_checked, (cases + 2) / 3)
     r.eqi("an unchanged render is always an empty batch", steady_bad, 0)
     r.yes("the sweep built every node kind", kinds[0] > 0 && kinds[1] > 0 &&
         kinds[2] > 0 && kinds[3] > 0 && kinds[4] > 0 && kinds[5] > 0 &&
@@ -1164,6 +1260,7 @@ fn main() {
     let r: Report = new Report()
     mount_reinsert(r)
     boundary_takes_its_mounts(r)
+    every_disposal_is_reported(r)
     sweep(r)
     io.println("== summary")
     io.println("checks: {r.checks}, failed: {r.bad}")

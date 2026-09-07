@@ -66,9 +66,14 @@ pub class Applier {
             self.run(batch, update)
         }
         for id: int in batch.disposed {
-            if !self.roots.remove(id) {
-                self.faults.push("disposed component {id} was never mounted")
-            }
+            // A disposal for a component this applier never mounted is not a
+            // fault. A component can be mounted and dropped inside ONE render
+            // pass — an error boundary whose body mounts a child and then
+            // panics does exactly that — in which case its mount frame was
+            // truncated away before any batch went out, and the builder has no
+            // way to know the client never saw it. So the batch names it and
+            // this drops what it holds, if anything.
+            let _: bool = self.roots.remove(id)
         }
     }
 
