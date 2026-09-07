@@ -10,8 +10,18 @@ pub partial class Attrs extends Component {
     pub flagged: bool = false
     pub extra: Map<string, string> = {}
     pub box: Reference = new Reference()
+    /// `ref=` on a component tag writes the mounted child here, as an
+    /// assignment inside the setup closure. `Option<Panel>`, and the concrete
+    /// type — no downcast at the use site.
+    pub panel: Option<Panel> = none
     pub fn init() {}
     pub fn bump() { self.count += 1 }
+}
+
+pub class Panel extends Component {
+    pub title: string = ""
+    pub fn init() {}
+    pub override fn render(b: Builder) { b.text(0, "{self.title}") }
 }
 </beans>
 <a href={self.url} class="link" title="a &quot;quoted&quot; title">go</a>
@@ -31,6 +41,7 @@ pub partial class Attrs extends Component {
 <textarea bind:value={self.note} rows="4"></textarea>
 <div attrs={self.extra} class="base">splatted</div>
 <input ref={self.box} name="boxed" />
+<Panel ref={self.panel} title="side" />
 <div preserve class="owned"><span>third party</span></div>
 <form on:submit={fn(e: SubmitEvent) { self.count = e.fields.len() }}>
   <input on:keydown={fn(e: KeyboardEvent) { self.note = e.key }}

@@ -314,41 +314,41 @@ partial class Blocks {
 ======== render: attrs.bx ========
 partial class Attrs {
     pub override fn render(b: Builder) {
-        b.open(0, "a")  // attrs.bx:17
+        b.open(0, "a")  // attrs.bx:27
         b.attr(1, "href", "{self.url}")
         b.attr(2, "class", "link")
         b.attr(3, "title", "a \"quoted\" title")
         b.text(4, "go")
         b.close()
-        if b.fold { b.constant(5, "<a href=\"/relative/path\">relative</a><a href=\"mailto:a@b.c\">mail</a>") }  // attrs.bx:18
+        if b.fold { b.constant(5, "<a href=\"/relative/path\">relative</a><a href=\"mailto:a@b.c\">mail</a>") }  // attrs.bx:28
         else {
-            b.open(5, "a")  // attrs.bx:18
+            b.open(5, "a")  // attrs.bx:28
             b.attr(6, "href", "/relative/path")
             b.text(7, "relative")
             b.close()
-            b.open(8, "a")  // attrs.bx:19
+            b.open(8, "a")  // attrs.bx:29
             b.attr(9, "href", "mailto:a@b.c")
             b.text(10, "mail")
             b.close()
         }
-        b.open(11, "button")  // attrs.bx:20
+        b.open(11, "button")  // attrs.bx:30
         b.attr(12, "class", "{if self.agreed { "on" } else { "off" }}")
         b.flag(13, "disabled", self.count > 3)
         b.text(14, "press")
         b.close()
-        b.open(15, "button")  // attrs.bx:23
+        b.open(15, "button")  // attrs.bx:33
         b.on_click(16, fn(e: MouseEvent) {
             self.bump()
         })
         b.on_dblclick(17, fn(e: MouseEvent) { self.count += 2 })
         b.text(18, "twice")
         b.close()
-        b.open(19, "input")  // attrs.bx:26
+        b.open(19, "input")  // attrs.bx:36
         b.attr(20, "value", "{self.note}")
         b.on_input(21, fn(e: InputEvent) { self.note = e.value })
         b.attr(22, "placeholder", "a note")
         b.close()
-        b.open(23, "input")  // attrs.bx:27
+        b.open(23, "input")  // attrs.bx:37
         b.attr(24, "value", "{self.count}")
         b.on_input(25, fn(e: InputEvent) {
             match e.value.to_int() {
@@ -357,7 +357,7 @@ partial class Attrs {
             }
         })
         b.close()
-        b.open(26, "input")  // attrs.bx:28
+        b.open(26, "input")  // attrs.bx:38
         b.attr(27, "value", "{self.ratio}")
         b.on_input(28, fn(e: InputEvent) {
             match e.value.to_float() {
@@ -366,50 +366,54 @@ partial class Attrs {
             }
         })
         b.close()
-        b.open(29, "input")  // attrs.bx:29
+        b.open(29, "input")  // attrs.bx:39
         b.attr(30, "value", "{self.flagged}")
         b.on_input(31, fn(e: InputEvent) { self.flagged = e.value == "true" })
         b.close()
-        b.open(32, "input")  // attrs.bx:30
+        b.open(32, "input")  // attrs.bx:40
         b.attr(33, "type", "checkbox")
         b.flag(34, "checked", self.agreed)
         b.on_change(35, fn(e: InputEvent) { self.agreed = e.checked })
         b.close()
-        b.open(36, "textarea")  // attrs.bx:31
+        b.open(36, "textarea")  // attrs.bx:41
         b.on_input(37, fn(e: InputEvent) { self.note = e.value })
         b.attr(38, "rows", "4")
         b.text(39, "{self.note}")
         b.close()
-        b.open(40, "div")  // attrs.bx:32
+        b.open(40, "div")  // attrs.bx:42
         b.attrs(41, self.extra)
         b.attr(42, "class", "base")
         b.text(43, "splatted")
         b.close()
-        b.open(44, "input")  // attrs.bx:33
+        b.open(44, "input")  // attrs.bx:43
         b.reference(45, fn(_latte_handle: Reference) { self.box = _latte_handle })
         b.attr(46, "name", "boxed")
         b.close()
-        b.open(47, "div")  // attrs.bx:34
-        b.preserve(48)
-        b.attr(49, "class", "owned")
-        if b.fold { b.constant(50, "<span>third party</span>") }
+        b.component<Panel>(47, fn(_latte_c: Panel) {  // attrs.bx:44
+            _latte_c.title = "side"
+            self.panel = some(_latte_c)
+        })
+        b.open(48, "div")  // attrs.bx:45
+        b.preserve(49)
+        b.attr(50, "class", "owned")
+        if b.fold { b.constant(51, "<span>third party</span>") }
         else {
-            b.open(50, "span")
-            b.text(51, "third party")
+            b.open(51, "span")
+            b.text(52, "third party")
             b.close()
         }
         b.close()
-        b.open(52, "form")  // attrs.bx:35
-        b.on_submit(53, fn(e: SubmitEvent) { self.count = e.fields.len() })
-        b.open(54, "input")  // attrs.bx:36
-        b.on_keydown(55, fn(e: KeyboardEvent) { self.note = e.key })
-        b.on_focus(56, fn(e: FocusEvent) { self.count += 0 })
-        b.on_blur(57, fn(e: FocusEvent) { self.count += 0 })
-        b.on_change(58, fn(e: InputEvent) { self.note = e.value })
+        b.open(53, "form")  // attrs.bx:46
+        b.on_submit(54, fn(e: SubmitEvent) { self.count = e.fields.len() })
+        b.open(55, "input")  // attrs.bx:47
+        b.on_keydown(56, fn(e: KeyboardEvent) { self.note = e.key })
+        b.on_focus(57, fn(e: FocusEvent) { self.count += 0 })
+        b.on_blur(58, fn(e: FocusEvent) { self.count += 0 })
+        b.on_change(59, fn(e: InputEvent) { self.note = e.value })
         b.close()
-        b.open(59, "button")  // attrs.bx:40
-        b.on_reset(60, fn(e: SubmitEvent) { self.count = 0 })
-        b.text(61, "reset")
+        b.open(60, "button")  // attrs.bx:51
+        b.on_reset(61, fn(e: SubmitEvent) { self.count = 0 })
+        b.text(62, "reset")
         b.close()
         b.close()
     }
