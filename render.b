@@ -15,13 +15,21 @@ import std.reflect
 
 /// Where `Component.notify()` sends its "I changed".
 ///
-/// The interface is declared here rather than in `builder.b` because the
-/// renderer is what implements it, and a component holding one is holding the
-/// renderer that mounted it. It is `weak` on the component's side: the
-/// renderer owns the tree, so a strong link back would be the one cycle in the
-/// design that has no reason to exist.
-pub interface DirtySink {
-    fn mark(id: int)
+/// Declared here rather than in `builder.b` because the renderer is what
+/// implements it, and a component holding one is holding the renderer that
+/// mounted it. It is `weak` on the component's side: the renderer owns the
+/// tree, so a strong link back would be the one cycle in the design that has
+/// no reason to exist.
+///
+/// A **class** and not an interface, and that is forced by the language rather
+/// than chosen. `MountHandle.sink` holds it `weak`, and a weak field's type
+/// "must be `Option<C>` for a non-`unique` class `C`" (spec/SYNTAX.md, "weak
+/// fields (zeroing references)"). An interface there is
+/// `error: a weak field needs type Option<C> for a non-unique class C`. A
+/// subclass is what a test uses to watch marks without standing up a renderer.
+pub class DirtySink {
+    pub fn init() {}
+    pub fn mark(id: int) {}
 }
 
 // ---------------------------------------------------------------- the mount
@@ -42,7 +50,7 @@ class Mount {
 }
 
 // ---------------------------------------------------------------- renderer
-pub class Renderer implements DirtySink {
+pub class Renderer extends DirtySink {
     /// The root component's frame buffer. Every other buffer hangs off it
     /// through `Builder.nested`.
     pub root: Builder = new Builder()
@@ -75,7 +83,7 @@ pub class Renderer implements DirtySink {
     /// not grow for the life of a circuit.
     bound: Map<int, List<int>> = {}
 
-    pub fn init() {}
+    pub fn init() { super.init() }
 
     // ---- the dirty set ----------------------------------------------------
 
@@ -85,7 +93,7 @@ pub class Renderer implements DirtySink {
     /// disposed between the render that produced a handler and the event that
     /// reaches it, which is exactly what a stale wire id looks like. It is
     /// dropped, and `pending()` is what says whether anything will run.
-    pub fn mark(id: int) {
+    pub override fn mark(id: int) {
         if !self.mounts.contains_key(id) { return }
         self.dirty[id] = true
     }
@@ -162,6 +170,11 @@ pub class Renderer implements DirtySink {
     pub fn mount(component: Component) {
         self.page = some(component)
         self.root.id = 0
+        // Before `on_init` and before the first render. A component may call
+        // `notify()` from either — a subscription taken in `on_init` is the
+        // ordinary reason — and every child the first render mounts is handed
+        // the sink at its own mount, by the Builder, from the Registry.
+        self.root.attach_sink(self, component)
         component.on_init()
         component.on_params_set()
         self.begin()

@@ -351,5 +351,72 @@ ok and its slot went with it
 ok the author's field still holds the departed child
 ok a remount is a fresh instance
 ok no faults anywhere
+== 11 the factory mount
+-- component_made<Cell<int>>
+component 0
+0 child Cell #1
+component 1
+0 open td
+  1 text one/1
+/close
+
+   html: <td>one/1</td>
+ok a generic component mounts through a factory
+ok no faults
+ok one child buffer
+ok and the second render reuses it
+ok still one child
+ok still no faults
+ok the same call mounts a non-generic component too
+ok no faults
+-- component<Cell<int>>, the reflective route
+   fault: 0: Cell has no zero-argument initializer
+ok reflection cannot build a closed generic
+ok and says which type
+ok so nothing renders
+-- component_made<NotAComponent>
+   fault: 0: NotAComponent is not a Component
+ok a factory that does not build a Component is refused
+ok with the same message the reflective route gives
+ok a slot mounted by the factory is reused by component<T>
+ok and nothing was refused
+-- a slot asked for a different class
+   fault: 0: slot 1 holds a Plain, not a Other
+ok a slot that holds another class is refused
+ok and names both
+ok the same class at the same seq is not
+ok and the original instance is still there
+== 12 the dirty sink
+ok a hand-driven Builder mounts a child
+ok the child knows its slot id
+ok and notify() with no sink does nothing
+ok an unmounted component has no id
+ok and marks nothing
+ok the page is component 0
+ok no faults
+ok the mounted child has an id of its own
+ok the page rendered once
+ok and the child once
+ok notify() marks the page
+ok the page and its child rendered
+ok the page rendered twice
+ok nothing is pending
+ok the parent's state changed
+ok and the PARENT is the one marked dirty
+ok not the child that fired it
+ok the marked parent and its child rendered
+ok and the page says so
+ok no faults anywhere
+ok the row mounted
+ok the row is gone
+ok nothing is pending
+ok the disposed row still remembers its id
+ok a disposed component's notify() marks nothing
+ok and did not mark the page instead
+ok the mark really was raised
+ok with the dead component's own id
+ok the row came back
+ok with an id that is not the dead one
+ok no faults
 == summary
-checks: 106, failed: 0
+checks: 156, failed: 0
