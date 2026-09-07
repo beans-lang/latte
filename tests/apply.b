@@ -28,9 +28,9 @@
 package main
 
 import std.io
-import {Applier, Batch, Builder, Component, Differ, FocusEvent, InputEvent,
-        KeyboardEvent, MouseEvent, Reference, Serializer, SubmitEvent,
-        escape_attribute, escape_text} from latte
+import {Applier, Batch, Builder, Component, Differ, FocusEvent, Frame,
+        InputEvent, KeyboardEvent, MouseEvent, Reference, Serializer,
+        SubmitEvent, escape_attribute, escape_text} from latte
 
 pub class Report {
     pub checks: int = 0
@@ -117,7 +117,13 @@ fn raw_text_tags() -> List<string> { var out: List<string> = ["script", "style"]
     return move out }
 fn rcdata_tags() -> List<string> { var out: List<string> = ["textarea", "title"]
     return move out }
-fn newline_tags() -> List<string> { var out: List<string> = ["pre"]
+/// Both eat a leading newline, so a swap between them keeps that rule on
+/// while changing the tag. A one-member class could never be swapped at all.
+fn newline_tags() -> List<string> { var out: List<string> = ["pre", "listing"]
+    return move out }
+/// The tags a foldable subtree is built from. A list rather than a literal at
+/// the generation site, because a tag mutation picks from it too.
+fn fold_tags() -> List<string> { var out: List<string> = ["b", "i", "span", "em"]
     return move out }
 
 /// Text bodies. The specials are here on purpose: `&`, `<`, `>` are escaped in
@@ -187,6 +193,19 @@ const S_SPLAT: int = 2
 const S_HANDLER: int = 3
 const S_REF: int = 4
 
+// Which vocabulary an element's tag was drawn from. A tag mutation swaps a tag
+// for another of the SAME class, because the node's children were generated for
+// that class: a void element has none, a raw-text element carries exactly one
+// literal body, and an RCDATA element's content is escaped. A swap across
+// classes would hand the serializer a tree the generator never built, and the
+// sweep would then be asserting about a fault rather than about a diff.
+const TC_SAFE: int = 0
+const TC_VOID: int = 1
+const TC_RAW: int = 2
+const TC_RCDATA: int = 3
+const TC_NEWLINE: int = 4
+const TC_FOLD: int = 5
+
 pub class Slot {
     pub kind: int = 0
     pub seq: int = 0
@@ -206,6 +225,9 @@ pub class Tnode {
     pub seq: int = 0
     pub cond: int = -1
     pub tag: string = ""
+    /// Which vocabulary `tag` was drawn from, so a mutation can pick another
+    /// tag the node's children are still valid under.
+    pub tag_class: int = 0
     pub body: string = ""
     /// A foldable subtree: the folded arm's html, and the attribute the
     /// unfolded arm writes. Both arms reserve `seq` through `seq + 2`.
@@ -230,6 +252,29 @@ pub class Tnode {
         self.keys.clear()
         for value: string in values { self.keys.push(value) }
     }
+}
+
+/// The folded arm's html, from the node's own fields.
+///
+/// It is a function rather than a literal at the generation site because a tag
+/// mutation has to be able to rebuild it. A constant frame carries the whole
+/// subtree as ONE string, so a tag that changed in the unfolded arm and not in
+/// the folded one would make the two arms print different HTML — which is gate
+/// 2's failure and would show up here as a gate-3 one, pointing at the applier
+/// for a bug in the test's own generator.
+fn fold_html_of(n: Tnode) -> string {
+    return "<{n.tag} {n.fold_name}=\"{escape_attribute(n.fold_value)}\">{escape_text(n.body)}</{n.tag}>"
+}
+
+/// The tags a node of this class may take.
+fn tags_of_class(kind: int) -> List<string> {
+    var out: List<string> = safe_tags()
+    if kind == TC_VOID { out = void_tags() }
+    else if kind == TC_RAW { out = raw_text_tags() }
+    else if kind == TC_RCDATA { out = rcdata_tags() }
+    else if kind == TC_NEWLINE { out = newline_tags() }
+    else if kind == TC_FOLD { out = fold_tags() }
+    return move out
 }
 
 pub class Model {
@@ -430,6 +475,8 @@ pub class Gen {
     /// One counter per node kind, so the golden says what the sweep actually
     /// built rather than what it was asked to build.
     pub made: List<int> = [0, 0, 0, 0, 0, 0, 0, 0]
+    /// Tag swaps this tree's mutations performed.
+    pub swaps: int = 0
     pub fn init(seed: int) { self.rng = new Rng(seed) }
     pub fn pick(list: List<string>) -> string { return list[self.rng.below(list.len())] }
 }
@@ -488,11 +535,12 @@ fn gen_node(g: Gen, depth: int, start: int, into: List<Tnode>) -> int {
         return cursor
     }
     if kind == T_FOLD {
-        node.tag = g.pick(["b", "i", "span", "em"])
+        node.tag_class = TC_FOLD
+        node.tag = g.pick(fold_tags())
         node.fold_name = g.pick(["class", "id", "title"])
         node.fold_value = g.pick(attr_values())
         node.body = g.pick(text_bodies())
-        node.fold_html = "<{node.tag} {node.fold_name}=\"{escape_attribute(node.fold_value)}\">{escape_text(node.body)}</{node.tag}>"
+        node.fold_html = fold_html_of(node)
         into.push(node)
         return start + 3
     }
@@ -501,11 +549,23 @@ fn gen_node(g: Gen, depth: int, start: int, into: List<Tnode>) -> int {
         var void_element: bool = false
         var raw_text: bool = false
         var rcdata: bool = false
-        if shape < 62 { node.tag = g.pick(safe_tags()) }
-        else if shape < 76 { node.tag = g.pick(void_tags()); void_element = true }
-        else if shape < 84 { node.tag = g.pick(raw_text_tags()); raw_text = true }
-        else if shape < 93 { node.tag = g.pick(rcdata_tags()); rcdata = true }
-        else { node.tag = g.pick(newline_tags()) }
+        if shape < 62 { node.tag_class = TC_SAFE; node.tag = g.pick(safe_tags()) }
+        else if shape < 76 {
+            node.tag_class = TC_VOID
+            node.tag = g.pick(void_tags())
+            void_element = true
+        } else if shape < 84 {
+            node.tag_class = TC_RAW
+            node.tag = g.pick(raw_text_tags())
+            raw_text = true
+        } else if shape < 93 {
+            node.tag_class = TC_RCDATA
+            node.tag = g.pick(rcdata_tags())
+            rcdata = true
+        } else {
+            node.tag_class = TC_NEWLINE
+            node.tag = g.pick(newline_tags())
+        }
 
         let slots: int = g.rng.below(4)
         var made: int = 0
@@ -697,6 +757,31 @@ fn mutate_keys(g: Gen, node: Tnode) {
     node.set_keys(wanted)
 }
 
+/// Swap an element's tag for another of the SAME class.
+///
+/// This is the ONLY mutation in the sweep that makes an element REPLACE rather
+/// than update — `Differ.pair` is `if o.tag != n.tag { self.replace(n, index) }`
+/// — and a replacement is what re-inserts a mount frame for a component that
+/// is still live. Without it, `Applier.build`'s mount-reuse rule is reached by
+/// no random case at all: deleting the rule left all ten thousand green, which
+/// is how the previous round shipped a fuzz that could not see its own § 1.
+/// `reinserted_mounts` counts the times a case actually gets there, so a
+/// generator that stops producing the shape says so in the golden.
+///
+/// A foldable node rebuilds its folded arm, because the tag is baked into that
+/// one string.
+fn mutate_tag(g: Gen, node: Tnode) {
+    var pool: List<string> = tags_of_class(node.tag_class)
+    var others: List<string> = []
+    for name: string in pool {
+        if name != node.tag { others.push(name) }
+    }
+    if others.len() == 0 { return }
+    node.tag = others[g.rng.below(others.len())]
+    if node.kind == T_FOLD { node.fold_html = fold_html_of(node) }
+    g.swaps += 1
+}
+
 fn mutate_rows(g: Gen, node: Tnode) {
     var pool: List<string> = row_pool()
     var wanted: List<string> = []
@@ -724,6 +809,21 @@ pub class Tree {
     pub texts: List<Tnode> = []
     pub loops: List<Tnode> = []
     pub mounts: List<Tnode> = []
+    /// Nodes whose tag can be swapped: an element, and a foldable subtree —
+    /// both draw from a class with more than one member.
+    pub tags: List<Tnode> = []
+    /// The ones with something under them: an element with children, or a
+    /// foldable subtree, whose one html string carries the tag.
+    ///
+    /// A tag swap picks from here when the tree has one. Swapping a CHILDLESS
+    /// element's tag replaces a leaf, which every condition flip in this sweep
+    /// already does; what a tag swap uniquely buys is replacing a subtree that
+    /// is still live underneath, and that is the only way a mounted
+    /// component's frame is re-inserted rather than built fresh. Uniform
+    /// selection reaches it 2 times in 1,200 cases; this reaches it 11.
+    /// `tags` is the fallback, so void and empty elements stay in the
+    /// mutation set for a tree that has no bodied node.
+    pub bodied: List<Tnode> = []
     pub fn init() {}
 }
 
@@ -742,26 +842,31 @@ fn build_tree(g: Gen, depth: int, big: bool) -> Tree {
     of_kind(tree.nodes, T_RAW, tree.texts)
     of_kind(tree.nodes, T_LOOP, tree.loops)
     of_kind(tree.nodes, T_MOUNT, tree.mounts)
+    of_kind(tree.nodes, T_ELEMENT, tree.tags)
+    of_kind(tree.nodes, T_FOLD, tree.tags)
+    for node: Tnode in tree.tags {
+        if node.kids.len() > 0 || node.kind == T_FOLD { tree.bodied.push(node) }
+    }
     return tree
 }
 
 fn mutate(g: Gen, tree: Tree, b: Builder) {
     let roll: int = g.rng.below(100)
-    if roll < 26 {
+    if roll < 24 {
         tree.model.bits = tree.model.bits ^ (1 << g.rng.below(g.conds))
         return
     }
-    if roll < 44 && tree.loops.len() > 0 {
+    if roll < 40 && tree.loops.len() > 0 {
         mutate_keys(g, tree.loops[g.rng.below(tree.loops.len())])
         return
     }
-    if roll < 58 && tree.texts.len() > 0 {
+    if roll < 52 && tree.texts.len() > 0 {
         let node: Tnode = tree.texts[g.rng.below(tree.texts.len())]
         if node.kind == T_RAW { node.body = g.pick(raw_bodies()) }
         else { node.body = g.pick(text_bodies()) }
         return
     }
-    if roll < 74 && tree.slots.len() > 0 {
+    if roll < 66 && tree.slots.len() > 0 {
         let slot: Slot = tree.slots[g.rng.below(tree.slots.len())]
         if slot.kind == S_ATTR {
             if is_url_name(slot.name) { slot.value = g.pick(url_values()) }
@@ -777,10 +882,18 @@ fn mutate(g: Gen, tree: Tree, b: Builder) {
         }
         return
     }
-    if roll < 90 && tree.mounts.len() > 0 {
+    if roll < 80 && tree.mounts.len() > 0 {
         let node: Tnode = tree.mounts[g.rng.below(tree.mounts.len())]
         if g.rng.chance(2) { node.label = g.pick(text_bodies()) }
         else { mutate_rows(g, node) }
+        return
+    }
+    if roll < 90 && tree.tags.len() > 0 {
+        if tree.bodied.len() > 0 {
+            mutate_tag(g, tree.bodied[g.rng.below(tree.bodied.len())])
+        } else {
+            mutate_tag(g, tree.tags[g.rng.below(tree.tags.len())])
+        }
         return
     }
     if roll < 94 {
@@ -825,6 +938,65 @@ fn buffer_ids(b: Builder, into: List<int>) {
     }
 }
 
+/// Mount frames staged for insertion whose component the applier ALREADY
+/// holds — the exact shape `Applier.build`'s mount-reuse rule answers. A mount
+/// frame is a LEAF: it names a component and carries none of its content, so
+/// re-inserting one has to bring back the subtree already held for that id
+/// rather than build an empty node.
+///
+/// It is counted, and the count is in the golden, because a rule a fuzz never
+/// reaches is a rule the fuzz cannot guard. Read BEFORE `apply`, which is what
+/// creates the roots a re-inserted mount would be matched against.
+fn reinserted_mounts(batch: Batch, a: Applier) -> int {
+    var total: int = 0
+    var index: int = 0
+    for index < batch.reference.len() {
+        match batch.reference.at(index) {
+            child(_, _, id) => { if a.roots.contains_key(id) { total += 1 } }
+            _ => {}
+        }
+        index += 1
+    }
+    return total
+}
+
+/// Two loop shapes the sweep was otherwise silent about, counted in the frames
+/// a render actually produced rather than in the template that might have
+/// produced them:
+///
+///   * `counts[0]` — a keyed loop inside another keyed loop's row. The inner
+///     run's seqs restart at 0 under a path prefix the outer row owns.
+///   * `counts[1]` — two loops side by side: a region run that follows another
+///     region run carrying a different seq, which is the case `group_units`
+///     has to split into two units instead of one.
+///
+/// The ROOT buffer only. A loop inside a mounted child is a loop in another
+/// component's frame list and diffs on its own, which is the easy case.
+fn count_loop_shapes(b: Builder, counts: List<int>) {
+    var open_seqs: List<int> = []
+    var closed: bool = false
+    var closed_seq: int = -1
+    var index: int = 0
+    for index < b.frames.len() {
+        match b.frames.at(index) {
+            region_open(seq, _) => {
+                if open_seqs.len() > 0 { counts[0] = counts[0] + 1 }
+                if closed && seq != closed_seq { counts[1] = counts[1] + 1 }
+                open_seqs.push(seq)
+                closed = false
+            }
+            region_close => {
+                if open_seqs.len() > 0 {
+                    closed_seq = open_seqs.remove(open_seqs.len() - 1)
+                }
+                closed = true
+            }
+            _ => { closed = false }
+        }
+        index += 1
+    }
+}
+
 fn ints_to_text(values: List<int>) -> string {
     var out: string = ""
     for value: int in values { out = "{out} {value}" }
@@ -835,6 +1007,8 @@ pub class Verdict {
     pub ok: bool = true
     pub why: string = ""
     pub edits: int = 0
+    /// Live components whose mount frame this case re-inserted.
+    pub reused: int = 0
     pub want: string = ""
     pub got: string = ""
     pub fn init() {}
@@ -846,10 +1020,15 @@ pub class Verdict {
 /// with the checks it left implicit made explicit, because a sweep of ten
 /// thousand cases can only report what it was told to look at.
 fn one_case(fuzz: Fuzz, b: Builder, d: Differ, a: Applier, digest: Digest,
-            weigh: bool) -> Verdict {
+            shapes: List<int>, weigh: bool) -> Verdict {
     let verdict: Verdict = new Verdict()
     b.render_root(fuzz)
     let batch: Batch = d.batch(b)
+    // Both readings happen BEFORE `apply`: the mount count is against the roots
+    // the applier held coming in, and the loop shapes are what this render
+    // produced.
+    verdict.reused = reinserted_mounts(batch, a)
+    count_loop_shapes(b, shapes)
     a.apply(batch)
     verdict.edits = batch.edit_count()
 
@@ -1176,6 +1355,10 @@ fn sweep(r: Report) {
     var steady_bad: int = 0
     var peak_components: int = 0
     var kinds: List<int> = [0, 0, 0, 0, 0, 0, 0, 0]
+    var swaps: int = 0
+    var reused: int = 0
+    /// [0] a loop inside a loop's row, [1] two loop runs side by side.
+    var shapes: List<int> = [0, 0]
 
     var tree_index: int = 0
     for tree_index < TREES {
@@ -1204,9 +1387,10 @@ fn sweep(r: Report) {
             // with STEPS so the sample walks across the mutation positions
             // rather than always landing on the same one.
             let weigh: bool = cases % 3 == 0
-            let verdict: Verdict = one_case(fuzz, b, d, a, digest, weigh)
+            let verdict: Verdict = one_case(fuzz, b, d, a, digest, shapes, weigh)
             cases += 1
             total_edits += verdict.edits
+            reused += verdict.reused
             if verdict.edits > worst { worst = verdict.edits }
             let components: int = 1 + buffer_count(b)
             if components > peak_components { peak_components = components }
@@ -1236,6 +1420,7 @@ fn sweep(r: Report) {
             }
             step += 1
         }
+        swaps += g.swaps
         tree_index += 1
     }
 
@@ -1244,6 +1429,8 @@ fn sweep(r: Report) {
     io.println("nodes generated: element {kinds[0]}, text {kinds[1]}, raw {kinds[2]}, constant {kinds[3]}, loop {kinds[4]}, fragment {kinds[5]}, boundary {kinds[6]}, mount {kinds[7]}")
     io.println("edits: {total_edits} total, worst batch {worst}")
     io.println("peak live components in one tree: {peak_components}")
+    io.println("tag swaps: {swaps}; live mounts re-inserted by one: {reused}")
+    io.println("loop shapes: {shapes[0]} nested rows, {shapes[1]} adjacent runs")
     io.println("digest: {digest.value}")
     r.eqi("ten thousand random cases", cases, 10000)
     r.eqi("every one applied to the serializer's html", bad, 0)
@@ -1254,6 +1441,15 @@ fn sweep(r: Report) {
         kinds[2] > 0 && kinds[3] > 0 && kinds[4] > 0 && kinds[5] > 0 &&
         kinds[6] > 0 && kinds[7] > 0)
     r.yes("and mounted components three levels deep", peak_components >= 3)
+    // The generator's own coverage, asserted rather than left in a comment. A
+    // sweep that stops producing a shape goes quiet about it; these four
+    // numbers are what stop that. `reused` is the one that matters most: it is
+    // the only guard on `Applier.build`'s mount-reuse rule, and it was zero for
+    // ten thousand cases until a tag mutation existed.
+    r.yes("tags were swapped", swaps > 0)
+    r.yes("and a swap re-inserted a live component's mount", reused > 0)
+    r.yes("a loop ran inside another loop's row", shapes[0] > 0)
+    r.yes("and two loops stood side by side", shapes[1] > 0)
 }
 
 fn main() {
