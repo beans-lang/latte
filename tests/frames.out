@@ -418,6 +418,17 @@ ok with the dead component's own id
 ok the row came back
 ok with an id that is not the dead one
 ok no faults
+== 14 an imported base, and B8
+   type_of(Component).qualified_name() = latte.Component
+   type_of(Plain).qualified_name()     = latte$entry.Plain
+   is_assignable_from                  = true
+ok an imported base reports its real package
+ok and is_assignable_from answers true for a real subclass
+ok a main-package component mounts through the imported base
+ok with no faults
+ok and so does the factory route
+ok with no faults
+ok while a non-Component is still refused
 == 13 every fault site in builder.b
 -- sibling-seq-repeats
    site:    note_sibling / sequence N does not follow M in this scope
@@ -1042,4 +1053,4 @@ ok a-slot-that-holds-another-class: and the instance survived all three passes
    3x unwind_to / an element was left open
 ok every fault site in builder.b has a case
 == summary
-checks: 452, failed: 0
+checks: 459, failed: 0
