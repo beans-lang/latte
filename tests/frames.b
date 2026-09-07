@@ -25,9 +25,11 @@
 //  11  the factory mount    — component_made<T> over a closed generic
 //  12  the dirty sink       — MountHandle, Component.id(), Callback.call
 //  13  every fault site     — all 24, each with a trip, a control and a count
+//  14  an imported base     — why BLOCKERS.md B8 does not reach the mount path
 package main
 
 import std.io
+import std.reflect
 import {Builder, Callback, Component, DirtySink, Frame, FocusEvent, InputEvent,
         KeyboardEvent, MouseEvent, Reference, Renderer, Serializer, SubmitEvent,
         describe_frame} from latte
@@ -1293,6 +1295,75 @@ fn factory_mount(r: Report) {
     fb.render_root(flip)
     r.eqi("the same class at the same seq is not", fb.all_faults().len(), 0)
     r.eq("and the original instance is still there", html_of(fb), "<p>f/3</p>")
+}
+
+// ------------------------------------------------- B8 and the mount path
+
+/// **Is the mount path affected by BLOCKERS.md B8?** No, and this is the case
+/// that says so rather than a paragraph claiming it.
+///
+/// B8: `type_of(T)` for an IMPORTED `T` reports the importing package's name
+/// joined to the simple name — a type that does not exist — while the
+/// inheritance chain reports the real one, so `is_assignable_from` answers
+/// **false** for a genuine base and subclass, on both backends.
+///
+/// Every component in this repo is declared in `package main` and mounted
+/// through `latte`'s `Builder.component<T>` / `component_made<T>`, which is
+/// exactly the imported-base shape. It works because the mount path never asks
+/// that question: `mount`, `mount_made` and `fill_slot` each use an `as?`
+/// downcast, which goes through the inheritance chain, and `type_of(T)` is used
+/// only for `initializer()` and for the simple `name()` in a fault message.
+///
+/// It also measures the question, and the measurement is a finding: B8's
+/// failure **does not reproduce here**. `type_of(Component).qualified_name()`
+/// asked from `package main` answers `latte.Component`, the real name, and
+/// `is_assignable_from` answers **true** for `Plain extends Component`. B8's
+/// repro imports its base from a SUBPACKAGE (`p11_type_of_name.core`) into the
+/// module root; latte's base comes from the module root itself. So whatever B8
+/// is, it is narrower than "any imported type", and these two assertions are
+/// what will say so the day it widens.
+fn imported_base_downcast(r: Report) {
+    io.println("== 14 an imported base, and B8")
+
+    let base: reflect.Type = type_of(Component)
+    let leaf: reflect.Type = type_of(Plain)
+    io.println("   type_of(Component).qualified_name() = {base.qualified_name()}")
+    io.println("   type_of(Plain).qualified_name()     = {leaf.qualified_name()}")
+    io.println("   is_assignable_from                  = {base.is_assignable_from(leaf)}")
+    r.eq("an imported base reports its real package", base.qualified_name(),
+        "latte.Component")
+    r.yes("and is_assignable_from answers true for a real subclass",
+        base.is_assignable_from(leaf))
+
+    // The reflective route: the descriptor is the right class even when its
+    // reported name is not, because the initializer it hands back builds one.
+    let reflective: Builder = new Builder()
+    render_body(reflective, fn(b: Builder) {
+        b.component<Plain>(0, fn(c: Plain) { c.label = "reflective" })
+    })
+    r.eq("a main-package component mounts through the imported base",
+        html_of(reflective), "<p>reflective/1</p>")
+    r.eqi("with no faults", reflective.all_faults().len(), 0)
+
+    // The factory route boxes the static type and downcasts the same way.
+    let made: Builder = new Builder()
+    render_body(made, fn(b: Builder) {
+        b.component_made<Plain>(0,
+            fn() -> Plain { return new Plain() },
+            fn(c: Plain) { c.label = "factory" })
+    })
+    r.eq("and so does the factory route", html_of(made), "<p>factory/1</p>")
+    r.eqi("with no faults", made.all_faults().len(), 0)
+
+    // The control that makes the two above mean something: the same downcast
+    // asked of a class that is NOT a Component must still answer none, so
+    // "everything downcasts" cannot pass for "the downcast works".
+    let wrong: Builder = new Builder()
+    render_body(wrong, fn(b: Builder) {
+        b.component<NotAComponent>(0, fn(x: NotAComponent) {})
+    })
+    r.eq("while a non-Component is still refused", first_fault(wrong),
+        "0: NotAComponent is not a Component")
 }
 
 // ------------------------------------------------- the dirty sink
@@ -2699,6 +2770,7 @@ fn main() {
     component_ref(r)
     factory_mount(r)
     dirty_sink(r)
+    imported_base_downcast(r)
     fault_sites(r)
 
     io.println("== summary")
