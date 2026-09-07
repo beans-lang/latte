@@ -1,0 +1,274 @@
+
+======== interpolation inside <script> and <style> ========
+refused: an implicit expression in a <script>
+  | <script>let n = $self.count;</script>
+  refusal.bx:5:17: error: an expression inside <script> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a script is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+refused: an explicit expression in a <script>
+  | <script>let n = $(self.count + 1);</script>
+  refusal.bx:5:17: error: an expression inside <script> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a script is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+refused: an implicit expression in a <style>
+  | <style>.a { color: $self.colour }</style>
+  refusal.bx:5:20: error: an expression inside <style> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a style is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+refused: an explicit expression in a <style>
+  | <style>.a { color: $(self.colour) }</style>
+  refusal.bx:5:20: error: an expression inside <style> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a style is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+refused: a ${ } statement block in a <script>
+  | <script>${ let x: int = 1 }</script>
+  refusal.bx:5:9: error: an expression inside <script> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a script is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+refused: a $if in a <script>
+  | <script>$if self.on { let x = 1; }</script>
+  refusal.bx:5:9: error: an expression inside <script> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a script is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+refused: a $for in a <style>
+  | <style>$for row: string in self.rows { }</style>
+  refusal.bx:5:8: error: an expression inside <style> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a style is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+refused: $html in a <script>
+  | <script>$html(self.js)</script>
+  refusal.bx:5:9: error: an expression inside <script> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a script is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+refused: two of them in one body — both are reported
+  | <script>let x = $self.a; let y = $self.a;</script>
+  refusal.bx:5:17: error: an expression inside <script> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a script is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+  refusal.bx:5:34: error: an expression inside <script> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a script is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+refused: a <script> with attributes is still raw text
+  | <script type="module" defer>let x = $self.a;</script>
+  refusal.bx:5:37: error: an expression inside <script> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a script is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+refused: a JavaScript identifier holding a dollar
+  | <script>let a$b = 1;</script>
+  refusal.bx:5:14: error: an expression inside <script> — latte refuses it: the serializer escapes for HTML text, and HTML escaping inside a script is not a defence. Build the value in Beans and pass it through an attribute, or write $$ for a literal dollar
+accepted: a price, a currency and a bare $ in a <script>
+accepted: a$$b is how that identifier is written
+accepted: a JavaScript template literal's ${ } is not markup
+accepted: $$ writes one dollar in a <script>
+accepted: < and braces in a <script> body
+accepted: an ordinary <style> body
+
+======== a literal on* attribute ========
+refused: onclick
+  | <div onclick="steal()">x</div>
+  refusal.bx:5:6: error: onclick is an inline script handler and latte refuses it — a handler exists only as an id and the client never evaluates a string. Write on:click={fn(e: <EventType>) { ... }} instead
+refused: onCLICK — the predicate is case-insensitive
+  | <div onCLICK="steal()">x</div>
+  refusal.bx:5:6: error: onCLICK is an inline script handler and latte refuses it — a handler exists only as an id and the client never evaluates a string. Write on:click={fn(e: <EventType>) { ... }} instead
+refused: on-foo — not an event, refused all the same
+  | <div on-foo="steal()">y</div>
+  refusal.bx:5:6: error: on-foo starts with on, and latte refuses every attribute whose name does — HTML's inline handlers all have that shape, latte.Builder drops such an attribute at run time, and a folded constant subtree would keep what the unfolded walk dropped. Rename it, or write on:<event>={...} if you meant a handler
+refused: on_dismiss
+  | <div on_dismiss="steal()">y</div>
+  refusal.bx:5:6: error: on_dismiss starts with on, and latte refuses every attribute whose name does — HTML's inline handlers all have that shape, latte.Builder drops such an attribute at run time, and a folded constant subtree would keep what the unfolded walk dropped. Rename it, or write on:<event>={...} if you meant a handler
+refused: onx — three bytes, no event name
+  | <div onx="steal()">y</div>
+  refusal.bx:5:6: error: onx starts with on, and latte refuses every attribute whose name does — HTML's inline handlers all have that shape, latte.Builder drops such an attribute at run time, and a folded constant subtree would keep what the unfolded walk dropped. Rename it, or write on:<event>={...} if you meant a handler
+refused: onclick with no value at all
+  | <div onclick>y</div>
+  refusal.bx:5:6: error: onclick is an inline script handler and latte refuses it — a handler exists only as an id and the client never evaluates a string. Write on:click={fn(e: <EventType>) { ... }} instead
+refused: onclick={ } as an expression
+  | <div onclick={self.js}>y</div>
+  refusal.bx:5:6: error: onclick is an inline script handler and latte refuses it — a handler exists only as an id and the client never evaluates a string. Write on:click={fn(e: <EventType>) { ... }} instead
+refused: once — the predicate has no exceptions
+  | <div once="1">y</div>
+  refusal.bx:5:6: error: once starts with on, and latte refuses every attribute whose name does — HTML's inline handlers all have that shape, latte.Builder drops such an attribute at run time, and a folded constant subtree would keep what the unfolded walk dropped. Rename it, or write on:<event>={...} if you meant a handler
+refused: only — likewise
+  | <div only="1">y</div>
+  refusal.bx:5:6: error: only starts with on, and latte refuses every attribute whose name does — HTML's inline handlers all have that shape, latte.Builder drops such an attribute at run time, and a folded constant subtree would keep what the unfolded walk dropped. Rename it, or write on:<event>={...} if you meant a handler
+refused: onclick inside a constant run that would fold
+  | <div>
+  |   <i>one</i>
+  |   <b onclick="steal()">two</b>
+  | </div>
+  refusal.bx:7:6: error: onclick is an inline script handler and latte refuses it — a handler exists only as an id and the client never evaluates a string. Write on:click={fn(e: <EventType>) { ... }} instead
+accepted: on:click={ } is the handler spelling
+accepted: on — two bytes, so not a handler name
+accepted: no, o, ono-like names that do not begin on
+
+======== a closed generic component tag ========
+refused: <Grid<int>>
+  | <Grid<int>>x</Grid>
+  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection cannot construct Grid<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
+  refusal.bx:5:13: error: a closing tag with nothing open — remove it, or add the opening tag it closes
+refused: <Grid<T>> — a type parameter reads the same way
+  | <Grid<T>>x</Grid>
+  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection cannot construct Grid<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
+  refusal.bx:5:11: error: a closing tag with nothing open — remove it, or add the opening tag it closes
+refused: a dotted component, self-closing
+  | <ui.Table<Order> />
+  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection cannot construct ui.Table<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends ui.Table<Order>
+refused: <Grid<int> /> self-closing
+  | <Grid<int> />
+  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection cannot construct Grid<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
+refused: nested angles
+  | <Grid<Map<string, int>> />
+  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection cannot construct Grid<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
+accepted: <Grid> open, which is the supported spelling
+accepted: a lowercase tag with an entity is not a generic
+
+======== an expression that cannot be interpolated ========
+refused: a multi-line $( ) in text
+  | <p>$(self.a +
+  |    self.c)</p>
+  refusal.bx:5:4: error: an interpolated expression spans more than one line, and it is interpolated into a generated string — a Beans string literal cannot span lines, and joining the lines would swallow the rest of a // comment. Put the expression on one line, or compute it in a ${ ... } block and interpolate the result
+refused: a multi-line attribute expression
+  | <div class={if self.on {
+  |     "yes"
+  | } else {
+  |     "no"
+  | }}>x</div>
+  refusal.bx:5:6: error: an attribute expression spans more than one line, and it is interpolated into a generated string — a Beans string literal cannot span lines, and joining the lines would swallow the rest of a // comment. Put the expression on one line, or compute it in a ${ ... } block and interpolate the result
+refused: a multi-line key= expression
+  | $for row: int in self.rows {
+  |   <li key={row +
+  |     1}>x</li>
+  | }
+  refusal.bx:6:7: error: a key= expression spans more than one line, and it is interpolated into a generated string — a Beans string literal cannot span lines, and joining the lines would swallow the rest of a // comment. Put the expression on one line, or compute it in a ${ ... } block and interpolate the result
+refused: a bind:value place spanning lines is not even a place
+  | <input bind:value={self.
+  |   note} />
+  refusal.bx:5:8: error: bind:value={self.
+    note} is not a field to write back to — a binding needs a place, such as bind:value={self.note}
+refused: a nested string holding an unmatched brace
+  | <p>$(self.f("{"))</p>
+  refusal.bx:5:4: error: $( was never closed — add the missing )
+  refusal.bx:5:22: error: the file ended inside a tag — add the missing closing tag
+  refusal.bx:5:1: error: <p> was never closed — add </p>
+accepted: the same expression on one line
+accepted: a multi-line handler — code, not a string
+accepted: a nested string with the brace escaped
+
+======== an unsafe tag name ========
+refused: an underscore in the name
+  | <a_b>x</a_b>
+  refusal.bx:5:1: error: <a_b> is not a tag name latte can write — a tag is a letter followed by letters, digits and hyphens. latte.Builder replaces an unsafe name with <span> at run time, and a folded subtree would keep the name as written, so the two would disagree
+refused: a dot in a non-component name
+  | <x.y>z</x.y>
+  refusal.bx:5:1: error: <x.y> is not a tag name latte can write — a tag is a letter followed by letters, digits and hyphens. latte.Builder replaces an unsafe name with <span> at run time, and a folded subtree would keep the name as written, so the two would disagree
+refused: a colon in the name
+  | <p:q>z</p:q>
+  refusal.bx:5:1: error: <p:q> is not a tag name latte can write — a tag is a letter followed by letters, digits and hyphens. latte.Builder replaces an unsafe name with <span> at run time, and a folded subtree would keep the name as written, so the two would disagree
+refused: a name starting with an underscore
+  | <_x>z</_x>
+  refusal.bx:5:1: error: <_x> is not a tag name latte can write — a tag is a letter followed by letters, digits and hyphens. latte.Builder replaces an unsafe name with <span> at run time, and a folded subtree would keep the name as written, so the two would disagree
+refused: inside a constant run that would fold
+  | <div>
+  |   <i>one</i>
+  |   <a_b>two</a_b>
+  | </div>
+  refusal.bx:7:3: error: <a_b> is not a tag name latte can write — a tag is a letter followed by letters, digits and hyphens. latte.Builder replaces an unsafe name with <span> at run time, and a folded subtree would keep the name as written, so the two would disagree
+refused: a self-closing unsafe tag
+  | <a_b />
+  refusal.bx:5:1: error: <a_b> is not a tag name latte can write — a tag is a letter followed by letters, digits and hyphens. latte.Builder replaces an unsafe name with <span> at run time, and a folded subtree would keep the name as written, so the two would disagree
+accepted: a custom element with a hyphen
+accepted: a heading with a digit
+accepted: a trailing hyphen is legal HTML
+
+======== an attribute name latte will not write ========
+refused: a name starting with a dot
+  | <div .x="1">y</div>
+  refusal.bx:5:6: error: '.' is not an attribute name inside <div>
+refused: a name starting with a digit
+  | <div 1x="1">y</div>
+  refusal.bx:5:6: error: '1' is not an attribute name inside <div>
+refused: a quoted name
+  | <div "x"="1">y</div>
+  refusal.bx:5:6: error: '"' is not an attribute name inside <div>
+  refusal.bx:5:8: error: '"' is not an attribute name inside <div>
+  refusal.bx:5:9: error: '=' is not an attribute name inside <div>
+  refusal.bx:5:10: error: '"' is not an attribute name inside <div>
+  refusal.bx:5:11: error: '1' is not an attribute name inside <div>
+  refusal.bx:5:12: error: '"' is not an attribute name inside <div>
+refused: an = with no name in front of it
+  | <div ="1">y</div>
+  refusal.bx:5:6: error: '=' is not an attribute name inside <div>
+  refusal.bx:5:7: error: '"' is not an attribute name inside <div>
+  refusal.bx:5:8: error: '1' is not an attribute name inside <div>
+  refusal.bx:5:9: error: '"' is not an attribute name inside <div>
+refused: a name with no value after its =
+  | <div x=>y</div>
+  refusal.bx:5:8: error: x= needs a "string" or a {expression} after it
+refused: a value that is neither a string nor an expression
+  | <div x=1>y</div>
+  refusal.bx:5:8: error: x= needs a "string" or a {expression} after it
+  refusal.bx:5:8: error: '1' is not an attribute name inside <div>
+refused: a namespace latte does not have
+  | <div a:b="2">y</div>
+  refusal.bx:5:6: error: a:b uses an attribute namespace latte does not have — latte has two, on: for a DOM event and bind: for a two-way binding, beside the XML namespaces xlink:, xml: and xmlns:
+refused: a mistyped bind: is still an error, not an attribute
+  | <input bnd:value={self.note} />
+  refusal.bx:5:8: error: bnd:value uses an attribute namespace latte does not have — latte has two, on: for a DOM event and bind: for a two-way binding, beside the XML namespaces xlink:, xml: and xmlns:
+accepted: every punctuation the safe set allows
+accepted: the XML namespaces are ordinary names
+
+======== a literal URL with a refused scheme ========
+refused: javascript: in an href
+  | <a href="javascript:alert(1)">x</a>
+  refusal.bx:5:4: error: href="javascript:alert(1)" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: data: in a src
+  | <img src="data:text/html,x" />
+  refusal.bx:5:6: error: src="data:text/html,x" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: javascript: in a form action
+  | <form action="javascript:alert(1)"><i>x</i></form>
+  refusal.bx:5:7: error: action="javascript:alert(1)" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: javascript: in a formaction
+  | <button formaction="javascript:alert(1)">x</button>
+  refusal.bx:5:9: error: formaction="javascript:alert(1)" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: javascript: in a poster
+  | <video poster="javascript:alert(1)"></video>
+  refusal.bx:5:8: error: poster="javascript:alert(1)" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: javascript: in an object data
+  | <object data="javascript:alert(1)"></object>
+  refusal.bx:5:9: error: data="javascript:alert(1)" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: javascript: in an SVG xlink:href
+  | <svg><a xlink:href="javascript:alert(1)">x</a></svg>
+  refusal.bx:5:9: error: xlink:href="javascript:alert(1)" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: mixed case is the same scheme
+  | <a href="JaVaScRiPt:alert(1)">x</a>
+  refusal.bx:5:4: error: href="JaVaScRiPt:alert(1)" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: a leading space is stripped by the browser
+  | <a href=" javascript:alert(1)">x</a>
+  refusal.bx:5:4: error: href=" javascript:alert(1)" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: a tab in the middle is stripped too
+  | <a href="java\tscript:alert(1)">x</a>
+  refusal.bx:5:4: error: href="java	script:alert(1)" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: vbscript:
+  | <a href="vbscript:x">x</a>
+  refusal.bx:5:4: error: href="vbscript:x" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: about:blank is not on the list either
+  | <a href="about:blank">x</a>
+  refusal.bx:5:4: error: href="about:blank" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+refused: inside a constant run that would fold
+  | <div>
+  |   <i>one</i>
+  |   <a href="javascript:alert(1)">two</a>
+  | </div>
+  refusal.bx:7:6: error: href="javascript:alert(1)" carries a scheme latte does not allow — the list is http, https, mailto, tel and a relative URL. latte.Builder replaces it with about:blank at run time, which a folded subtree would not, so a literal one is refused here
+accepted: a relative path
+accepted: a bare relative name
+accepted: http and https, any case
+accepted: mailto and tel
+accepted: a query or fragment holding a colon
+accepted: a protocol-relative URL
+accepted: an expression href is the Builder's job, not this one
+
+======== a <script> or <style> body that ends its own element ========
+refused: </script with a space after it
+  | <script>var s = "</script foo";</script>
+  refusal.bx:5:1: error: the body of this <script> holds `</script` or `<!--`, either of which ends the element early in a browser whatever the language inside thinks. latte.Serializer drops such a body with a fault, so the page would silently lose it
+refused: </script with a letter after it
+  | <script>var s = "</scriptx";</script>
+  refusal.bx:5:1: error: the body of this <script> holds `</script` or `<!--`, either of which ends the element early in a browser whatever the language inside thinks. latte.Serializer drops such a body with a fault, so the page would silently lose it
+refused: a comment opener in a <script>
+  | <script><!-- hidden --></script>
+  refusal.bx:5:1: error: the body of this <script> holds `</script` or `<!--`, either of which ends the element early in a browser whatever the language inside thinks. latte.Serializer drops such a body with a fault, so the page would silently lose it
+refused: </style with a space after it
+  | <style>/* </style x */ .a{color:red}</style>
+  refusal.bx:5:1: error: the body of this <style> holds `</style` or `<!--`, either of which ends the element early in a browser whatever the language inside thinks. latte.Serializer drops such a body with a fault, so the page would silently lose it
+refused: a comment opener in a <style>
+  | <style><!-- x --></style>
+  refusal.bx:5:1: error: the body of this <style> holds `</style` or `<!--`, either of which ends the element early in a browser whatever the language inside thinks. latte.Serializer drops such a body with a fault, so the page would silently lose it
+refused: case does not help
+  | <script>var s = "</SCRIPT foo";</script>
+  refusal.bx:5:1: error: the body of this <script> holds `</script` or `<!--`, either of which ends the element early in a browser whatever the language inside thinks. latte.Serializer drops such a body with a fault, so the page would silently lose it
+accepted: a less-than that closes nothing
+accepted: a closing tag for a different element
+accepted: an ordinary stylesheet
+accepted: an empty raw-text body emits no frame at all
+
+64 refusal(s) fired, 30 control(s) compiled
+======== markup refusals: every check passed ========

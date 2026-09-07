@@ -416,9 +416,18 @@ pub class Parser {
     /// The compiler knows the tag and the serializer does not, so the refusal
     /// belongs here.
     ///
-    /// A `$` that would not be a transition anywhere else is not one here
-    /// either — `$5`, `a$b` and a trailing `$` are ordinary script bytes — and
-    /// `$$` writes one dollar, the same escape the rest of the file has.
+    /// The transition rule is the file's own, applied unchanged: a `$` starts
+    /// one when the byte **after** it starts an identifier or is `(` or `{`.
+    /// So `$5.00`, `US$`, `$ 20` and a trailing `$` are ordinary script bytes
+    /// needing no escape, and `$$` writes one dollar, the same escape the rest
+    /// of the file has.
+    ///
+    /// `a$b` **is** a transition, and this comment used to say it was not. The
+    /// classifier never looks at the byte before the `$` — PLAN.md's rule is
+    /// written entirely in terms of the one after it — so a JavaScript
+    /// identifier holding a dollar is refused here and is written `a$$b`.
+    /// `tests/markup_refusals.b` has the case; it was found by a control that
+    /// asserted the old comment and failed.
     fn parse_raw_text(node: ElementNode, at: Span) {
         let closer: string = "</{node.tag}>"
         let start: int = self.lex.off
@@ -539,8 +548,14 @@ pub class Parser {
             if space == "bind" {
                 return self.classify_bind(node, rest, at, has_value, is_code, code)
             }
-            self.report(at, "{name} uses an attribute namespace latte does not have — the two are on: for a DOM event and bind: for a two-way binding")
-            return none
+            // An XML namespace is not one of latte's; it is part of an ordinary
+            // attribute name, and the colon is a byte the safe set allows. It
+            // falls through to the paths below — which is what makes
+            // `xlink:href` writable and its scheme check reachable.
+            if !is_xml_namespace(space) {
+                self.report(at, "{name} uses an attribute namespace latte does not have — latte has two, on: for a DOM event and bind: for a two-way binding, beside the XML namespaces xlink:, xml: and xmlns:")
+                return none
+            }
         }
         if name == "key" {
             if !is_code {
