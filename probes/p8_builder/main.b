@@ -42,22 +42,27 @@ fn main() {
 
     let b1: Builder = new Builder()
     page.render(b1)
+    let first_dump: string = b1.dump()
+    let first_faults: int = b1.faults.len()
+    let first_fault: string = if first_faults > 0 { b1.faults[0] } else { "" }
     io.println("balanced: {b1.balanced()}")
-    io.println("faults: {b1.faults.len()} {if b1.faults.len() > 0 { b1.faults[0] } else { "" }}")
+    io.println("faults: {first_faults} {first_fault}")
     io.println("frames: {b1.frames.len()}")
-    io.println(b1.dump())
+    io.println(first_dump)
 
     // The handler table is reachable by sequence number, which is the only id
     // the wire ever carries.
     io.println("click 9 ran: {fire_click(b1, 9)}, count now {page.count}")
     io.println("input 13 ran: {fire_input(b1, 13, "typed")}, note now {page.note}")
+    let count_after_click: int = page.count
+    let note_after_input: string = page.note
     io.println("no handler at 999: {!fire_click(b1, 999)}")
 
     // A second render on the SAME builder must reuse the mounted child rather
     // than activating a new one — probe 3 measured activation at 2.4 us, so
     // re-activating per render is the one shape that is not affordable.
     let before: int = b1.children.len()
-    b1.frames.clear()
+    b1.reset()
     page.render(b1)
     io.println("the child was reused, not re-activated: {b1.children.len() == before && before == 1}")
 
@@ -69,4 +74,24 @@ fn main() {
     let warn_arm: bool = b2.dump().contains("[17:")
     let hint_arm: bool = b2.dump().contains(":Hint")
     io.println("branch arms have disjoint numbers: {warn_arm && !hint_arm}")
+
+    let all_ok: bool =
+        b1.balanced() && b2.balanced() &&
+        // exactly one fault per render, and it is the javascript: href refused
+        first_faults == 1 &&
+        first_fault == "attribute href carried a refused scheme" &&
+        b1.faults.len() == 1 &&
+        first_dump.contains("35:href=about:blank") &&
+        // the region restarts numbering at 0 for every row
+        first_dump.contains("(#20/7<0:li[1:seven]>)") &&
+        first_dump.contains("(#20/8<0:li[1:eight]>)") &&
+        // a constant subtree is one frame carrying its html
+        first_dump.contains("[40=<footer") &&
+        // the child's own frames are numbered in the child's space
+        first_dump.contains("\{18:Hint\}<0:aside") &&
+        count_after_click == 3 && note_after_input == "typed" &&
+        b1.children.len() == before && before == 1 &&
+        b2.children.len() == 0 && warn_arm && !hint_arm
+    if all_ok { io.println("probe p8_builder: ok") }
+    else { io.println("probe p8_builder: FAILED") }
 }

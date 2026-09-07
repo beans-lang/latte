@@ -340,8 +340,11 @@ fn upgrade(listener: net.TcpListener, compress: bool) -> Result<websocket.Connec
     return websocket.Connection.accept(move stream, request, 8388608, compress)
 }
 
+// `expect_intact` is what makes this a test rather than a printout: phase C is
+// SUPPOSED to corrupt the stream, so a run where it came out clean is as much
+// a change in the answer as one where phase A broke.
 fn phase(name: string, chunks: List<string>, count: int, want: int,
-         hold_ms: int, compress: bool, ack: int) {
+         hold_ms: int, compress: bool, ack: int, expect_intact: bool) -> bool {
     match net.TcpListener.bind("127.0.0.1", 0) {
         ok(listener) => {
             let port: int = listener.port().expect("port")
@@ -374,9 +377,22 @@ fn phase(name: string, chunks: List<string>, count: int, want: int,
             if t.writer_err != "" { io.println("  writer error: {t.writer_err}") }
             if t.reader_err != "" { io.println("  reader error: {t.reader_err}") }
             if fields[4] != "" { io.println("  client saw: {fields[4]}") }
+
+            let intact: bool = data_seen == count && failures == 0
+            let live: bool = t.reader_got == want && t.reader_bad == 0 &&
+                t.reader_ran_while_writer_stuck &&
+                t.reader_first_ms >= 0 && t.reader_first_ms < hold_ms / 2
+            if !live { return false }
+            if intact != expect_intact { return false }
+            if expect_intact {
+                let acks_ok: bool = ack == 0 || acks_seen == want
+                return sent == count && acks_ok
+            }
+            return true
         }
         err(e) => { io.println("{name}: bind failed {e.kind}") }
     }
+    return false
 }
 
 fn build_chunks() -> List<string> {
@@ -401,13 +417,18 @@ fn main() {
     let chunks: List<string> = build_chunks()
     io.println("chunks {chunks.len()} of {chunks[0].len()} bytes")
     // 128 x 16 KB = 2 MB against a loopback socket that holds about 525 KB.
-    phase("A plain, the reader never writes", chunks, 128, 3, 2000, false, 0)
-    phase("B permessage-deflate on", chunks, 128, 3, 2000, true, 0)
-    phase("C both fibers write the socket", chunks, 128, 3, 2000, false, 1)
+    let a: bool = phase("A plain, the reader never writes", chunks, 128, 3, 2000, false, 0, true)
+    let b: bool = phase("B permessage-deflate on", chunks, 128, 3, 2000, true, 0, true)
+    let c: bool = phase("C both fibers write the socket", chunks, 128, 3, 2000, false, 1, false)
     // D is C with one line changed: the reader queues its ack instead of
     // sending it, and the writer fiber drains that queue. Same messages, same
     // volume, same stall — only the number of fibers that touch the framer
     // differs. C failing and D passing is what makes "one writer" the rule
     // rather than a guess.
-    phase("D same acks through a send gate", chunks, 128, 3, 2000, false, 2)
+    let d: bool = phase("D same acks through a send gate", chunks, 128, 3, 2000, false, 2, true)
+    if a && b && c && d {
+        io.println("probe p1_duplex: ok")
+    } else {
+        io.println("probe p1_duplex: FAILED a={a} b={b} c={c} d={d}")
+    }
 }

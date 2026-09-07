@@ -235,6 +235,12 @@ fn run(scope: espresso.ServiceProvider) {
     io.println("a 200-component page: {zero * 200 / 1000} us with no deps, {three * 200 / 1000} us with three")
     io.println("every activation produced a working instance: {warm_zero > 0 && warm_one > 0 && warm_three > 0 && zero > 0 && one > 0 && three > 0}")
     io.println("hoisting the initializer lookup is worth it: {cached * 2 < zero}")
+    let all_ok: bool = warm_zero > 0 && warm_one > 0 && warm_three > 0 &&
+        plain > 0 && lookup > 0 && cached > 0 &&
+        zero > 0 && one > 0 && three > 0 &&
+        cached * 2 < zero && zero < one && one < three
+    if all_ok { io.println("probe p5_activate: ok") }
+    else { io.println("probe p5_activate: FAILED") }
 }
 
 fn main() {

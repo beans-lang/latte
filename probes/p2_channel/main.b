@@ -135,4 +135,11 @@ fn main() {
     io.println("everything under the cap was kept: {drained == cap && sink.total == cap}")
     io.println("the depth returned to zero: {depth.load() == 0}")
     bound.close()
+
+    let all_ok: bool = posted == count && ran == count && ctx.total == 91 &&
+        ctx.bytes_seen == 21 && ctx.notes.len() == count &&
+        ctx.notes[0] == "job-1" && refused == 6 && drained == cap &&
+        sink.total == cap && depth.load() == 0
+    if all_ok { io.println("probe p2_channel: ok") }
+    else { io.println("probe p2_channel: FAILED") }
 }

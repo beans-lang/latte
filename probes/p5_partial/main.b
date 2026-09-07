@@ -136,4 +136,21 @@ fn main() {
     let base5: Component = words
     base5.render(b5)
     io.println("a second instantiation is its own type: {b5.out}")
+
+    let all_ok: bool =
+        b0.out == "[0:Count: 7]" &&
+        annotation_string(described, "page", "route") == r"/card/{id}" &&
+        annotation_string(described, "layout", "name") == "Main" &&
+        field_annotation_names(described, "id") == "param;" &&
+        required_of(described, "id") == "true" &&
+        required_of(described, "title") == "false" &&
+        described.method("render").is_some() &&
+        described.fields().len() == 5 &&
+        b1.out == "[0:card 4:orders][1:<][90:(empty)][1:>]" &&
+        b2.out.contains("[80:child content]") && b2.out.contains("[81:row 12]") &&
+        b3.out.contains("[82:captured]") &&
+        b4.out == "[10:grid orders/2][11:row][11:row]" &&
+        b5.out == "[10:grid words/1][11:row]"
+    if all_ok { io.println("probe p5_partial: ok") }
+    else { io.println("probe p5_partial: FAILED") }
 }

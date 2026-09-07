@@ -33,7 +33,7 @@ fn head_of(status: int, reason: string, headers: http.Headers,
     }
 }
 
-fn phase_a() {
+fn phase_a() -> bool {
     let plain: http.Headers = new http.Headers()
     plain.add("Content-Type", "text/html")
     io.println("A1 a 200 with a known length:")
@@ -50,6 +50,13 @@ fn phase_a() {
 
     io.println("A4 a 204, which forbids a body:")
     io.println("   {head_of(204, "No Content", plain, 0, true)}")
+
+    // The recorded answer is that it REFUSES a chunked head. A run where A2
+    // succeeded would mean std.http grew a chunked encoder and BLOCKERS.md B4
+    // is stale — which must fail here, not go unnoticed.
+    return head_of(200, "OK", chunked, 0, true).starts_with("err(invalid)") &&
+        head_of(200, "OK", plain, 42, true).contains("Content-Length: 42") &&
+        head_of(204, "No Content", plain, 0, true).starts_with("ok(body_forbidden=true)")
 }
 
 // --------------------------------------------------------------- the writer
@@ -294,7 +301,7 @@ fn client_side(port: int) -> string {
     }
 }
 
-fn phase_b() {
+fn phase_b() -> bool {
     var pieces: List<string> = []
     pieces.push("<latte-chunk for=\"s1\">first</latte-chunk>")
     pieces.push("<latte-chunk for=\"s2\">second</latte-chunk>")
@@ -339,9 +346,14 @@ fn phase_b() {
             io.println("C  every byte split gave the same events: {same}")
             if f[7] != "" { io.println("   client error: {f[7]}") }
             if wrote < 0 { io.println("   server did not finish") }
+            return status == 200 && chunked && body == joined &&
+                tally.refused == 1 && tally.sent == non_empty &&
+                body_events > 1 && trailer == "X-Latte-Chunks={non_empty}" &&
+                done && same && f[7] == "" && wrote > 0
         }
         err(e) => { io.println("B bind failed: {e.kind}") }
     }
+    return false
 }
 
 // --------------------------------------------------------------- phase D
@@ -407,7 +419,7 @@ fn client_two(port: int) -> string {
     }
 }
 
-fn phase_d() {
+fn phase_d() -> bool {
     match net.TcpListener.bind("127.0.0.1", 0) {
         ok(listener) => {
             let port: int = listener.port().expect("port")
@@ -425,13 +437,18 @@ fn phase_d() {
             io.println("D1 two chunked responses on one keep-alive connection: {served == 2 && finished == 2}")
             io.println("D2 each body was read as its own message: {f[0] == "response-0;response-1;"}")
             if f[2] != "" { io.println("   client error: {f[2]}") }
+            return served == 2 && finished == 2 &&
+                f[0] == "response-0;response-1;" && f[2] == ""
         }
         err(e) => { io.println("D bind failed: {e.kind}") }
     }
+    return false
 }
 
 fn main() {
-    phase_a()
-    phase_b()
-    phase_d()
+    let a: bool = phase_a()
+    let b: bool = phase_b()
+    let d: bool = phase_d()
+    if a && b && d { io.println("probe p7_chunked: ok") }
+    else { io.println("probe p7_chunked: FAILED a={a} b={b} d={d}") }
 }

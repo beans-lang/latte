@@ -168,10 +168,17 @@ fn churn(rounds: int) {
     }
 }
 
-fn report(label: string, ledger: Ledger) {
+// `want_immediate` is the difference the design turns on: a shape with no
+// strong cycle releases everything straight away, and one with a cycle needs
+// the collector. A run where a cyclic shape suddenly released immediately, or
+// where an acyclic one stopped, is a changed answer either way.
+fn report(label: string, ledger: Ledger, want_immediate: bool) -> bool {
     let before: int = ledger.gone
     churn(20000)
     io.println("{label}: made {ledger.made}, deinit ran {before} straight away, {ledger.gone} after a forced sweep, still live {ledger.live()}")
+    if ledger.live() != 0 { return false }
+    if want_immediate { return before == ledger.made }
+    return true
 }
 
 // 7. the other half of what `weak` buys, which is not about leaks at all: a
@@ -206,32 +213,43 @@ fn main() {
     let ledger: Ledger = new Ledger()
 
     shape_plain(ledger)
-    report("1 no closure                       ", ledger)
+    let one: bool = report("1 no closure                       ", ledger, true)
     ledger.reset()
 
     shape_self_capture(ledger)
-    report("2 closure captures self, own field ", ledger)
+    let two: bool = report("2 closure captures self, own field ", ledger, false)
     ledger.reset()
 
     var frames: List<fn(int)> = []
     shape_frames(ledger, frames)
-    report("3 closure in an outside frame list ", ledger)
+    // Held by a live list: nothing may be released, and the churn must not
+    // free them either.
+    churn(20000)
+    let held: bool = ledger.gone == 0 && ledger.live() == MANY
+    io.println("3 closure in an outside frame list : made {ledger.made}, deinit ran {ledger.gone} after a forced sweep, still live {ledger.live()}")
     frames.clear()
-    report("3 after the frame list is cleared  ", ledger)
+    let three: bool = report("3 after the frame list is cleared  ", ledger, false)
     ledger.reset()
 
     shape_weak_owner_strong_closure(ledger)
-    report("4 weak owner, closure captures self", ledger)
+    let four: bool = report("4 weak owner, closure captures self", ledger, true)
     ledger.reset()
 
     shape_parent_holds_callback(ledger)
-    report("5 parent holds a callback to itself", ledger)
+    let five: bool = report("5 parent holds a callback to itself", ledger, false)
     ledger.reset()
 
     shape_no_capture(ledger)
-    report("6 same, but the closure captures no", ledger)
+    let six: bool = report("6 same, but the closure captures no", ledger, true)
     ledger.reset()
 
-    io.println("7 a weak owner after its owner died: {weak_zeroes(ledger)}")
+    let verdict: string = weak_zeroes(ledger)
+    io.println("7 a weak owner after its owner died: {verdict}")
     io.println("7 the owner really was released:     {ledger.live() == 0}")
+    let seven: bool = verdict == "none, and firing it was a no-op" && ledger.live() == 0
+    if one && two && held && three && four && five && six && seven {
+        io.println("probe p6_cycle: ok")
+    } else {
+        io.println("probe p6_cycle: FAILED 1={one} 2={two} held={held} 3={three} 4={four} 5={five} 6={six} 7={seven}")
+    }
 }

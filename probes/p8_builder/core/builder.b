@@ -98,7 +98,15 @@ pub class Builder {
     // call. Reuse is not an optimisation: probe 3 measured reflective
     // activation at 2.4 us, so re-activating 200 children every render would
     // be half a millisecond of churn per event.
-    pub children: Map<int, Component> = {}
+    //
+    // They are kept as the `reflect.Value` the activation produced, NOT as
+    // `Component`. `reflect.value(x)` boxes the STATIC type of `x`
+    // (BLOCKERS.md B6), so a child stored as a `Component` and re-boxed comes
+    // back as a Value of type `Component` and `as? T` answers `none` — the
+    // reuse path silently loses the child's type. The activation's own Value
+    // carries the concrete type and downcasts to both `T` and `Component`
+    // every time.
+    pub children: Map<int, reflect.Value> = {}
 
     // Balance checking. The generated code is machine-written, so an
     // unbalanced open/close is a compiler bug and must be loud.
@@ -171,55 +179,53 @@ pub class Builder {
     // natively — BLOCKERS.md B3.
     pub fn component<T>(seq: int, setup: fn(T)) {
         let described: reflect.Type = type_of(T)
-        var mounted: Option<Component> = self.children.get(seq)
-        match mounted {
-            some(existing) => {
-                match reflect.value(existing).copy() as? T {
+        if !self.children.contains_key(seq) { self.mount<T>(seq, described) }
+        match self.children.get(seq) {
+            some(stored) => {
+                // Two views of one mounted child: `T` for the setter the
+                // markup compiler wrote, `Component` for the render call.
+                match stored.copy() as? T {
                     some(typed) => { setup(typed) }
                     none => {
                         self.faults.push(
-                            "seq {seq} holds a {described.name()} of another type")
+                            "seq {seq} holds a {stored.type().name()}, not a {described.name()}")
+                    }
+                }
+                self.frames.push(Frame.child(seq, described.name()))
+                match stored.copy() as? Component {
+                    some(child) => { child.render(self) }
+                    none => {}
+                }
+            }
+            none => { self.frames.push(Frame.child(seq, described.name())) }
+        }
+    }
+
+    // First render at this sequence number: activate, and keep the Value the
+    // activation produced.
+    fn mount<T>(seq: int, described: reflect.Type) {
+        match described.initializer() {
+            some(ctor) => {
+                match ctor.call([]) {
+                    ok(made) => {
+                        match made.copy() as? Component {
+                            some(component) => { self.children[seq] = made.copy() }
+                            none => {
+                                self.faults.push(
+                                    "{described.name()} is not a Component")
+                            }
+                        }
+                    }
+                    err(problem) => {
+                        self.faults.push(
+                            "cannot activate {described.name()}: {problem.message()}")
                     }
                 }
             }
             none => {
-                match described.initializer() {
-                    some(ctor) => {
-                        match ctor.call([]) {
-                            ok(made) => {
-                                let typed: Option<T> = made.copy() as? T
-                                let based: Option<Component> = made as? Component
-                                match typed {
-                                    some(instance) => { setup(instance) }
-                                    none => {}
-                                }
-                                match based {
-                                    some(component) => {
-                                        self.children[seq] = component
-                                    }
-                                    none => {
-                                        self.faults.push(
-                                            "{described.name()} is not a Component")
-                                    }
-                                }
-                            }
-                            err(problem) => {
-                                self.faults.push(
-                                    "cannot activate {described.name()}: {problem.message()}")
-                            }
-                        }
-                    }
-                    none => {
-                        self.faults.push(
-                            "{described.name()} has no zero-argument initializer")
-                    }
-                }
+                self.faults.push(
+                    "{described.name()} has no zero-argument initializer")
             }
-        }
-        self.frames.push(Frame.child(seq, described.name()))
-        match self.children.get(seq) {
-            some(child) => { child.render(self) }
-            none => {}
         }
     }
 
@@ -295,13 +301,27 @@ pub class Builder {
         self.frames.push(Frame.reference(seq))
         let handle: Reference = new Reference()
         handle.node = seq
-        handle.child = self.children.get(seq)
+        match self.children.get(seq) {
+            some(stored) => { handle.child = stored.copy() as? Component }
+            none => {}
+        }
         sink(handle)
     }
 
     /// `preserve`: render this subtree once and never diff into it. Reserved.
     pub fn preserve(seq: int) {
         self.frames.push(Frame.preserve(seq))
+    }
+
+    /// Starts a new render pass. Frames and faults are **per render**; the
+    /// mounted children and the handler tables are not — a child mounted at a
+    /// sequence number outlives the frames that named it, which is what makes
+    /// re-rendering a component cheap (probes/ANSWERS.md §3).
+    pub fn reset() {
+        self.frames.clear()
+        self.faults.clear()
+        self.depth = 0
+        self.regions = 0
     }
 
     // ---- what the renderer asks afterwards ----

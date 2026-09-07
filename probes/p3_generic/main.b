@@ -190,6 +190,38 @@ class Bench {
     return spent / rounds
     }
 
+    // The real per-render cost of `component<T>`: the mounted child is kept as
+    // the reflect.Value its activation produced (BLOCKERS.md B6 says a
+    // re-boxed Component loses its type), so every render downcasts it twice —
+    // once to T for the setter, once to Component for the render call.
+    pub fn reflect_reuse<T>(rounds: int, setup: fn(T)) -> int {
+        match type_of(T).initializer() {
+            some(ctor) => {
+                match ctor.call([]) {
+                    ok(mounted) => {
+                        var kept: int = 0
+                        let t0: int = time.monotonic_nanos()
+                        for round: int in 0..rounds {
+                            match mounted.copy() as? T {
+                                some(typed) => { setup(typed); kept += 1 }
+                                none => {}
+                            }
+                            match mounted.copy() as? Component {
+                                some(based) => { kept += 1 }
+                                none => {}
+                            }
+                        }
+                        let spent: int = time.monotonic_nanos() - t0
+                        if kept != rounds * 2 { return -1 }
+                        return spent / rounds
+                    }
+                    err(e) => { return -1 }
+                }
+            }
+            none => { return -1 }
+        }
+    }
+
     // The per-render half: reach the descriptor and identify it, which is all
     // a mounted child needs before its render call.
     pub fn reflect_identify<T>(rounds: int) -> int {
@@ -273,17 +305,30 @@ fn main() {
     let rounds: int = 20000
     let scratch: Builder = new Builder()
     let bench: Bench = new Bench()
+    // A discarded warm pass first. Measured on this machine, the first pass of
+    // any of these reads 2x slow — the earlier recorded 2,420 ns for a
+    // reflective mount was that artifact, and the warm number is ~1,110.
+    // Probe 5 pays the same tax and warms the same way.
+    let warm_mount: int = bench.reflect_mount<Hint>(rounds, fn(h: Hint) { h.tone = 1 })
+    let warm_identify: int = bench.reflect_identify<Hint>(rounds)
+    let warm_reuse: int = bench.reflect_reuse<Hint>(rounds, fn(h: Hint) { h.tone = 1 })
+    let warm_factory: int = bench_factory_mount(rounds)
+    let warm_render: int = bench_direct_render(rounds, scratch)
     let reflect_mount: int = bench.reflect_mount<Hint>(rounds, fn(h: Hint) {
         h.label = "keep going"
         h.tone = 3
     })
     let reflect_identify: int = bench.reflect_identify<Hint>(rounds)
+    let reflect_reuse: int = bench.reflect_reuse<Hint>(rounds, fn(h: Hint) {
+        h.label = "keep going"
+        h.tone = 3
+    })
     let factory_mount: int = bench_factory_mount(rounds)
     let direct_render: int = bench_direct_render(rounds, scratch)
     // Measurements, not claims: these differ per backend by design, and the
     // native leg is the one that decides. The interpreter's numbers are
     // dominated by interpretation — its plain `new Hint()` costs 10 us — so
     // read them as an upper bound on the edit loop, not as latte's cost.
-    io.println("ns/op  reflective mount {reflect_mount}  type_of(T) identify {reflect_identify}  new+set {factory_mount}  a mounted child's render {direct_render}")
-    io.println("a 200-component page: mount {reflect_mount * 200 / 1000} us reflectively, {factory_mount * 200 / 1000} us with new; per render {reflect_identify * 200 / 1000} us of type_of(T)")
+    io.println("ns/op  reflective mount {reflect_mount}  type_of(T) identify {reflect_identify}  reuse a mounted child {reflect_reuse}  new+set {factory_mount}  a mounted child's render {direct_render}")
+    io.println("200 children: {reflect_mount * 200 / 1000} us to mount reflectively, {factory_mount * 200 / 1000} us with new; {(reflect_identify + reflect_reuse) * 200 / 1000} us to reach and reuse them on a later render")
 }
