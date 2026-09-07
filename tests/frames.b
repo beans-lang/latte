@@ -1605,7 +1605,7 @@ fn dirty_sink(r: Report) {
 // 24 report sites was deleted, one at a time, and the case below that names it
 // was watched to FAIL. A refusal whose deletion changes nothing is either
 // untested or unreachable, and this file says which in the lane notes.
-// `probes/refusal_deletions.sh` re-runs the whole pass.
+// `probes/delete_faults.sh` re-runs the whole pass.
 
 /// One fault site, one trip, one control.
 pub class Site {
