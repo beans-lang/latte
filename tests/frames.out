@@ -328,5 +328,28 @@ ok three passes, three sink calls
 ok a reference keeps its node id across passes
 ok four sink calls
 ok a reference that left the tree does not come back with its old id
+== 10 `ref` on a component tag
+component 0
+0 open div
+  1 child Grid #1
+/close
+component 1
+0 open table
+  1 text rows=3 reloads=0 stamp=1
+/close
+
+ok the setup closure filled the handle
+ok and it is the first mounted instance
+ok a method call through the handle is visible in the child's frames
+ok the handle still names the first instance
+ok nothing was re-activated
+ok and the parameter went through
+ok one mounted child
+ok the handle and the mount table are one object
+ok the child left the page
+ok and its slot went with it
+ok the author's field still holds the departed child
+ok a remount is a fresh instance
+ok no faults anywhere
 == summary
-checks: 93, failed: 0
+checks: 106, failed: 0
