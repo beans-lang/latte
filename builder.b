@@ -306,11 +306,6 @@ pub class Builder {
     /// The slot keys this pass has resolved, in order. `fail_boundary` needs
     /// to know which ones the failed body reached, and a Map cannot say.
     touched: List<string> = []
-    /// Slots this pass ALLOCATED, as opposed to reused from an earlier pass.
-    /// A component born and dropped inside one pass was never presented to
-    /// anybody, so its disposal is not news the applier can use — it holds no
-    /// root for a mount frame that never survived the pass.
-    born: Map<int, bool> = {}
     path: List<string> = [""]
     scopes: List<Scope> = []
     boundaries: List<BoundaryMark> = []
@@ -363,7 +358,6 @@ pub class Builder {
                 let made: int = self.registry.fresh()
                 self.slots[key] = made
                 self.live[made] = true
-                self.born[made] = true
                 return made
             }
         }
@@ -927,7 +921,6 @@ pub class Builder {
         self.failures.clear()
         self.live.clear()
         self.touched.clear()
-        self.born.clear()
         self.depth = 0
         self.regions = 0
         self.in_attributes = false
@@ -991,15 +984,18 @@ pub class Builder {
         // has to hear about. A handler slot leaves with the frame that named
         // it, carried out by the parent's `remove` edit.
         //
-        // And only a component that survived a whole pass: one born and dropped
-        // inside a single pass — which is what a failed error boundary does to
-        // everything its body mounted — was never presented, so the applier
-        // holds no root for it and "disposed" would name an id it has never
-        // seen. The ordinary sweep never reaches this case, because a slot born
-        // this pass is by definition one the pass reached.
-        if self.children.contains_key(slot) && !self.born.contains_key(slot) {
-            self.registry.note_disposed(slot)
-        }
+        // EVERY component disposal is reported, including one for a component
+        // whose mount frame never reached the client — which is what a failed
+        // error boundary does to everything its body mounted in the same pass.
+        // The builder cannot tell those apart: whether a mount frame was
+        // announced is a fact about which batches have been sent, not about
+        // this buffer, and a nested buffer that did not re-render this pass
+        // cannot even say which of ITS slots are new. Over-reporting is free —
+        // the applier drops what it holds and ignores the rest — while
+        // under-reporting leaves a root node in the applier for a component
+        // that has left the page, forever, with nothing rendering it and
+        // nothing able to see it.
+        if self.children.contains_key(slot) { self.registry.note_disposed(slot) }
         match self.nested.get(slot) {
             some(buffer) => { buffer.tear_down() }
             none => {}
