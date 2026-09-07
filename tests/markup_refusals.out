@@ -574,5 +574,53 @@ accepted: the three conversions
 accepted: bind:checked on an <input>
 accepted: a select with an explicit selected= and on:change
 
-126 refusal(s) fired, 52 control(s) compiled
+======== the upcast assertion, per distinct component tag ========
+accepted: a bare component tag
+  | <Hint />
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+accepted: with parameters
+  | <Hint label="a" count={1} />
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+accepted: with children
+  | <Hint><p>x</p></Hint>
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+accepted: with a named slot
+  | <Hint>$slot:extra as n: int { <b>$n</b> }</Hint>
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+accepted: the same tag twice
+  | <Hint /><Hint />
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+accepted: three different tags
+  | <Hint /><Panel /><Card />
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+  fn _latte_component_refusal_Panel(value: Panel) -> Component { return value }
+  fn _latte_component_refusal_Card(value: Card) -> Component { return value }
+accepted: a dotted tag
+  | <ui.Table />
+  fn _latte_component_refusal_ui_Table(value: ui.Table) -> Component { return value }
+accepted: inside a $if arm
+  | $if self.open { <Hint /> } else { <Panel /> }
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+  fn _latte_component_refusal_Panel(value: Panel) -> Component { return value }
+accepted: inside a $for body
+  | $for row in self.rows { <Hint /> }
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+accepted: inside a $match arm
+  | $match self.n { 0 => { <Hint /> } _ => { <Panel /> } }
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+  fn _latte_component_refusal_Panel(value: Panel) -> Component { return value }
+accepted: nested inside another component's children
+  | <Hint><Panel><Card /></Panel></Hint>
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+  fn _latte_component_refusal_Panel(value: Panel) -> Component { return value }
+  fn _latte_component_refusal_Card(value: Card) -> Component { return value }
+accepted: inside a named slot's body
+  | <Hint>$slot:extra as n: int { <Panel /> }</Hint>
+  fn _latte_component_refusal_Hint(value: Hint) -> Component { return value }
+  fn _latte_component_refusal_Panel(value: Panel) -> Component { return value }
+accepted: no component tag at all
+  | <p>plain</p>
+  (no component tag, so no assertion)
+
+126 refusal(s) fired, 65 control(s) compiled
 ======== markup refusals: every check passed ========
