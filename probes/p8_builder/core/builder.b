@@ -363,15 +363,17 @@ fn scheme_is_allowed(value: string) -> bool {
 pub class Callback<T> {
     pub weak owner: Option<Component> = none
     pub handler: fn(T) = fn(value: T) {}
-    pub fn init() {}
 
-    /// `Callback<int>.of(self, fn(id: int) { self.select(id) })` — the shape
-    /// the markup compiler emits for `on_pick={...}`.
-    pub static fn of(owner: Component, handler: fn(T)) -> Callback<T> {
-        let made: Callback<T> = new Callback<T>()
-        made.owner = some(owner)
-        made.handler = handler
-        return made
+    /// `new Callback<int>(self, fn(id: int) { self.select(id) })`.
+    ///
+    /// NOT a static factory. A `static fn` on a generic class can never bind
+    /// the class's type parameter (BLOCKERS.md B5), and a static taking a
+    /// `fn(T)` cannot be emitted natively either (B3), so PLAN.md's
+    /// `Callback.of(self, …)` has no spelling. The constructor does, and it
+    /// infers `T` from the declared type of the binding.
+    pub fn init(owner: Component, handler: fn(T)) {
+        self.owner = some(owner)
+        self.handler = handler
     }
 
     pub fn call(value: T) {

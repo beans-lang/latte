@@ -10,7 +10,7 @@ partial class Hint {
         b.text(2, "{self.label}")
         b.fragment(3, self.body)                // hint.bx:4  $slot
         b.open(4, "button")                     // hint.bx:5
-        b.on_click(5, fn(e: MouseEvent) { self.on_dismiss.call(1) })
+        b.on_click(5, fn(e: MouseEvent) { self.dismiss(1) })
         b.text(6, "dismiss")
         b.close()
         b.close()

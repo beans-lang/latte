@@ -66,5 +66,7 @@ fn main() {
     page.count = 20
     page.render(b2)
     io.println("the branch flipped, so no child mounted: {b2.children.len() == 0}")
-    io.println("branch arms have disjoint numbers: {b2.dump().contains("[17:") && !b2.dump().contains("{18:")}")
+    let warn_arm: bool = b2.dump().contains("[17:")
+    let hint_arm: bool = b2.dump().contains(":Hint")
+    io.println("branch arms have disjoint numbers: {warn_arm && !hint_arm}")
 }

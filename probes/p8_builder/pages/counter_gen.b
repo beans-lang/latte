@@ -43,9 +43,9 @@ partial class Counter {
             b.component<Hint>(18, fn(c: Hint) {
                 c.label = "Keep going"
                 c.body = self.hint_body
-                c.on_dismiss = Callback<int>.of(self, fn(id: int) {
+                c.on_dismiss = some(new Callback<int>(self, fn(id: int) {
                     self.hide()
-                })
+                }))
             })
         }
         b.open(19, "ul")                         // counter.bx:20
