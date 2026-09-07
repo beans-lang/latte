@@ -1,0 +1,2 @@
+module p3_generic_wall
+kind application

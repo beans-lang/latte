@@ -1,57 +1,76 @@
 package main
 
 import std.io
-import std.net
-import std.thread
-import std.time
+import std.reflect
 
-fn quiet_client(port: int) -> int {
-    match net.TcpStream.connect_timeout("127.0.0.1", port, 4000) {
-        ok(stream) => {
-            // Never reads. Holds the socket open for 6 seconds.
-            time.sleep_millis(6000)
-            return 1
-        }
-        err(e) => { return 0 }
-    }
+pub class Grid<T> {
+    pub title: string = ""
+    pub fn init() {}
+    pub fn touch() -> string { return "grid {self.title}" }
 }
 
-fn pump(listener: net.TcpListener) -> int {
-    match listener.accept_timeout(4000) {
-        ok(stream) => {
-            let tuned: Result<bool> = stream.set_timeouts(2000, 2000)
-            let chunk: Bytes = Bytes.filled(4096, 65)
-            var total: int = 0
-            var rounds: int = 0
-            for rounds < 100000 {
-                rounds += 1
-                match stream.write_all(chunk) {
-                    ok(n) => { total += n }
-                    err(e) => {
-                        io.println("blocked after {total} bytes, kind {e.kind}")
-                        return total
-                    }
-                }
-            }
-            io.println("never blocked after {total} bytes")
-            return total
-        }
-        err(e) => { io.println("accept failed {e.kind}"); return -1 }
-    }
+pub class Plain {
+    pub title: string = ""
+    pub fn init() {}
+    pub fn touch() -> string { return "plain {self.title}" }
 }
 
 fn main() {
-    match net.TcpListener.bind("127.0.0.1", 0) {
-        ok(listener) => {
-            let port: int = listener.port().expect("port")
-            let visitor: Thread<int> = thread.spawn(fn() -> int {
-                return quiet_client(port)
-            })
-            let t0: int = time.monotonic_millis()
-            let total: int = pump(listener)
-            io.println("pump took {time.monotonic_millis() - t0} ms")
-            let done: int = visitor.join()
+    let closed: reflect.Type = type_of(Grid<int>)
+    io.println("closed qualified: {closed.qualified_name()} args {closed.type_arguments().len()}")
+    io.println("closed initializer: {closed.initializer().is_some()}")
+    match closed.method("touch") {
+        some(m) => {
+            io.println("touch declaring type: {m.declaring_type().qualified_name()}")
+            io.println("touch is_generic: {m.is_generic()}")
         }
-        err(e) => { io.println("bind failed: {e.kind}") }
+        none => { io.println("no touch") }
+    }
+    let g: Grid<int> = new Grid<int>()
+    g.title = "orders"
+    let v: reflect.Value = reflect.value(g)
+    io.println("value type: {v.type().qualified_name()}")
+    io.println("value is_type(closed): {v.is_type(closed)}")
+    io.println("closed.is_assignable_from(value type): {closed.is_assignable_from(v.type())}")
+    match closed.method("touch") {
+        some(m) => {
+            match m.call(v.copy(), []) {
+                ok(r) => { io.println("reflective touch: {(r as? string).expect("s")}") }
+                err(e) => { io.println("reflective touch failed: {e.kind()}: {e.message()}") }
+            }
+        }
+        none => {}
+    }
+    // Field read/write through reflection on a closed generic.
+    match closed.field("title") {
+        some(f) => {
+            match f.get(v.copy()) {
+                ok(got) => { io.println("field read: {(got as? string).expect("s")}") }
+                err(e) => { io.println("field read failed: {e.kind()}: {e.message()}") }
+            }
+        }
+        none => { io.println("no title field") }
+    }
+    // The same three on a non-generic class, as the control.
+    let p: Plain = new Plain()
+    p.title = "control"
+    let pv: reflect.Value = reflect.value(p)
+    match type_of(Plain).method("touch") {
+        some(m) => {
+            match m.call(pv.copy(), []) {
+                ok(r) => { io.println("control touch: {(r as? string).expect("s")}") }
+                err(e) => { io.println("control touch failed: {e.kind()}: {e.message()}") }
+            }
+        }
+        none => {}
+    }
+    match type_of(Plain).field("title") {
+        some(f) => {
+            match f.get(pv.copy()) {
+                ok(got) => { io.println("control field read: {(got as? string).expect("s")}") }
+                err(e) => { io.println("control field read failed: {e.kind()}: {e.message()}") }
+            }
+        }
+        none => {}
     }
 }
