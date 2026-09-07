@@ -16,4 +16,4 @@ package latte
 // Nothing here imports std.fs, std.net or std.io. See beans.pot for why.
 
 /// The version of latte this package is.
-pub let version: string = "0.0.0-dev"
+pub const version: string = "0.0.0-dev"
