@@ -66,9 +66,14 @@ pub class Applier {
             self.run(batch, update)
         }
         for id: int in batch.disposed {
-            if !self.roots.remove(id) {
-                self.faults.push("disposed component {id} was never mounted")
-            }
+            // A disposal for a component this applier never mounted is not a
+            // fault. A component can be mounted and dropped inside ONE render
+            // pass — an error boundary whose body mounts a child and then
+            // panics does exactly that — in which case its mount frame was
+            // truncated away before any batch went out, and the builder has no
+            // way to know the client never saw it. So the batch names it and
+            // this drops what it holds, if anything.
+            let _: bool = self.roots.remove(id)
         }
     }
 
@@ -255,8 +260,32 @@ pub class Applier {
         }
 
         if span.kind == SPAN_MOUNT {
-            // A mount frame is a leaf: the child's own frames arrive as its own
-            // ComponentUpdate, addressed to this node.
+            // A mount frame is a LEAF: it names a component id and carries none
+            // of that component's content, which arrives as its own
+            // ComponentUpdate addressed to this node.
+            //
+            // So a mount frame that is being re-inserted must bring back the
+            // subtree we already hold for that id, NOT an empty node. A
+            // component id names a live component; re-inserting its mount point
+            // re-parents what it already rendered. Building an empty node
+            // instead loses the child's whole subtree silently and forever,
+            // because the child's next update carries only what CHANGED and an
+            // unchanged child sends nothing at all.
+            //
+            // Two shapes reach here, both found by the fuzz and both pinned by
+            // name in tests/apply.b § 1: an element whose TAG changed with a
+            // mount inside it — the differ replaces the element while
+            // `component<T>` kept the slot live — and an error boundary that
+            // failed and then recovered around one. latte.js inherits the rule:
+            // it must move the component's existing nodes, not create new ones.
+            match self.roots.get(span.id) {
+                some(existing) => {
+                    existing.seq = span.seq
+                    existing.type_name = span.type_name
+                    return existing
+                }
+                none => {}
+            }
             self.roots[span.id] = node
             return node
         }

@@ -20,6 +20,8 @@
 //   6  refusals             — every fault the Builder can raise
 //   7  unbalanced bodies    — a fragment that leaves an element open
 //   8  boundaries           — ok, failed, failed mid-element, nested
+//   9  handles              — an element `ref`, and `preserve`
+//  10  a component-tag ref  — the assignment that replaced `Reference.child`
 package main
 
 import std.io
@@ -143,6 +145,47 @@ pub class Sheet extends Component {
     pub body: fn(Builder) = fn(b: Builder) {}
     pub fn init() {}
     pub override fn render(b: Builder) { self.body(b) }
+}
+
+/// The child a component-tag `ref` hands back. `reload()` is PLAN.md's own
+/// example of what an author does with one, and it is callable WITHOUT a
+/// downcast only because the setup closure is typed `fn(Grid)`.
+pub class Grid extends Component {
+    pub rows: int = 0
+    pub reloads: int = 0
+    pub stamp: int = 0
+    pub fn init() {}
+    pub fn reload() { self.reloads += 1 }
+    pub override fn render(b: Builder) {
+        b.open(0, "table")
+        b.text(1, "rows={self.rows} reloads={self.reloads} stamp={self.stamp}")
+        b.close()
+    }
+}
+
+/// `<Grid ref={self.grid} rows={self.rows} />`. W2 emits exactly this: a plain
+/// assignment inside the setup closure the emitter already writes. There is no
+/// attribute-position call, because a component tag opens no element and
+/// `in_attributes` is therefore never set.
+pub class Panel extends Component {
+    pub grid: Option<Grid> = none
+    pub rows: int = 0
+    pub mounted: bool = true
+    pub stamps: int = 0
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "div")
+        if self.mounted {
+            b.component<Grid>(1, fn(c: Grid) {
+                c.rows = self.rows
+                if c.stamp == 0 { self.stamps += 1; c.stamp = self.stamps }
+                self.grid = some(c)
+            })
+        } else {
+            b.text(5, "no grid")
+        }
+        b.close()
+    }
 }
 
 /// Not a Component. `component<T>` cannot refuse this in the type system —
@@ -956,6 +999,102 @@ fn handles(r: Report) {
         seen.disposed[3] == first)
 }
 
+// ------------------------------------------------- a component-tag ref
+
+/// `Reference` carries a node id and nothing else. `ref` on a COMPONENT tag is
+/// not an attribute-position call at all — every one of those needs
+/// `in_attributes`, which only `open()` sets, and a component tag opens no
+/// element — so it compiles to an assignment inside the setup closure instead.
+/// This section is the core half of that: what the closure hands back, and for
+/// how long it stays the same object.
+fn component_ref(r: Report) {
+    io.println("== 10 `ref` on a component tag")
+    let panel: Panel = new Panel()
+    panel.rows = 3
+    let b: Builder = new Builder()
+    b.render_root(panel)
+    io.println(b.dump_tree())
+
+    // 1 — the closure hands back the CONCRETE type, so a method on the child
+    //     is callable with no downcast. That is the whole reason this beats a
+    //     `Reference.child: Option<Component>`.
+    var reloads: int = -1
+    var stamp: int = -1
+    match panel.grid {
+        some(child) => { child.reload(); reloads = child.reloads; stamp = child.stamp }
+        none => {}
+    }
+    r.eqi("the setup closure filled the handle", reloads, 1)
+    r.eqi("and it is the first mounted instance", stamp, 1)
+
+    // 2 — the call reached the mounted instance, not a copy: the next render
+    //     prints it.
+    b.render_root(panel)
+    r.eq("a method call through the handle is visible in the child's frames",
+        html_of(b), "<div><table>rows=3 reloads=1 stamp=1</table></div>")
+
+    // 3 — the same instance comes back on every later pass. A handle that was
+    //     re-filled with a fresh child would read stamp=2 here, and the whole
+    //     point of keying the mount table by slot id would be gone.
+    panel.rows = 7
+    b.render_root(panel)
+    var second: int = -1
+    match panel.grid {
+        some(child) => { second = child.stamp }
+        none => {}
+    }
+    r.eqi("the handle still names the first instance", second, 1)
+    r.eqi("nothing was re-activated", panel.stamps, 1)
+    r.eq("and the parameter went through", html_of(b),
+        "<div><table>rows=7 reloads=1 stamp=1</table></div>")
+
+    // 4 — it is the very object the mount table holds, not a second one.
+    var slots: List<int> = b.children.keys()
+    slots.sort()
+    r.eqi("one mounted child", slots.len(), 1)
+    var same: bool = false
+    match b.children.get(slots[0]) {
+        some(stored) => {
+            match stored.copy() as? Grid {
+                some(mounted) => {
+                    mounted.reload()
+                    match panel.grid {
+                        some(held) => { same = held.reloads == mounted.reloads }
+                        none => {}
+                    }
+                }
+                none => {}
+            }
+        }
+        none => {}
+    }
+    r.yes("the handle and the mount table are one object", same)
+
+    // 5 — the branch drops the child. The slot is swept and the component
+    //     disposed, but the author's field is the author's: it still points at
+    //     the instance that left the page until they clear it. Say so here
+    //     rather than let a page author discover it.
+    panel.mounted = false
+    b.render_root(panel)
+    r.eq("the child left the page", html_of(b), "<div>no grid</div>")
+    r.eqi("and its slot went with it", b.children.keys().len(), 0)
+    var stale: bool = false
+    match panel.grid { some(_) => { stale = true } none => {} }
+    r.yes("the author's field still holds the departed child", stale)
+
+    // 6 — coming back is a NEW instance, which is what makes the stale field
+    //     above worth knowing about.
+    panel.mounted = true
+    b.render_root(panel)
+    var third: int = -1
+    match panel.grid {
+        some(child) => { third = child.stamp }
+        none => {}
+    }
+    r.eqi("a remount is a fresh instance", third, 2)
+    r.eqi("no faults anywhere", b.all_faults().len(), 0)
+}
+
 // ---------------------------------------------------------------- main
 
 fn main() {
@@ -973,6 +1112,7 @@ fn main() {
     unbalanced(r)
     boundaries(r)
     handles(r)
+    component_ref(r)
 
     io.println("== summary")
     io.println("checks: {r.checks}, failed: {r.bad}")

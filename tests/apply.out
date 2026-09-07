@@ -1,0 +1,89 @@
+== 1 a mount frame that is re-inserted brings its subtree back
+ok both children are there to begin with
+ok the first page
+component 0
+  remove 0
+  insert 0 <- ref@0
+component 1
+  in 0
+    text 0 = top/2
+  out
+component 2
+  in 0
+    text 0 = deep/2
+  out
+ok the element's tag changed under two mounted children
+ok and both subtrees came with it
+ok one remove, one insert, and each child's own update
+ok nothing was disposed
+ok no faults
+component 0
+  remove 0
+  insert 0 <- ref@0
+ok and back, with both children silent
+ok the batch is the element and nothing else
+ok and the silent children are still on the page
+ok no faults
+== 2 a failed boundary takes its body's mounts with it
+ok the body rendered
+ok the page
+ok one child, one handler
+component 0
+  in 0
+    remove 0
+    insert 0 <- ref@0
+  out
+disposed [2]
+ok the fallback replaced it
+ok and the page says so
+ok the child buffer went with the body
+ok and so did the handler
+ok the applier was told to drop it
+ok and it holds no component roots now
+ok no faults
+component 0
+  in 0
+    remove 0
+    insert 0 <- ref@0
+  out
+component 4
+  insert 0 <- ref@6
+ok recovering renders the body again
+ok with a fresh child
+ok one child again
+ok and it is not the one that went down with the boundary
+ok no faults
+== 3 every component disposal reaches the applier
+ok two levels of child rendered
+ok the page
+ok the applier holds the page root and both children
+ok silencing the inner child changes nothing
+ok and it is still mounted
+component 0
+  in 0
+    remove 0
+    insert 0 <- ref@0
+  out
+disposed [1, 2]
+ok the boundary failed
+ok the page is the fallback
+ok BOTH components were reported disposed
+ok and the applier holds only the page root now
+ok no buffers left in the builder either
+ok no faults
+== 4 1000 random trees, 10 mutations each
+seed: 20260908
+cases: 10000
+nodes generated: element 1713, text 2152, raw 978, constant 1134, loop 1093, fragment 436, boundary 446, mount 851
+edits: 28469 total, worst batch 176
+peak live components in one tree: 33
+digest: 2827652607
+ok ten thousand random cases
+ok every one applied to the serializer's html
+steady-state re-renders: 3334
+ok a third of the cases were re-rendered unchanged
+ok an unchanged render is always an empty batch
+ok the sweep built every node kind
+ok and mounted components three levels deep
+== summary
+checks: 43, failed: 0
