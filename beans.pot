@@ -1,0 +1,13 @@
+module latte
+kind library
+
+# Latte is pure Beans. There is no vendored C, no `csrc` row and no `link`
+# row, and that is a property worth keeping: the core (frames, builder,
+# serializer, differ) imports no I/O at all, which is what leaves a
+# WebAssembly render mode possible later. `test.sh` builds the core for
+# wasm32-unknown-unknown to hold that line — a core that grows an import of
+# std.fs or std.net fails that leg, not a code review.
+#
+# latte.bx, the markup compiler under bx/, is build-time only. It imports
+# std.fs. Nothing under the module root imports latte.bx, so a program that
+# ships a latte page never links a compiler.
