@@ -1,0 +1,10 @@
+$if self.count > 10 {
+  <p class="warn">big</p>
+} else {
+  <p>small</p>
+}
+<ul>
+$for row: Row in self.rows {
+  <li key={row.id}>$row.title</li>
+}
+</ul>

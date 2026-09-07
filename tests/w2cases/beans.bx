@@ -1,0 +1,5 @@
+<p>x</p>
+<beans>
+package pages
+pub partial class Counter extends Component { }
+</beans>
