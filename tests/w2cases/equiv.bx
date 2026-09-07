@@ -32,6 +32,9 @@ pub class Hint extends Component {
     pub label: string = ""
     pub body: fn(Builder) = fn(target: Builder) {}
     pub extra: fn(Builder, int) = fn(target: Builder, n: int) {}
+    /// Nothing in the markup sets this. It is how the ref= proof below tells
+    /// "the same instance came back" from "a fresh one was activated".
+    pub stamp: int = 0
     pub fn init() {}
     pub override fn render(target: Builder) {
         target.open(0, "aside")
@@ -71,12 +74,17 @@ pub fn sample() -> State {
 
 pub partial class Equiv extends Component {
     pub state: State = new State()
+    /// `ref={self.hint}` on a component tag writes here. `Option<Hint>`, not
+    /// `Hint`: a branch that never mounted the child leaves it `none` rather
+    /// than a value the author cannot tell from a live one.
+    pub hint: Option<Hint> = none
     pub fn init() {}
 }
 
 /// The twin, by hand.
 pub class EquivHand extends Component {
     pub state: State = new State()
+    pub hint: Option<Hint> = none
     pub fn init() {}
 
     pub override fn render(b: Builder) {
@@ -135,6 +143,11 @@ pub class EquivHand extends Component {
                     nested.text(1, "extra {n}")
                     nested.close()
                 }
+                // `ref=` on a component tag. Last, after everything else the
+                // setup closure sets, and it takes NO sequence number — which
+                // is why every number after 17 is what it was before the ref
+                // was written.
+                self.hint = some(child)
             })
         }
 
@@ -212,6 +225,19 @@ fn render_hand(fold: bool) -> Builder {
     return b
 }
 
+/// What `ref={self.hint}` left in the field, with no downcast anywhere.
+///
+/// `page.hint` is an `Option<Hint>`, so `child.label` and `child.stamp` are
+/// read straight off the concrete type. A `Reference.child: Option<Component>`
+/// would have needed an `as? Hint` at every one of these reads, which is half
+/// the reason the contract makes this an assignment.
+fn show_hint(handle: Option<Hint>) -> string {
+    match handle {
+        some(child) => { return "some(label=\"{child.label}\", stamp={child.stamp})" }
+        none => { return "none" }
+    }
+}
+
 fn faults_of(b: Builder) -> string {
     let lines: List<string> = []
     for fault: string in b.all_faults() { lines.push("  fault {fault}") }
@@ -262,6 +288,48 @@ fn main() {
     io.println("faults:")
     io.println(faults_of(folded))
 
+    // ---- ref={ } on a component tag --------------------------------------
+    //
+    // `probes/BUILDER.md`, "ref on a component tag is an assignment": there is
+    // no `b.reference(...)` here, because every attribute-position call needs
+    // `in_attributes` and a component tag opens no element. The setup closure
+    // assigns instead. Three things are asserted, and only the first is the
+    // one a repro would have shown.
+    let held: Builder = new Builder()
+    let page: Equiv = new Equiv()
+    page.state = sample()
+    io.println("ref: before any render {show_hint(page.hint)}")
+    held.render_root(page)
+    io.println("ref: after render 1 {show_hint(page.hint)}")
+
+    // Stamp the child THROUGH the ref. If render 2 shows the stamp, the field
+    // holds the mounted instance itself and `component<T>` reused it; if it
+    // showed 0, either the ref handed back a copy or the child was activated
+    // again. n=2 renders, because n=1 cannot tell those apart.
+    match page.hint {
+        some(child) => { child.stamp = 7 }
+        none => {}
+    }
+    held.render_root(page)
+    io.println("ref: after render 2 {show_hint(page.hint)}")
+
+    // The branch that mounts the child is not taken, so nothing writes the
+    // field and it stays `none`. That is what `Option` is for.
+    let missed: Builder = new Builder()
+    let other: Equiv = new Equiv()
+    other.state = sample()
+    other.state.count = 9
+    missed.render_root(other)
+    io.println("ref: branch not taken {show_hint(other.hint)}")
+
+    // And the documented limit: a ref is written at mount and nothing clears
+    // it when the branch flips away, so it still names the child that WAS
+    // there. Blazor's @ref behaves the same. Recorded here rather than left to
+    // be discovered.
+    page.state.count = 9
+    held.render_root(page)
+    io.println("ref: after the branch flipped away {show_hint(page.hint)}")
+
     // The frame dump, once, as the golden's record of the numbering.
     io.println("---- frames, folded ----")
     io.print(folded.dump_tree())
@@ -277,7 +345,7 @@ fn main() {
   $if self.state.count > 2 {
     <p class="warn">That is a lot, $self.state.note</p>
   } else {
-    <Hint label="Keep going">
+    <Hint label="Keep going" ref={self.hint}>
       <em>child content</em>
       $slot:extra as n: int { <b>extra $n</b> }
     </Hint>

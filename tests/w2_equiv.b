@@ -44,6 +44,9 @@ pub class Hint extends Component {
     pub label: string = ""
     pub body: fn(Builder) = fn(target: Builder) {}
     pub extra: fn(Builder, int) = fn(target: Builder, n: int) {}
+    /// Nothing in the markup sets this. It is how the ref= proof below tells
+    /// "the same instance came back" from "a fresh one was activated".
+    pub stamp: int = 0
     pub fn init() {}
     pub override fn render(target: Builder) {
         target.open(0, "aside")
@@ -83,12 +86,17 @@ pub fn sample() -> State {
 
 pub partial class Equiv extends Component {
     pub state: State = new State()
+    /// `ref={self.hint}` on a component tag writes here. `Option<Hint>`, not
+    /// `Hint`: a branch that never mounted the child leaves it `none` rather
+    /// than a value the author cannot tell from a live one.
+    pub hint: Option<Hint> = none
     pub fn init() {}
 }
 
 /// The twin, by hand.
 pub class EquivHand extends Component {
     pub state: State = new State()
+    pub hint: Option<Hint> = none
     pub fn init() {}
 
     pub override fn render(b: Builder) {
@@ -147,6 +155,11 @@ pub class EquivHand extends Component {
                     nested.text(1, "extra {n}")
                     nested.close()
                 }
+                // `ref=` on a component tag. Last, after everything else the
+                // setup closure sets, and it takes NO sequence number — which
+                // is why every number after 17 is what it was before the ref
+                // was written.
+                self.hint = some(child)
             })
         }
 
@@ -224,6 +237,19 @@ fn render_hand(fold: bool) -> Builder {
     return b
 }
 
+/// What `ref={self.hint}` left in the field, with no downcast anywhere.
+///
+/// `page.hint` is an `Option<Hint>`, so `child.label` and `child.stamp` are
+/// read straight off the concrete type. A `Reference.child: Option<Component>`
+/// would have needed an `as? Hint` at every one of these reads, which is half
+/// the reason the contract makes this an assignment.
+fn show_hint(handle: Option<Hint>) -> string {
+    match handle {
+        some(child) => { return "some(label=\"{child.label}\", stamp={child.stamp})" }
+        none => { return "none" }
+    }
+}
+
 fn faults_of(b: Builder) -> string {
     let lines: List<string> = []
     for fault: string in b.all_faults() { lines.push("  fault {fault}") }
@@ -274,6 +300,48 @@ fn main() {
     io.println("faults:")
     io.println(faults_of(folded))
 
+    // ---- ref={ } on a component tag --------------------------------------
+    //
+    // `probes/BUILDER.md`, "ref on a component tag is an assignment": there is
+    // no `b.reference(...)` here, because every attribute-position call needs
+    // `in_attributes` and a component tag opens no element. The setup closure
+    // assigns instead. Three things are asserted, and only the first is the
+    // one a repro would have shown.
+    let held: Builder = new Builder()
+    let page: Equiv = new Equiv()
+    page.state = sample()
+    io.println("ref: before any render {show_hint(page.hint)}")
+    held.render_root(page)
+    io.println("ref: after render 1 {show_hint(page.hint)}")
+
+    // Stamp the child THROUGH the ref. If render 2 shows the stamp, the field
+    // holds the mounted instance itself and `component<T>` reused it; if it
+    // showed 0, either the ref handed back a copy or the child was activated
+    // again. n=2 renders, because n=1 cannot tell those apart.
+    match page.hint {
+        some(child) => { child.stamp = 7 }
+        none => {}
+    }
+    held.render_root(page)
+    io.println("ref: after render 2 {show_hint(page.hint)}")
+
+    // The branch that mounts the child is not taken, so nothing writes the
+    // field and it stays `none`. That is what `Option` is for.
+    let missed: Builder = new Builder()
+    let other: Equiv = new Equiv()
+    other.state = sample()
+    other.state.count = 9
+    missed.render_root(other)
+    io.println("ref: branch not taken {show_hint(other.hint)}")
+
+    // And the documented limit: a ref is written at mount and nothing clears
+    // it when the branch flips away, so it still names the child that WAS
+    // there. Blazor's @ref behaves the same. Recorded here rather than left to
+    // be discovered.
+    page.state.count = 9
+    held.render_root(page)
+    io.println("ref: after the branch flipped away {show_hint(page.hint)}")
+
     // The frame dump, once, as the golden's record of the numbering.
     io.println("---- frames, folded ----")
     io.print(folded.dump_tree())
@@ -289,76 +357,77 @@ fn _latte_component_equiv_Hint(value: Hint) -> Component { return value }
 
 partial class Equiv {
     pub override fn render(b: Builder) {
-        b.open(0, "section")  // equiv.bx:272
+        b.open(0, "section")  // equiv.bx:340
         b.attr(1, "class", "counter")
-        b.open(2, "h2")  // equiv.bx:273
+        b.open(2, "h2")  // equiv.bx:341
         b.text(3, "Count: {self.state.count}")
         b.close()
-        if b.fold { b.constant(4, "<p class=\"muted\">a fixed line</p>") }  // equiv.bx:274
+        if b.fold { b.constant(4, "<p class=\"muted\">a fixed line</p>") }  // equiv.bx:342
         else {
-            b.open(4, "p")  // equiv.bx:274
+            b.open(4, "p")  // equiv.bx:342
             b.attr(5, "class", "muted")
             b.text(6, "a fixed line")
             b.close()
         }
-        b.open(7, "button")  // equiv.bx:275
+        b.open(7, "button")  // equiv.bx:343
         b.on_click(8, fn(e: MouseEvent) { self.state.count += 1 })
         b.text(9, "Add one")
         b.close()
-        b.open(10, "input")  // equiv.bx:276
+        b.open(10, "input")  // equiv.bx:344
         b.attr(11, "value", "{self.state.note}")
         b.on_input(12, fn(e: InputEvent) { self.state.note = e.value })
         b.attr(13, "placeholder", "A note")
         b.close()
-        if self.state.count > 2 {  // equiv.bx:277
-            b.open(14, "p")  // equiv.bx:278
+        if self.state.count > 2 {  // equiv.bx:345
+            b.open(14, "p")  // equiv.bx:346
             b.attr(15, "class", "warn")
             b.text(16, "That is a lot, {self.state.note}")
             b.close()
-        } else {  // equiv.bx:279
-            b.component<Hint>(17, fn(_latte_c: Hint) {  // equiv.bx:280
+        } else {  // equiv.bx:347
+            b.component<Hint>(17, fn(_latte_c: Hint) {  // equiv.bx:348
                 _latte_c.label = "Keep going"
                 _latte_c.body = fn(_latte_inner: Builder) {
-                    if _latte_inner.fold { _latte_inner.constant(0, "<em>child content</em>") }  // equiv.bx:281
+                    if _latte_inner.fold { _latte_inner.constant(0, "<em>child content</em>") }  // equiv.bx:349
                     else {
-                        _latte_inner.open(0, "em")  // equiv.bx:281
+                        _latte_inner.open(0, "em")  // equiv.bx:349
                         _latte_inner.text(1, "child content")
                         _latte_inner.close()
                     }
                 }
                 _latte_c.extra = fn(_latte_inner: Builder, n: int) {
-                    _latte_inner.open(0, "b")  // equiv.bx:282
+                    _latte_inner.open(0, "b")  // equiv.bx:350
                     _latte_inner.text(1, "extra {n}")
                     _latte_inner.close()
                 }
+                self.hint = some(_latte_c)
             })
         }
-        b.open(18, "ul")  // equiv.bx:285
-        for row: Row in self.state.rows {  // equiv.bx:286
+        b.open(18, "ul")  // equiv.bx:353
+        for row: Row in self.state.rows {  // equiv.bx:354
             b.region(19, "{row.id}")
-            b.open(0, "li")  // equiv.bx:287
+            b.open(0, "li")  // equiv.bx:355
             b.text(1, "{row.title}")
             b.close()
             b.end_region()
         }
         b.close()
-        b.open(20, "ol")  // equiv.bx:290
+        b.open(20, "ol")  // equiv.bx:358
         var _latte_row_0: int = 0
-        for tag: string in self.state.tags {  // equiv.bx:291
+        for tag: string in self.state.tags {  // equiv.bx:359
             b.region(21, "{_latte_row_0}")
-            b.open(0, "li")  // equiv.bx:292
+            b.open(0, "li")  // equiv.bx:360
             b.text(1, "{tag}")
             b.close()
             b.end_region()
             _latte_row_0 += 1
         }
         b.close()
-        b.open(22, "div")  // equiv.bx:295
+        b.open(22, "div")  // equiv.bx:363
         b.attrs(23, self.state.extra)
         b.attr(24, "class", "base")
         b.text(25, "splat")
         b.close()
-        b.open(26, "div")  // equiv.bx:296
+        b.open(26, "div")  // equiv.bx:364
         b.preserve(27)
         if b.fold { b.constant(28, "<span>owned</span>") }
         else {
@@ -367,12 +436,12 @@ partial class Equiv {
             b.close()
         }
         b.close()
-        b.open(30, "div")  // equiv.bx:297
+        b.open(30, "div")  // equiv.bx:365
         b.raw(31, self.state.rendered)
         b.close()
-        if b.fold { b.constant(32, "<footer class=\"c\"><small>fixed</small></footer>") }  // equiv.bx:298
+        if b.fold { b.constant(32, "<footer class=\"c\"><small>fixed</small></footer>") }  // equiv.bx:366
         else {
-            b.open(32, "footer")  // equiv.bx:298
+            b.open(32, "footer")  // equiv.bx:366
             b.attr(33, "class", "c")
             b.open(34, "small")
             b.text(35, "fixed")

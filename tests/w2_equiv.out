@@ -6,6 +6,11 @@ frames folded=56 unfolded=66
 onclick through the splat is in the html: false
 faults:
   fault 0: refused splatted inline handler "onclick"
+ref: before any render none
+ref: after render 1 some(label="Keep going", stamp=0)
+ref: after render 2 some(label="Keep going", stamp=7)
+ref: branch not taken none
+ref: after the branch flipped away some(label="Keep going", stamp=7)
 ---- frames, folded ----
 component 0
 0 open section

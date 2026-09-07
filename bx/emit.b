@@ -941,12 +941,6 @@ pub class Emitter {
         let b: string = self.builder_name()
         self.note_component(element.tag)
         for attr: Attr in element.attrs {
-            match attr as? RefAttr {
-                some(handle) => {
-                    self.report(handle.span, "ref=\{ \} on a component tag is not supported: latte.Builder fills a Reference from inside an element's attribute run, and a component tag opens no element, so the handle would name the wrong slot or none at all. Ask the child for what you need through a parameter or a Callback")
-                }
-                none => {}
-            }
             match attr as? KeyAttr {
                 some(key) => {
                     self.report(key.span, "key=\{ \} names the identity of one row of a $for, so it belongs on a tag directly inside a $for body. Here it names nothing the differ can use")
@@ -988,8 +982,44 @@ pub class Emitter {
                 none => {}
             }
         }
+        // `ref=` last, so the parent's field is published only once the child
+        // is completely configured. In source order it would mean two things:
+        // `<Grid ref={self.grid} rows={self.rows}/>` would publish before
+        // `rows` was set and `<Grid rows={self.rows} ref={self.grid}/>` after,
+        // and the same markup meaning two things by attribute order is not
+        // something machine-written code should have.
+        for attr: Attr in element.attrs {
+            match attr as? RefAttr {
+                some(handle) => { self.emit_component_ref(handle, c, indent + 1) }
+                none => {}
+            }
+        }
         self.write(indent, "\})")
         self.setup_depth = self.setup_depth - 1
+    }
+
+    /// `ref=` on a component tag: an assignment inside the setup closure.
+    ///
+    /// **Not** `b.reference(...)`, and the difference is forced rather than
+    /// chosen. Every attribute-position call needs `in_attributes`, which only
+    /// `open()` sets, and a component tag opens no element — so a `Reference`
+    /// there has no spelling any emission can reach (`probes/BUILDER.md`,
+    /// "ref on a component tag is an assignment"). The assignment is also the
+    /// better answer: it hands back the concrete type, so `self.grid.reload()`
+    /// needs no downcast, and it is filled at **mount**, not after the applier
+    /// has run, because a component instance exists as soon as it is activated.
+    ///
+    /// The place is written as `Option<T>`, so a child that is never reached —
+    /// a branch arm that did not run — is `none` rather than a stale instance
+    /// the author cannot tell from a live one. A field declared as a bare `T`
+    /// is a beansc type error naming the author's own field, which is the
+    /// diagnostic they can act on.
+    ///
+    /// It takes **no sequence number**: it is not a Builder call, so numbering
+    /// is byte for byte what it was when this was a refusal.
+    fn emit_component_ref(handle: RefAttr, c: string, indent: int) {
+        self.check_code(handle.code, handle.span, "ref=\{ \}")
+        self.write(indent, "{handle.code} = some({c})")
     }
 
     fn note_component(tag: string) {
@@ -1023,6 +1053,8 @@ pub class Emitter {
             }
             none => {}
         }
+        // `ref=` is not a parameter — `emit_component` writes it last, after
+        // everything else the setup closure sets. `key=` was already refused.
         match attr as? RefAttr {
             some(_) => { return }
             none => {}
