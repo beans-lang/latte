@@ -205,14 +205,14 @@ pub class RoutePattern {
                 }
                 continue
             }
-            if piece.contains("{") || piece.contains("}") {
-                if !piece.starts_with("{") || !piece.ends_with("}") {
+            if piece.contains("\{") || piece.contains("\}") {
+                if !piece.starts_with("\{") || !piece.ends_with("\}") {
                     self.faults.push(
                         "route \"{self.source}\": a placeholder is a whole segment, so \"{piece}\" is not one")
                     continue
                 }
                 let name: string = piece.slice(1, piece.len() - 1)
-                if name.contains("{") || name.contains("}") {
+                if name.contains("\{") || name.contains("\}") {
                     self.faults.push("route \"{self.source}\": \"{piece}\" nests braces")
                     continue
                 }
@@ -222,8 +222,7 @@ pub class RoutePattern {
                 }
                 if name.starts_with("*") {
                     self.faults.push(
-                        "route \"{self.source}\": a catch-all placeholder (\"{piece}\") is not supported — " +
-                        "a placeholder captures one segment")
+                        "route \"{self.source}\": a catch-all placeholder (\"{piece}\") is not supported — a placeholder captures one segment")
                     continue
                 }
                 if !is_identifier(name) {
@@ -273,7 +272,7 @@ pub class RoutePattern {
         var out: fmt.StringBuilder = new fmt.StringBuilder()
         for segment: RouteSegment in self.segments {
             out.push("/")
-            if segment.is_parameter { out.push("{}") } else { out.push(segment.text) }
+            if segment.is_parameter { out.push("\{\}") } else { out.push(segment.text) }
         }
         if self.segments.len() == 0 { out.push("/") }
         return out.to_string()
@@ -642,7 +641,7 @@ pub class PlainActivator implements Activator {
         match described.initializer() {
             some(ctor) => {
                 match ctor.call([]) {
-                    ok(made) => { return ok(move made) }
+                    ok(made) => { return ok(made) }
                     err(problem) => {
                         return err("cannot activate {described.name()}: {problem.message()}")
                     }
@@ -681,7 +680,7 @@ pub class PagePlan {
         match self.ctor {
             some(ctor) => {
                 match ctor.call([]) {
-                    ok(made) => { return ok(move made) }
+                    ok(made) => { return ok(made) }
                     err(problem) => {
                         return err("cannot activate {self.name}: {problem.message()}")
                     }
@@ -729,9 +728,9 @@ pub class PagePlan {
 pub class PageMatch {
     pub plan: PagePlan = new PagePlan()
     pub values: Map<string, string> = {}
-    pub fn init(plan: PagePlan, values: Map<string, string>) {
+    pub fn init(plan: PagePlan, move values: Map<string, string>) {
         self.plan = plan
-        self.values = values
+        self.values = move values
     }
 }
 
@@ -783,7 +782,7 @@ pub class PageMap {
                         if score > best_score {
                             best = index
                             best_score = score
-                            best_values = values
+                            best_values = values.clone()
                         }
                     }
                     none => {}
@@ -817,14 +816,12 @@ pub fn scan_pages() -> PageMap {
             // is fine.
             if annotations_named(described.annotations(), "authorize").len() > 0 {
                 map.faults.push(
-                    "{described.qualified_name()} is annotated @authorize but is not a @page; " +
-                    "the requirement would never be checked")
+                    "{described.qualified_name()} is annotated @authorize but is not a @page; the requirement would never be checked")
             }
             if annotations_named(described.annotations(), "layout").len() > 0 &&
                !extends_named(described, layout_name) {
                 map.faults.push(
-                    "{described.qualified_name()} is annotated @layout but is neither a @page " +
-                    "nor a latte.Layout, so nothing would ever wrap it")
+                    "{described.qualified_name()} is annotated @layout but is neither a @page nor a latte.Layout, so nothing would ever wrap it")
             }
             continue
         }
@@ -844,15 +841,14 @@ pub fn scan_pages() -> PageMap {
             match shapes.get(key) {
                 some(owner) => {
                     map.faults.push(
-                        "{plan.type_name} and {owner} both answer {method} {shape}; " +
-                        "nothing at request time could choose between them")
+                        "{plan.type_name} and {owner} both answer {method} {shape}; nothing at request time could choose between them")
                 }
                 none => { shapes[key] = plan.type_name }
             }
         }
         map.pages.push(plan)
     }
-    return move map
+    return map
 }
 
 fn plan_for(described: reflect.Type, use: reflect.Annotation,
@@ -863,9 +859,8 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation,
 
     if !extends_named(described, component_name) {
         map.faults.push(
-            "{plan.type_name} is annotated @page but does not extend {component_name}, " +
-            "so it has nothing to render")
-        return move plan
+            "{plan.type_name} is annotated @page but does not extend {component_name}, so it has nothing to render")
+        return plan
     }
 
     let route_text: string = argument_string(use, "route")
@@ -916,14 +911,13 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation,
         }
         if !bound {
             map.faults.push(
-                "{plan.type_name}: route \"{plan.route.source}\" captures \"{name}\" but no " +
-                "@param binds it")
+                "{plan.type_name}: route \"{plan.route.source}\" captures \"{name}\" but no @param binds it")
         }
     }
 
     plan.ctor = described.initializer()
     plan.described = some(described)
-    return move plan
+    return plan
 }
 
 fn bind_params(plan: PagePlan, described: reflect.Type, map: PageMap) {
@@ -948,8 +942,7 @@ fn bind_params(plan: PagePlan, described: reflect.Type, map: PageMap) {
         match seen.get(binding.wire_name) {
             some(other) => {
                 map.faults.push(
-                    "{plan.type_name}: \"{binding.wire_name}\" names both {other} and " +
-                    "{binding.field_name}")
+                    "{plan.type_name}: \"{binding.wire_name}\" names both {other} and {binding.field_name}")
                 continue
             }
             none => { seen[binding.wire_name] = binding.field_name }
@@ -957,8 +950,7 @@ fn bind_params(plan: PagePlan, described: reflect.Type, map: PageMap) {
 
         if !field.is_public() {
             map.faults.push(
-                "{plan.type_name}.{binding.field_name} is a @param but is not public, " +
-                "and reflection does not bypass visibility")
+                "{plan.type_name}.{binding.field_name} is a @param but is not public, and reflection does not bypass visibility")
             continue
         }
 
@@ -966,26 +958,20 @@ fn bind_params(plan: PagePlan, described: reflect.Type, map: PageMap) {
         let generic: string = generic_declaration(described, field)
         if generic != "" {
             map.faults.push(
-                "{plan.type_name}.{binding.field_name} is a @param declared by {generic}; " +
-                "a reflective write to a field whose declaring type is generic is ok under " +
-                "beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it " +
-                "here rather than at request time")
+                "{plan.type_name}.{binding.field_name} is a @param declared by {generic}; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time")
             continue
         }
 
         if binding.required && !binding.from_route {
             map.faults.push(
-                "{plan.type_name}.{binding.field_name} is @param(required: true) but route " +
-                "\"{plan.route.source}\" does not capture \"{binding.wire_name}\"")
+                "{plan.type_name}.{binding.field_name} is @param(required: true) but route \"{plan.route.source}\" does not capture \"{binding.wire_name}\"")
             continue
         }
         if binding.from_route {
             match binding.kind {
                 other => {
                     map.faults.push(
-                        "{plan.type_name}.{binding.field_name} is captured by route " +
-                        "\"{plan.route.source}\" but is a {binding.type_name}; a route can bind " +
-                        "string, int, bool and float")
+                        "{plan.type_name}.{binding.field_name} is captured by route \"{plan.route.source}\" but is a {binding.type_name}; a route can bind string, int, bool and float")
                     continue
                 }
                 _ => {}
@@ -1117,16 +1103,15 @@ fn find_layout(wanted: string, all: List<reflect.Type>, layout_name: string,
     if hits.len() > 1 {
         var names: List<string> = []
         for hit: reflect.Type in hits { names.push(hit.qualified_name()) }
+        let listed: string = names.join(", ")
         map.faults.push(
-            "{owner}: @layout(name: \"{wanted}\") is ambiguous — {names.join(\", \")}; " +
-            "spell the qualified name")
+            "{owner}: @layout(name: \"{wanted}\") is ambiguous — {listed}; spell the qualified name")
         return none
     }
     let found: reflect.Type = hits[0]
     if !extends_named(found, layout_name) {
         map.faults.push(
-            "{owner}: @layout(name: \"{wanted}\") resolves to {found.qualified_name()}, " +
-            "which does not extend {layout_name}")
+            "{owner}: @layout(name: \"{wanted}\") resolves to {found.qualified_name()}, which does not extend {layout_name}")
         return none
     }
     if found.initializer().is_none() {
@@ -1151,8 +1136,7 @@ fn latte_annotation(simple: string) -> string {
     }
 }
 
-pub fn annotations_named(uses: List<reflect.Annotation>, simple: string)
-        -> List<reflect.Annotation> {
+pub fn annotations_named(uses: List<reflect.Annotation>, simple: string) -> List<reflect.Annotation> {
     let wanted: string = latte_annotation(simple)
     var out: List<reflect.Annotation> = []
     for use: reflect.Annotation in uses {
@@ -1210,44 +1194,46 @@ fn upper_all(values: List<string>) -> List<string> {
 // ============================================================== mounting
 //
 // A page with a layout renders as a chain: the outermost layout is the render
-// root, each layout's `body` renders the next, and the innermost body renders
-// the page.
+// root, each layout's `body` mounts the next as a CHILD COMPONENT, and the
+// innermost body mounts the page.
 //
-// **What this does not do yet, and what would change it.** The page is
-// rendered INTO the innermost layout's frame buffer rather than mounted as a
-// child component of it, so the page is not separately markable: an event on
-// the page marks the layout, which re-renders the layout and the page together.
-// The output is identical either way — that is what `tests/pages.b` § layouts
-// asserts on both backends — and static rendering, which is what this lane
-// ships, cannot tell the difference. What it costs is one extra layout render
-// per event once circuits exist.
+// It is a real mount and not an inline `page.render(b)`, and the difference is
+// the whole update model: a mounted child has its own frame buffer, its own
+// slot id and its own entry in the dirty set, so an event on the page marks the
+// page. Rendered inline, the page's frames would live in the layout's buffer
+// and every click on a page would re-render its layout.
 //
-// The reason it is written this way is a missing primitive, not a design
-// choice: `Builder.component<T>` activates by static type, and latte never
-// knows a page's type statically — it holds a `reflect.Type` the scan found.
-// Mounting an instance the caller already made needs `Builder.component_made<T>
-// (seq, make: fn() -> T, setup: fn(T))`, which W4 asked W1 for and which has
-// not landed. When it does, `LayoutLink.render_body` below becomes
-//
-//     inner.component_made<Component>(0, fn() -> Component { return page },
-//                                     fn(c: Component) {})
-//
-// and nothing else in this file moves.
+// The mount goes through `Builder.component_made<T>` rather than
+// `component<T>`, because latte never knows a page's type statically — the scan
+// hands it a `reflect.Type` and an instance — and `component<T>` activates by
+// static type. `T` here is `Component`, which is what a factory returning an
+// already-activated page can be typed as; the one visible consequence is that
+// the child frame carries the name `Component` rather than `Counter`, which is
+// a label in a dump and in the wire's mount frame, not something the differ or
+// the applier decides anything from.
 
 /// One link of the layout chain. It exists so each layout's `body` closure
-/// captures one object rather than a loop variable.
+/// captures one object rather than a loop variable, and so the factory the
+/// mount calls returns an instance that already exists rather than making one.
 class LayoutLink {
     next: Option<Layout> = none
-    following: Option<LayoutLink> = none
     page: Option<Component> = none
     pub fn init() {}
 
     fn render_body(b: Builder) {
         match self.next {
-            some(layout) => { layout.render(b) }
+            some(layout) => {
+                b.component_made<Component>(0,
+                    fn() -> Component { return layout },
+                    fn(mounted: Component) {})
+            }
             none => {
                 match self.page {
-                    some(page) => { page.render(b) }
+                    some(page) => {
+                        b.component_made<Component>(0,
+                            fn() -> Component { return page },
+                            fn(mounted: Component) {})
+                    }
                     none => {}
                 }
             }
@@ -1286,24 +1272,6 @@ pub class PageInstance {
         }
     }
 
-    /// `on_init` and `on_params_set` for everything the chain holds.
-    ///
-    /// The renderer runs them for the component it mounts; everything below the
-    /// root in a layout chain is not a mounted child (see the note above), so
-    /// latte runs them here. Order is Blazor's: outermost layout first, page
-    /// last, each fully initialised before the render begins.
-    fn start() {
-        for layout: Layout in self.layouts {
-            layout.on_init()
-            layout.on_params_set()
-        }
-        match self.component {
-            some(page) => {
-                if self.layouts.len() > 0 { page.on_init() ; page.on_params_set() }
-            }
-            none => {}
-        }
-    }
 }
 
 /// Activate a matched page, bind its route values, and build its layout chain.
@@ -1324,7 +1292,7 @@ pub fn open_page(found: PageMatch, who: Principal,
         _ => {
             instance.problems.push(
                 "{found.plan.name}: {describe_outcome(outcome)}")
-            return move instance
+            return instance
         }
     }
 
@@ -1336,15 +1304,14 @@ pub fn open_page(found: PageMatch, who: Principal,
     match made {
         err(problem) => {
             instance.problems.push(problem)
-            return move instance
+            return instance
         }
         ok(value) => {
             match value.copy() as? Component {
                 none => {
                     instance.problems.push(
-                        "{found.plan.name} activated as {value.type().qualified_name()}, " +
-                        "which is not a Component")
-                    return move instance
+                        "{found.plan.name} activated as {value.type().qualified_name()}, which is not a Component")
+                    return instance
                 }
                 some(page) => { instance.component = some(page) }
             }
@@ -1353,21 +1320,21 @@ pub fn open_page(found: PageMatch, who: Principal,
             }
         }
     }
-    if instance.problems.len() > 0 { return move instance }
+    if instance.problems.len() > 0 { return instance }
 
     for described: reflect.Type in found.plan.layouts {
         match described.initializer() {
             none => {
                 instance.problems.push(
                     "layout {described.qualified_name()} has no zero-argument initializer")
-                return move instance
+                return instance
             }
             some(ctor) => {
                 match ctor.call([]) {
                     err(problem) => {
                         instance.problems.push(
                             "cannot activate layout {described.name()}: {problem.message()}")
-                        return move instance
+                        return instance
                     }
                     ok(value) => {
                         match value.copy() as? Layout {
@@ -1375,7 +1342,7 @@ pub fn open_page(found: PageMatch, who: Principal,
                             none => {
                                 instance.problems.push(
                                     "{described.qualified_name()} is not a Layout")
-                                return move instance
+                                return instance
                             }
                         }
                     }
@@ -1384,9 +1351,13 @@ pub fn open_page(found: PageMatch, who: Principal,
         }
     }
 
+    // Nothing here runs `on_init` or `on_params_set`: the layouts and the page
+    // are all mounted components now, and `Builder.mount_made` runs `on_init`
+    // at the mount while `render_child` runs `on_params_set` before every
+    // render. The root is `Renderer.mount`'s, which does the same. Running them
+    // here as well would run them twice.
     instance.link()
-    instance.start()
-    return move instance
+    return instance
 }
 
 /// Mount a page instance into a renderer. `false` means it did not, and
