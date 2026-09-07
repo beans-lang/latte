@@ -1,0 +1,456 @@
+// `latte.Renderer` — the dirty set, and the thing gate 6 measures.
+//
+// PLAN.md's headline claim is that the page is never re-rendered: "there is no
+// code path that starts at the root and walks down. The renderer holds a dirty
+// set and renders exactly its members." This file is that renderer, and it
+// carries its own per-component render counter so the claim is a number in a
+// golden file rather than a sentence in a design.
+//
+// Nothing here imports std.io, std.fs, std.net, std.time or std.random —
+// `test.sh --wasm` builds the root package for wasm32-unknown-unknown and a
+// single OS-bound import at the module root kills that leg for everybody.
+package latte
+
+import std.reflect
+
+/// Where `Component.notify()` sends its "I changed".
+///
+/// The interface is declared here rather than in `builder.b` because the
+/// renderer is what implements it, and a component holding one is holding the
+/// renderer that mounted it. It is `weak` on the component's side: the
+/// renderer owns the tree, so a strong link back would be the one cycle in the
+/// design that has no reason to exist.
+pub interface DirtySink {
+    fn mark(id: int)
+}
+
+// ---------------------------------------------------------------- the mount
+//
+// One entry per mounted component. It is not the Builder: a Builder holds the
+// component's frames, and this holds where the component *is* — its buffer, the
+// buffer that owns its slot, and its parent's id. Those three are what let the
+// renderer render one component without walking the tree to find it.
+class Mount {
+    pub id: int = 0
+    pub parent: int = -1
+    pub depth: int = 0
+    pub buffer: Builder = new Builder()
+    /// The buffer whose `children` map holds this component's `reflect.Value`.
+    /// `none` for the root, which nothing mounts.
+    pub owner: Option<Builder> = none
+    pub fn init(id: int) { self.id = id }
+}
+
+// ---------------------------------------------------------------- renderer
+pub class Renderer implements DirtySink {
+    /// The root component's frame buffer. Every other buffer hangs off it
+    /// through `Builder.nested`.
+    pub root: Builder = new Builder()
+
+    /// The root component. `none` until `mount` is called.
+    pub page: Option<Component> = none
+
+    /// How many times each component's `render` has run, by component id.
+    /// **This is gate 6's instrument.** It is counted here, in the framework,
+    /// and not by a component incrementing a field of its own, because a
+    /// counter a test component keeps only counts the components the test
+    /// remembered to instrument.
+    pub renders: Map<int, int> = {}
+
+    /// How many `flush` calls have happened. A flush that renders nothing
+    /// still counts, because "an event that changed nothing renders nothing"
+    /// is a claim about a flush that happened.
+    pub flushes: int = 0
+
+    /// Faults the renderer itself raised — a dirty id with no component, a
+    /// mount that is not a `Component`. Builder faults stay on the Builder.
+    pub faults: List<string> = []
+
+    dirty: Map<int, bool> = {}
+    mounts: Map<int, Mount> = {}
+    /// handler slot id -> the id of the component that bound it.
+    owners: Map<int, int> = {}
+    /// component id -> the handler slot ids it bound on its last render, so a
+    /// re-render can drop them before it adds the new ones and the index does
+    /// not grow for the life of a circuit.
+    bound: Map<int, List<int>> = {}
+
+    pub fn init() {}
+
+    // ---- the dirty set ----------------------------------------------------
+
+    /// `Component.notify()` lands here, and so does every event dispatch.
+    ///
+    /// Marking an id that is not mounted is not an error: a component can be
+    /// disposed between the render that produced a handler and the event that
+    /// reaches it, which is exactly what a stale wire id looks like. It is
+    /// dropped, and `pending()` is what says whether anything will run.
+    pub fn mark(id: int) {
+        if !self.mounts.contains_key(id) { return }
+        self.dirty[id] = true
+    }
+
+    /// Whether the next `flush` has anything to do.
+    pub fn pending() -> int { return self.dirty.len() }
+
+    pub fn is_dirty(id: int) -> bool { return self.dirty.contains_key(id) }
+
+    /// The render count for one component. Zero for a component that has never
+    /// rendered, and for one that does not exist — a test asserting "this ran
+    /// zero times" wants the same answer either way, and `mounted()` is how it
+    /// asks whether the component is there at all.
+    pub fn render_count(id: int) -> int {
+        match self.renders.get(id) {
+            some(n) => { return n }
+            none => { return 0 }
+        }
+    }
+
+    pub fn mounted(id: int) -> bool { return self.mounts.contains_key(id) }
+
+    /// Every mounted component id, parents before children.
+    pub fn ids() -> List<int> {
+        var out: List<int> = []
+        self.collect_ids(0, out)
+        return move out
+    }
+
+    fn collect_ids(id: int, out: List<int>) {
+        match self.mounts.get(id) {
+            some(mount) => {
+                out.push(id)
+                var slots: List<int> = mount.buffer.nested.keys()
+                slots.sort()
+                for slot: int in slots { self.collect_ids(slot, out) }
+            }
+            none => {}
+        }
+    }
+
+    /// The buffer holding one component's frames.
+    pub fn buffer(id: int) -> Option<Builder> {
+        match self.mounts.get(id) {
+            some(mount) => { return some(mount.buffer) }
+            none => { return none }
+        }
+    }
+
+    /// The component itself, recovered from the `reflect.Value` its activation
+    /// produced — never re-boxed from a `Component` binding, which would lose
+    /// the concrete type (BLOCKERS.md B6).
+    pub fn component(id: int) -> Option<Component> {
+        match self.mounts.get(id) {
+            some(mount) => {
+                match mount.owner {
+                    some(holder) => {
+                        match holder.children.get(id) {
+                            some(stored) => { return stored.copy() as? Component }
+                            none => { return none }
+                        }
+                    }
+                    none => { return self.page }
+                }
+            }
+            none => { return none }
+        }
+    }
+
+    // ---- mounting ---------------------------------------------------------
+
+    /// Render the page for the first time. Everything below it mounts with it,
+    /// because `component<T>` activates and renders a child in the same call.
+    pub fn mount(component: Component) {
+        self.page = some(component)
+        self.root.id = 0
+        component.on_init()
+        component.on_params_set()
+        self.begin()
+        self.root.render_root(component)
+        self.finish()
+    }
+
+    // ---- the render pass --------------------------------------------------
+
+    /// Render exactly the dirty components, and nothing else.
+    ///
+    /// The three rules, in the order they matter:
+    ///
+    /// 1. **An ancestor swallows its descendants.** Rendering a parent runs
+    ///    `component<T>` for every child it still has, which renders those
+    ///    children through `Builder.render_child`. A child that is also in the
+    ///    dirty set must therefore be dropped from it, and not for speed: a
+    ///    buffer rendered twice before a diff has a `previous` that is the
+    ///    middle pass, so the batch would re-send the last batch's inserts,
+    ///    removes and moves, and those are not idempotent.
+    /// 2. **Parents first.** A dirty parent may drop a dirty child entirely;
+    ///    rendering the child first would render a component that is about to
+    ///    leave the page.
+    /// 3. **A dirty id that is no longer mounted is dropped**, silently. That
+    ///    is what a stale wire id looks like after a keyed row went away.
+    pub fn flush() -> int {
+        self.flushes += 1
+        if self.dirty.len() == 0 { return 0 }
+
+        var wanted: List<int> = self.dirty.keys()
+        self.dirty.clear()
+
+        var roots: List<int> = []
+        for id: int in wanted {
+            if self.mounts.contains_key(id) && !self.covered(id, wanted) {
+                roots.push(id)
+            }
+        }
+        roots.sort()                       // ids increase with mount order, and
+        self.sort_by_depth(roots)          // depth is what rule 2 needs
+
+        self.begin()
+        for id: int in roots {
+            match self.component(id) {
+                some(component) => {
+                    match self.buffer(id) {
+                        some(buffer) => {
+                            component.on_params_set()
+                            if buffer.rendered && !component.should_render() {
+                                // A component that answers no keeps the frames
+                                // it already has, and its buffer stays settled.
+                            } else {
+                                buffer.render_root(component)
+                            }
+                        }
+                        none => {}
+                    }
+                }
+                none => {
+                    self.faults.push("dirty component {id} has no instance")
+                }
+            }
+        }
+        return self.finish()
+    }
+
+    /// Whether some other member of the dirty set is an ancestor of `id`.
+    fn covered(id: int, others: List<int>) -> bool {
+        var walk: int = id
+        for true {
+            match self.mounts.get(walk) {
+                some(mount) => {
+                    if mount.parent < 0 { return false }
+                    walk = mount.parent
+                }
+                none => { return false }
+            }
+            for other: int in others {
+                if other == walk && self.mounts.contains_key(other) { return true }
+            }
+        }
+        return false
+    }
+
+    fn sort_by_depth(ids: List<int>) {
+        // Insertion sort on depth. A dirty set is small — it is the components
+        // one event touched — and a stable sort keeps the id order inside a
+        // depth, which is what makes the render order reproducible.
+        var i: int = 1
+        for i < ids.len() {
+            let value: int = ids[i]
+            let key: int = self.depth_of(value)
+            var j: int = i - 1
+            for j >= 0 && self.depth_of(ids[j]) > key {
+                ids[j + 1] = ids[j]
+                j -= 1
+            }
+            ids[j + 1] = value
+            i += 1
+        }
+    }
+
+    fn depth_of(id: int) -> int {
+        match self.mounts.get(id) {
+            some(mount) => { return mount.depth }
+            none => { return 0 }
+        }
+    }
+
+    // ---- the bookkeeping either side of a pass ----------------------------
+    //
+    // `Builder.diffed` is what says a buffer rendered: `reset()` clears it and
+    // the differ sets it, so a buffer that is `false` at the end of a pass and
+    // was `true` at the start ran exactly once. That is why the render counter
+    // needs no hook inside `Builder` and cannot be forgotten by a component.
+
+    fn begin() {
+        var ids: List<int> = self.ids()
+        for id: int in ids {
+            match self.mounts.get(id) {
+                some(mount) => { mount.buffer.diffed = true }
+                none => {}
+            }
+        }
+        self.root.diffed = true
+    }
+
+    fn finish() -> int {
+        var ran: int = 0
+        self.reindex()
+        var ids: List<int> = self.ids()
+        for id: int in ids {
+            match self.mounts.get(id) {
+                some(mount) => {
+                    if !mount.buffer.diffed {
+                        ran += 1
+                        self.renders[id] = self.render_count(id) + 1
+                        self.reown(id, mount.buffer)
+                    }
+                }
+                none => {}
+            }
+        }
+        return ran
+    }
+
+    /// Rebuild the mount index from the Builder tree. It is O(components), not
+    /// O(frames): a mounted child is an entry in `Builder.nested`, and the walk
+    /// stops there.
+    fn reindex() {
+        var live: Map<int, bool> = {}
+        self.visit(self.root, -1, 0, none, live)
+        var known: List<int> = self.mounts.keys()
+        for id: int in known {
+            if !live.contains_key(id) {
+                let _: bool = self.mounts.remove(id)
+                let _: bool = self.dirty.remove(id)
+                self.forget_bindings(id)
+            }
+        }
+    }
+
+    fn visit(buffer: Builder, parent: int, depth: int,
+             owner: Option<Builder>, live: Map<int, bool>) {
+        let id: int = buffer.id
+        live[id] = true
+        var mount: Mount = new Mount(id)
+        match self.mounts.get(id) {
+            some(existing) => { mount = existing }
+            none => { self.mounts[id] = mount }
+        }
+        mount.parent = parent
+        mount.depth = depth
+        mount.buffer = buffer
+        mount.owner = owner
+        var slots: List<int> = buffer.nested.keys()
+        slots.sort()
+        for slot: int in slots {
+            match buffer.nested.get(slot) {
+                some(child) => {
+                    self.visit(child, id, depth + 1, some(buffer), live)
+                }
+                none => {}
+            }
+        }
+    }
+
+    /// Re-read one component's handler frames into the dispatch index.
+    ///
+    /// Only the component that rendered is re-read, so an event is one map
+    /// lookup and a render is one walk of the frames it just produced — never
+    /// a walk of the page. The old ids are dropped first, so a circuit that
+    /// runs for a day does not accumulate an entry per handler per render.
+    fn reown(id: int, buffer: Builder) {
+        self.forget_bindings(id)
+        var ids: List<int> = []
+        for frame: Frame in buffer.frames.items {
+            match frame {
+                handler(_, _, slot) => {
+                    self.owners[slot] = id
+                    ids.push(slot)
+                }
+                _ => {}
+            }
+        }
+        self.bound[id] = move ids
+    }
+
+    fn forget_bindings(id: int) {
+        match self.bound.get(id) {
+            some(previous) => {
+                for slot: int in previous { let _: bool = self.owners.remove(slot) }
+            }
+            none => {}
+        }
+        let _: bool = self.bound.remove(id)
+    }
+
+    /// Which component bound a handler slot. `-1` when nothing did, which is
+    /// what a stale id off the wire looks like.
+    pub fn owner_of(handler: int) -> int {
+        match self.owners.get(handler) {
+            some(id) => { return id }
+            none => { return -1 }
+        }
+    }
+
+    // ---- dispatch ---------------------------------------------------------
+    //
+    // A handler runs and the component that bound it is marked dirty. That is
+    // Blazor's rule and it is the reason a page needs no `notify()` on the
+    // ordinary path: the framework knows which component owns the id it just
+    // dispatched, so an author who forgets to say "I changed" still gets the
+    // render they meant.
+    //
+    // The registry answers first. `false` means the id is unknown — a stale id
+    // from a reconnecting client, or a row that left the page — and nothing is
+    // marked, because marking on an unknown id would let a client dirty a
+    // component by guessing a number.
+
+    pub fn fire_mouse(handler: int, event: MouseEvent) -> bool {
+        if !self.root.registry.fire_mouse(handler, event) { return false }
+        self.mark(self.owner_of(handler))
+        return true
+    }
+
+    pub fn fire_input(handler: int, event: InputEvent) -> bool {
+        if !self.root.registry.fire_input(handler, event) { return false }
+        self.mark(self.owner_of(handler))
+        return true
+    }
+
+    pub fn fire_keyboard(handler: int, event: KeyboardEvent) -> bool {
+        if !self.root.registry.fire_keyboard(handler, event) { return false }
+        self.mark(self.owner_of(handler))
+        return true
+    }
+
+    pub fn fire_submit(handler: int, event: SubmitEvent) -> bool {
+        if !self.root.registry.fire_submit(handler, event) { return false }
+        self.mark(self.owner_of(handler))
+        return true
+    }
+
+    pub fn fire_focus(handler: int, event: FocusEvent) -> bool {
+        if !self.root.registry.fire_focus(handler, event) { return false }
+        self.mark(self.owner_of(handler))
+        return true
+    }
+
+    // ---- what comes out ---------------------------------------------------
+
+    /// The whole page as HTML — what static server rendering sends.
+    pub fn html() -> string {
+        let writer: Serializer = new Serializer()
+        return writer.page(self.root)
+    }
+
+    /// The edits since the last batch, for the components that re-rendered.
+    pub fn batch() -> Batch {
+        let differ: Differ = new Differ()
+        return differ.batch(self.root)
+    }
+
+    /// Every fault anywhere: the renderer's own, and every Builder's.
+    pub fn all_faults() -> List<string> {
+        var out: List<string> = []
+        for fault: string in self.faults { out.push("renderer: {fault}") }
+        for fault: string in self.root.all_faults() { out.push(fault) }
+        return move out
+    }
+}
