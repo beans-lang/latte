@@ -74,10 +74,12 @@ ok no faults
 == 4 1000 random trees, 10 mutations each
 seed: 20260908
 cases: 10000
-nodes generated: element 1713, text 2152, raw 978, constant 1134, loop 1093, fragment 436, boundary 446, mount 851
-edits: 28469 total, worst batch 176
+nodes generated: element 1730, text 2154, raw 961, constant 1144, loop 1091, fragment 441, boundary 435, mount 856
+edits: 26407 total, worst batch 176
 peak live components in one tree: 33
-digest: 2827652607
+tag swaps: 1395; live mounts re-inserted by one: 78
+loop shapes: 7415 nested rows, 625 adjacent runs
+digest: 4010660058
 ok ten thousand random cases
 ok every one applied to the serializer's html
 steady-state re-renders: 3334
@@ -85,5 +87,9 @@ ok a third of the cases were re-rendered unchanged
 ok an unchanged render is always an empty batch
 ok the sweep built every node kind
 ok and mounted components three levels deep
+ok tags were swapped
+ok and a swap re-inserted a live component's mount
+ok a loop ran inside another loop's row
+ok and two loops stood side by side
 == summary
-checks: 43, failed: 0
+checks: 47, failed: 0
