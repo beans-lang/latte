@@ -1,0 +1,2 @@
+module p9_subclass_activate
+kind application
