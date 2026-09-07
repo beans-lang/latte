@@ -123,14 +123,22 @@ refused: a bind:value place spanning lines is not even a place
   |   note} />
   refusal.bx:5:8: error: bind:value={self.
     note} is not a field to write back to — a binding needs a place, such as bind:value={self.note}
-refused: a nested string holding an unmatched brace
+refused: a nested string holding an unmatched brace, in a $( )
   | <p>$(self.f("{"))</p>
   refusal.bx:5:4: error: $( was never closed — add the missing )
   refusal.bx:5:22: error: the file ended inside a tag — add the missing closing tag
   refusal.bx:5:1: error: <p> was never closed — add </p>
+refused: the same brace in an attribute expression
+  | <div class={self.f("{")}>x</div>
+  refusal.bx:5:12: error: a {...} value was never closed — add the missing } (a } inside a string or a comment does not close it)
+  refusal.bx:5:1: error: <div> was never finished — add the missing >
 accepted: the same expression on one line
 accepted: a multi-line handler — code, not a string
 accepted: a nested string with the brace escaped
+accepted: a closing brace inside a nested string
+accepted: a raw string inside the interpolation
+accepted: an indexed chain
+accepted: a called chain
 
 ======== an unsafe tag name ========
 refused: an underscore in the name
@@ -270,5 +278,301 @@ accepted: a closing tag for a different element
 accepted: an ordinary stylesheet
 accepted: an empty raw-text body emits no frame at all
 
-64 refusal(s) fired, 30 control(s) compiled
+======== markup that binds b, or a _latte_ name ========
+refused: a $for header — the case that matters
+  | $for b in self.books { <p>x</p> }
+  refusal.bx:5:1: error: a $for header uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a lone interpolated expression
+  | $b
+  refusal.bx:5:1: error: an interpolated expression uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: an expression merged with the text beside it
+  | <p>hi $b</p>
+  refusal.bx:5:7: error: an interpolated expression uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: $html
+  | $html(b)
+  refusal.bx:5:1: error: $html uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a ${ } statement block
+  | ${ let b: int = 1 }
+  refusal.bx:5:1: error: a ${ } block uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: an attribute expression
+  | <div class={b}>x</div>
+  refusal.bx:5:6: error: an attribute expression uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: an event handler
+  | <div on:click={fn(e: MouseEvent) { b.close() }}>x</div>
+  refusal.bx:5:6: error: an event handler uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: attrs= splat
+  | <div attrs={b}>x</div>
+  refusal.bx:5:6: error: attrs={ } uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: ref= on an element
+  | <input ref={b} />
+  refusal.bx:5:8: error: ref={ } uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a bind: place
+  | <input bind:value={b} />
+  refusal.bx:5:8: error: a bind: place uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: ref= on a component tag
+  | <Hint ref={b} />
+  refusal.bx:5:7: error: ref={ } uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a component parameter
+  | <Hint label={b} />
+  refusal.bx:5:7: error: a component parameter uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: an $if condition
+  | $if b { <p>x</p> }
+  refusal.bx:5:1: error: an $if condition uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: an else-if condition
+  | $if self.on { <p>x</p> } else if b { <p>y</p> }
+  refusal.bx:5:26: error: an $if condition uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a key= expression
+  | $for row: int in self.rows { <li key={b}>x</li> }
+  refusal.bx:5:34: error: a key= expression uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a $match subject
+  | $match b { _ => { <p>x</p> } }
+  refusal.bx:5:1: error: a $match subject uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a $match pattern
+  | $match self.v { some(b) => { <p>x</p> } none => { <p>y</p> } }
+  refusal.bx:5:17: error: a $match pattern uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a $slot expression
+  | $slot(b)
+  refusal.bx:5:1: error: a $slot expression uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a $slot argument
+  | <Hint>$slot:row as b</Hint>
+  refusal.bx:5:7: error: a $slot argument uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a $slot parameter name
+  | <Hint>$slot:row as b: int { <p>x</p> }</Hint>
+  refusal.bx:5:7: error: a $slot parameter name uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: a $slot parameter type
+  | <Hint>$slot:row as v: b { <p>x</p> }</Hint>
+  refusal.bx:5:7: error: a $slot parameter type uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not
+refused: _latte_row_0, the loop index latte-bx binds
+  | $for _latte_row_0 in self.rows { <p>x</p> }
+  refusal.bx:5:1: error: a $for header uses `_latte_row_0`, and names starting with `_latte_` belong to latte-bx — it binds them in the generated render for loop keys, fragment builders and component setters. Rename it
+refused: _latte_c, the component setter
+  | ${ let _latte_c: int = 1 }
+  refusal.bx:5:1: error: a ${ } block uses `_latte_c`, and names starting with `_latte_` belong to latte-bx — it binds them in the generated render for loop keys, fragment builders and component setters. Rename it
+refused: _latte_inner, the fragment builder
+  | <div class={_latte_inner}>x</div>
+  refusal.bx:5:6: error: an attribute expression uses `_latte_inner`, and names starting with `_latte_` belong to latte-bx — it binds them in the generated render for loop keys, fragment builders and component setters. Rename it
+refused: any other _latte_ name
+  | $_latte_anything
+  refusal.bx:5:1: error: an interpolated expression uses `_latte_anything`, and names starting with `_latte_` belong to latte-bx — it binds them in the generated render for loop keys, fragment builders and component setters. Rename it
+accepted: self.b is a field, not the Builder
+accepted: self._latte_x is a member name
+accepted: a longer name that starts with b
+accepted: b inside a string or a comment is not a binding
+
+======== key= away from a $for body's direct child ========
+refused: at the top level
+  | <li key={self.id}>x</li>
+  refusal.bx:5:5: error: key={ } names the identity of one row of a $for, so it belongs on a tag directly inside a $for body. Here it names nothing the differ can use
+refused: on a grandchild of the body
+  | $for row: int in self.rows { <ul><li key={row}>x</li></ul> }
+  refusal.bx:5:38: error: key={ } names the identity of one row of a $for, so it belongs on a tag directly inside a $for body. Here it names nothing the differ can use
+refused: on a component tag
+  | <Hint key={self.id} />
+  refusal.bx:5:7: error: key={ } names the identity of one row of a $for, so it belongs on a tag directly inside a $for body. Here it names nothing the differ can use
+refused: inside an $if, not a $for
+  | $if self.on { <li key={self.id}>x</li> }
+  refusal.bx:5:19: error: key={ } names the identity of one row of a $for, so it belongs on a tag directly inside a $for body. Here it names nothing the differ can use
+refused: two keys in one $for body
+  | $for row: int in self.rows { <li key={row}>a</li><li key={row}>b</li> }
+  refusal.bx:5:54: error: two key={ } in one $for body — a row has one identity, so put the key on the one tag that is the row
+refused: key with no expression
+  | <li key="1">x</li>
+  refusal.bx:5:5: error: key needs an expression: key={row.id}
+accepted: on a direct child of a $for body
+accepted: a keyless $for is indexed instead
+
+======== ref= on a component tag is an assignment ========
+accepted: ref= on a component tag, written first
+  | <Hint ref={self.panel} label={self.label} />
+  partial class Refusal {
+      pub override fn render(b: Builder) {
+          b.component<Hint>(0, fn(_latte_c: Hint) {  // refusal.bx:5
+              _latte_c.label = self.label
+              self.panel = some(_latte_c)
+          })
+      }
+  }
+  
+accepted: ref= on an element is still a Reference sink
+  | <input ref={self.box} name="boxed" />
+  partial class Refusal {
+      pub override fn render(b: Builder) {
+          b.open(0, "input")  // refusal.bx:5
+          b.reference(1, fn(_latte_handle: Reference) { self.box = _latte_handle })
+          b.attr(2, "name", "boxed")
+          b.close()
+      }
+  }
+  
+refused: ref= still needs a place, not a call
+  | <Hint ref={self.find()} />
+  refusal.bx:5:7: error: ref={self.find()} is not a field to write the handle into — ref needs a place, such as ref={self.input}
+refused: ref= still needs an expression
+  | <Hint ref="x" />
+  refusal.bx:5:7: error: ref needs an expression: ref={self.input}
+
+======== a <beans> import that collides with the generated one ========
+refused: Builder, imported again
+  | <beans>
+  | package pages
+  | import {Builder} from latte
+  | pub partial class Refusal extends Component { pub fn init() {} }
+  | </beans>
+  | <p>x</p>
+  refusal.bx:3:1: error: the <beans> block imports Builder from latte, and the generated file already does — latte-bx writes `import {Builder, Callback, Component, FocusEvent, InputEvent, KeyboardEvent, MouseEvent, Reference, SubmitEvent} from latte` at the top of every file it makes, and two imports of one name is an error in a file you did not write. Remove this one
+refused: two of them at once
+  | <beans>
+  | package pages
+  | import {MouseEvent, InputEvent} from latte
+  | pub partial class Refusal extends Component { pub fn init() {} }
+  | </beans>
+  | <p>x</p>
+  refusal.bx:3:1: error: the <beans> block imports MouseEvent from latte, and the generated file already does — latte-bx writes `import {Builder, Callback, Component, FocusEvent, InputEvent, KeyboardEvent, MouseEvent, Reference, SubmitEvent} from latte` at the top of every file it makes, and two imports of one name is an error in a file you did not write. Remove this one
+  refusal.bx:3:1: error: the <beans> block imports InputEvent from latte, and the generated file already does — latte-bx writes `import {Builder, Callback, Component, FocusEvent, InputEvent, KeyboardEvent, MouseEvent, Reference, SubmitEvent} from latte` at the top of every file it makes, and two imports of one name is an error in a file you did not write. Remove this one
+refused: Component, which the class extends
+  | <beans>
+  | package pages
+  | import {Component} from latte
+  | pub partial class Refusal extends Component { pub fn init() {} }
+  | </beans>
+  | <p>x</p>
+  refusal.bx:3:1: error: the <beans> block imports Component from latte, and the generated file already does — latte-bx writes `import {Builder, Callback, Component, FocusEvent, InputEvent, KeyboardEvent, MouseEvent, Reference, SubmitEvent} from latte` at the top of every file it makes, and two imports of one name is an error in a file you did not write. Remove this one
+accepted: a latte name the generated line does not bind
+accepted: the same name under an alias binds a different one
+accepted: the same name from somewhere else is not a collision here
+
+======== the <beans> block ========
+refused: no block at all
+  | <p>x</p>
+  refusal.bx:1:1: error: refusal.bx has no <beans> block — a component file holds one, declaring the partial class the markup renders into. Add <beans>pub partial class Refusal extends Component { pub fn init() {} }</beans>
+refused: an empty file
+  | 
+  refusal.bx:1:1: error: refusal.bx has no <beans> block — a component file holds one, declaring the partial class the markup renders into. Add <beans>pub partial class Refusal extends Component { pub fn init() {} }</beans>
+refused: a block declaring no partial class
+  | <beans>
+  | package pages
+  | </beans>
+  | <p>x</p>
+  refusal.bx:1:8: error: refusal.bx has to declare `partial class Refusal` — the class is named after the file, and latte-bx writes the other half of it. The block declares nothing
+refused: a block declaring the wrong class
+  | <beans>
+  | package pages
+  | pub partial class Other extends Component { pub fn init() {} }
+  | </beans>
+  | <p>x</p>
+  refusal.bx:1:8: error: refusal.bx has to declare `partial class Refusal` — the class is named after the file, and latte-bx writes the other half of it. The block declares Other
+refused: capitalised
+  | <Beans>
+  | package pages
+  | </Beans>
+  | <p>x</p>
+  refusal.bx:1:1: error: the Beans block is spelled <beans>, all lowercase — a capitalised tag names a component
+  refusal.bx:3:1: error: a closing tag with nothing open — remove it, or add the opening tag it closes
+  refusal.bx:1:1: error: refusal.bx has no <beans> block — a component file holds one, declaring the partial class the markup renders into. Add <beans>pub partial class Refusal extends Component { pub fn init() {} }</beans>
+refused: a second block
+  | <beans>
+  | package pages
+  | pub partial class Refusal extends Component { pub fn init() {} }
+  | </beans>
+  | <beans>
+  | package pages
+  | </beans>
+  refusal.bx:5:1: error: a second <beans> block — one file holds one, and the first is at 1:1
+refused: attributes on the block
+  | <beans lang="beans">
+  | package pages
+  | </beans>
+  refusal.bx:1:1: error: <beans> takes no attributes — it holds Beans and nothing else
+  refusal.bx:1:21: error: refusal.bx has to declare `partial class Refusal` — the class is named after the file, and latte-bx writes the other half of it. The block declares nothing
+refused: never closed
+  | <beans>
+  | package pages
+  refusal.bx:1:1: error: <beans> was never closed — add </beans>
+  refusal.bx:1:1: error: refusal.bx has no <beans> block — a component file holds one, declaring the partial class the markup renders into. Add <beans>pub partial class Refusal extends Component { pub fn init() {} }</beans>
+refused: a second block, written inside a tag
+  | <beans>
+  | package pages
+  | pub partial class Refusal extends Component { pub fn init() {} }
+  | </beans>
+  | <div><beans>package other</beans></div>
+  refusal.bx:5:6: error: a <beans> block is only legal at the top level of a file, not inside markup — a block written inside a tag or a block would be lifted out of it, so the Beans would run somewhere other than where it is written and the element around it would render empty
+refused: the only block, written inside a tag
+  | <div>
+  |   <beans>
+  | package pages
+  | pub partial class Refusal extends Component { pub fn init() {} }
+  |   </beans>
+  |   x
+  | </div>
+  refusal.bx:2:3: error: a <beans> block is only legal at the top level of a file, not inside markup — a block written inside a tag or a block would be lifted out of it, so the Beans would run somewhere other than where it is written and the element around it would render empty
+  refusal.bx:1:1: error: refusal.bx has no <beans> block — a component file holds one, declaring the partial class the markup renders into. Add <beans>pub partial class Refusal extends Component { pub fn init() {} }</beans>
+refused: the only block, written inside a $if body
+  | $if true {
+  |   <beans>
+  | package pages
+  | pub partial class Refusal extends Component { pub fn init() {} }
+  |   </beans>
+  | }
+  refusal.bx:2:3: error: a <beans> block is only legal at the top level of a file, not inside markup — a block written inside a tag or a block would be lifted out of it, so the Beans would run somewhere other than where it is written and the element around it would render empty
+  refusal.bx:1:1: error: refusal.bx has no <beans> block — a component file holds one, declaring the partial class the markup renders into. Add <beans>pub partial class Refusal extends Component { pub fn init() {} }</beans>
+refused: no package, and no directory to take one from
+  | <beans>
+  | pub partial class Refusal extends Component { pub fn init() {} }
+  | </beans>
+  | <p>x</p>
+  refusal.bx:1:1: error: refusal.bx sits in no directory, so latte-bx cannot tell what package it belongs to — declare one in the <beans> block, as `package pages`
+refused: a generic component may not spell its type parameter
+  | <beans>
+  | package pages
+  | pub partial class Refusal<T> extends Component { pub rows: List<T> = []; pub fn init() {} }
+  | </beans>
+  | $for row: T in self.rows { <p>x</p> }
+  refusal.bx:5:1: error: a $for header spells T, and the generated half of a generic component may not — `partial class` may carry its type parameters on exactly one part, so latte-bx writes `partial class` with none and T is not a name it can use (probes/ANSWERS.md §4). Drop the annotation and let it be inferred, or move the code that needs T into the <beans> block
+accepted: a generic component that lets the element type be inferred
+accepted: a comment mentioning partial class is not a declaration
+
+======== live, and the bind: shapes ========
+refused: live on its own
+  | <span live>$self.ticks</span>
+  refusal.bx:5:7: error: a live subtree is not in this version — signals are W7, and marking a subtree live before they exist would compile to an ordinary render that never updates the way the attribute promises
+refused: live with a value
+  | <div live="yes">y</div>
+  refusal.bx:5:6: error: a live subtree is not in this version — signals are W7, and marking a subtree live before they exist would compile to an ordinary render that never updates the way the attribute promises
+refused: bind:value on a <select>
+  | <select bind:value={self.choice}><option>a</option></select>
+  refusal.bx:5:9: error: bind:value on a <select> cannot set the initial selection: a select's value is not an attribute, it is which <option> carries selected. Write selected={...} on the option and on:change={...} for the write-back
+refused: bind:value on anything else
+  | <p bind:value={self.note}>x</p>
+  refusal.bx:5:4: error: bind:value works on an <input> and a <textarea>, and this is a <p>
+refused: bind:checked away from an <input>
+  | <select bind:checked={self.on}></select>
+  refusal.bx:5:9: error: bind:checked works on an <input>, and this is a <select>
+refused: bind:checked with a conversion
+  | <input bind:checked.int={self.on} />
+  refusal.bx:5:8: error: bind:checked takes no conversion — it is already a bool
+refused: a bind: target latte does not have
+  | <input bind:text={self.note} />
+  refusal.bx:5:8: error: bind:text is not a binding latte has — the two are bind:value and bind:checked
+refused: a conversion latte does not have
+  | <input bind:value.date={self.note} />
+  refusal.bx:5:8: error: bind:value.date is not a conversion latte has — the three are .int, .float and .bool
+refused: bind: with no place
+  | <input bind:value />
+  refusal.bx:5:8: error: bind:value needs the field to bind: bind:value={self.note}
+refused: a bind: place that is a call
+  | <input bind:value={self.get()} />
+  refusal.bx:5:8: error: bind:value={self.get()} is not a field to write back to — a binding needs a place, such as bind:value={self.note}
+refused: bind: on a component tag
+  | <Hint bind:value={self.note} />
+  refusal.bx:5:7: error: bind:value is a two-way binding on a form control and Hint is a component — pass the value down as a parameter and take the change back through a Callback
+refused: a <textarea> that binds AND has children
+  | <textarea bind:value={self.note}>extra</textarea>
+  refusal.bx:5:11: error: a <textarea> with bind:value has its value as its content, so it cannot have children as well — remove them, or drop the binding and write the text yourself
+accepted: bind:value on an <input>
+accepted: bind:value on a <textarea>
+accepted: the three conversions
+accepted: bind:checked on an <input>
+accepted: a select with an explicit selected= and on:change
+
+126 refusal(s) fired, 52 control(s) compiled
 ======== markup refusals: every check passed ========
