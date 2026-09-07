@@ -383,6 +383,16 @@ pub class Emitter {
             self.report(at, "{what} spans more than one line, and it is interpolated into a generated string — a Beans string literal cannot span lines, and joining the lines would swallow the rest of a // comment. Put the expression on one line, or compute it in a $\{ ... \} block and interpolate the result")
             return false
         }
+        // **Unreachable from markup the parser accepts, and kept anyway.**
+        // Every shape that breaks this probe — `$(self.f("{"))`, an attribute
+        // `class={self.f("{")}` — breaks the markup-level `$( )` and `{ }`
+        // scanners first, and the author gets *their* message ("a {...} value
+        // was never closed — a } inside a string or a comment does not close
+        // it"), which is the better one because it names what they typed.
+        // `tests/markup_refusals.b` records that, and deleting this branch
+        // leaves the golden unchanged. It stays because the two scanners are
+        // separate code and the day they disagree this is the difference
+        // between a refusal and a generated file beansc cannot lex.
         let probe: string = "\"\{{code}\}\""
         if end_of_string(probe, 0) != probe.len() {
             self.report(at, "{what} cannot be interpolated: with `\"\{\"` around it the result does not read as one Beans string. A nested string holding an unmatched brace does this — write \\\{ or \\\} inside it, exactly as you would in any Beans string")
@@ -676,6 +686,12 @@ pub class Emitter {
             }
             none => {}
         }
+        // Unreachable by construction: `Parser.parse_beans` never returns a
+        // node into the tree — it lifts the block into `Document.beans`, and
+        // refuses one written at any nesting depth above zero. Kept, with a
+        // message of its own, because it costs nothing and because the day
+        // that invariant changes this is the difference between a diagnostic
+        // about the program and one about the emitter.
         match node as? BeansNode {
             some(_) => {
                 self.report(node.span, "a <beans> block is only legal at the top level of a file, not inside markup")
@@ -1063,6 +1079,14 @@ pub class Emitter {
             some(_) => { return }
             none => {}
         }
+        // Unreachable by construction: `Parser.classify` sends every attribute
+        // on a component tag to `classify_parameter`, which refuses `attrs`,
+        // `preserve` and any name that is not a Beans field, and refuses `on:`
+        // and `bind:` in `classify_event`/`classify_bind` before that. So no
+        // Splat, Preserve, Event or Bind attribute can reach a component tag.
+        // Deleting this line leaves `tests/markup_refusals.b`'s golden
+        // unchanged, which is the evidence, and it stays for the same reason
+        // the BeansNode branch above does.
         self.report(attr.span, "{attr.name()} is not something a component tag can take — a component takes its parameters by their Beans names")
     }
 

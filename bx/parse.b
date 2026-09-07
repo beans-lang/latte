@@ -98,6 +98,15 @@ pub class Parser {
     pub lex: Lexer = new Lexer("")
     /// The `<beans>` element, once one has been seen. One per file.
     pub beans: Option<BeansNode> = none
+    /// How deep inside a tag or a block the cursor is. Zero at the top level of
+    /// the file, which is the only place a `<beans>` block is legal.
+    ///
+    /// `parse_beans` never puts a node in the tree — it lifts the block into
+    /// `beans` — so without this counter a `<beans>` written inside a `<div>`
+    /// was **silently hoisted out**: the Beans came through at the top of the
+    /// generated file and the `<div>` rendered empty. The emitter carries a
+    /// message for that shape and could never reach it.
+    nesting: int = 0
 
     pub fn init(lex: Lexer) {
         self.lex = lex
@@ -149,6 +158,11 @@ pub class Parser {
     /// tag, which is the one place a `$slot:name { ... }` may *define* a
     /// template rather than place one.
     pub fn parse_nodes(stop: int, component_children: bool) -> List<Node> {
+        // Every recursive call reads the inside of a tag or a block; only the
+        // document's own call passes STOP_EOF. So this one line is the whole
+        // "am I at the top level" question, and it cannot be forgotten at one
+        // of the eight call sites.
+        if stop != STOP_EOF { self.nesting = self.nesting + 1 }
         let out: List<Node> = []
         var text: List<string> = []
         var text_at: Span = self.span()
@@ -228,6 +242,7 @@ pub class Parser {
             self.lex.bump()
         }
         flush_text(out, text, text_at, has_text)
+        if stop != STOP_EOF { self.nesting = self.nesting - 1 }
         return move out
     }
 
@@ -394,6 +409,12 @@ pub class Parser {
         }
         let code: string = self.lex.src.slice(start, close)
         self.lex.advance_to(close + 8)
+        // Consumed first, so the rest of the file still parses, and only then
+        // refused: a block inside a tag or a block is not this file's block.
+        if self.nesting > 0 {
+            self.report(at, "a <beans> block is only legal at the top level of a file, not inside markup — a block written inside a tag or a block would be lifted out of it, so the Beans would run somewhere other than where it is written and the element around it would render empty")
+            return none
+        }
         match self.beans {
             some(first) => {
                 self.report(at, "a second <beans> block — one file holds one, and the first is at {first.span.show()}")

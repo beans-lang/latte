@@ -309,8 +309,18 @@ pub class Suite {
                      lines([r#"$for row: int in self.rows {"#, r#"  <li key={row +"#, r#"    1}>x</li>"#, r#"}"#]))
         self.refused("a bind:value place spanning lines is not even a place", r#"pub note: string = """#,
                      lines([r#"<input bind:value={self."#, r#"  note} />"#]))
-        self.refused("a nested string holding an unmatched brace", r#"pub fn f(s: string) -> string { return s }"#,
+        // A nested string holding an unmatched brace. The emitter has a
+        // refusal for it — "with `"{"` around it the result does not read as
+        // one Beans string" — and **nothing can reach it**: the markup-level
+        // `$( )` and `{ }` scanners refuse the same shapes first, and their
+        // message is the better one because it names what the author typed.
+        // Deleting the emitter's branch leaves this golden unchanged; that is
+        // recorded in bx/emit.b beside the branch, and it is why the branch is
+        // kept rather than removed.
+        self.refused("a nested string holding an unmatched brace, in a $( )", r#"pub fn f(s: string) -> string { return s }"#,
                      r#"<p>$(self.f("{"))</p>"#)
+        self.refused("the same brace in an attribute expression", r#"pub fn f(s: string) -> string { return s }"#,
+                     r#"<div class={self.f("{")}>x</div>"#)
 
         self.accepted("the same expression on one line", r#"pub a: int = 0; pub c: int = 0"#,
                       r#"<p>$(self.a + self.c)</p>"#)
@@ -318,6 +328,15 @@ pub class Suite {
                       lines([r#"<div on:click={fn(e: MouseEvent) {"#, r#"    self.n += 1"#, r#"}}>x</div>"#]))
         self.accepted("a nested string with the brace escaped", r#"pub fn f(s: string) -> string { return s }"#,
                       r#"<p>$(self.f("\{"))</p>"#)
+        // A closing brace, a raw string and an index all survive the round trip
+        // into `"{ … }"`, and beansc lexes every one of them. These are the
+        // cases the refusal above must NOT fire on.
+        self.accepted("a closing brace inside a nested string", r#"pub fn f(s: string) -> string { return s }"#,
+                      r#"<p>$(self.f("}"))</p>"#)
+        self.accepted("a raw string inside the interpolation", r#"pub fn f(s: string) -> string { return s }"#,
+                      r##"<p>$(self.f(r#"}"#))</p>"##)
+        self.accepted("an indexed chain", r#"pub rows: List<string> = []"#, r#"<p>$self.rows[0]</p>"#)
+        self.accepted("a called chain", r#"pub rows: List<string> = []"#, r#"<p>$self.rows.len()</p>"#)
     }
 
     // ================================================================ SECTION 5
@@ -465,6 +484,313 @@ pub class Suite {
         self.accepted("an empty raw-text body emits no frame at all", "",
                       r#"<script src="/app.js"></script>"#)
     }
+
+    // ================================================================ SECTION 9
+    //
+    // **Markup that binds `b`, or a `_latte_` name.** The generated render
+    // writes every call on a Builder named `b`, and it binds the author's code
+    // into the same scope. `$for b in self.books` would rebind it, and
+    // `b.region(0, …)` would silently become a call on a book — nothing about
+    // which reads as wrong, which is why it is refused rather than documented.
+    // Every other name latte-bx binds carries the `_latte_` prefix, and that
+    // prefix is refused too, so `b` is the only word this costs anyone.
+    //
+    // `check_code` guards twenty sites, and every one of them is below. A code
+    // site that grows without the guard is a hole with no other alarm on it.
+
+    fn reserved_names() {
+        self.heading("markup that binds b, or a _latte_ name")
+        self.refused("a $for header — the case that matters", r#"pub books: List<int> = []"#,
+                     r#"$for b in self.books { <p>x</p> }"#)
+        self.refused("a lone interpolated expression", "", r#"$b"#)
+        self.refused("an expression merged with the text beside it", "", r#"<p>hi $b</p>"#)
+        self.refused("$html", "", r#"$html(b)"#)
+        self.refused("a $\{ \} statement block", "", r#"${ let b: int = 1 }"#)
+        self.refused("an attribute expression", "", r#"<div class={b}>x</div>"#)
+        self.refused("an event handler", "", r#"<div on:click={fn(e: MouseEvent) { b.close() }}>x</div>"#)
+        self.refused("attrs= splat", "", r#"<div attrs={b}>x</div>"#)
+        self.refused("ref= on an element", "", r#"<input ref={b} />"#)
+        self.refused("a bind: place", "", r#"<input bind:value={b} />"#)
+        self.refused("ref= on a component tag", "", r#"<Hint ref={b} />"#)
+        self.refused("a component parameter", "", r#"<Hint label={b} />"#)
+        self.refused("an $if condition", "", r#"$if b { <p>x</p> }"#)
+        self.refused("an else-if condition", r#"pub on: bool = false"#,
+                     r#"$if self.on { <p>x</p> } else if b { <p>y</p> }"#)
+        self.refused("a key= expression", r#"pub rows: List<int> = []"#,
+                     r#"$for row: int in self.rows { <li key={b}>x</li> }"#)
+        self.refused("a $match subject", "", r#"$match b { _ => { <p>x</p> } }"#)
+        self.refused("a $match pattern", r#"pub v: Option<int> = none"#,
+                     r#"$match self.v { some(b) => { <p>x</p> } none => { <p>y</p> } }"#)
+        self.refused("a $slot expression", "", r#"$slot(b)"#)
+        self.refused("a $slot argument", "", r#"<Hint>$slot:row as b</Hint>"#)
+        self.refused("a $slot parameter name", "",
+                     r#"<Hint>$slot:row as b: int { <p>x</p> }</Hint>"#)
+        self.refused("a $slot parameter type", "",
+                     r#"<Hint>$slot:row as v: b { <p>x</p> }</Hint>"#)
+
+        self.refused("_latte_row_0, the loop index latte-bx binds", r#"pub rows: List<int> = []"#,
+                     r#"$for _latte_row_0 in self.rows { <p>x</p> }"#)
+        self.refused("_latte_c, the component setter", "", r#"${ let _latte_c: int = 1 }"#)
+        self.refused("_latte_inner, the fragment builder", "", r#"<div class={_latte_inner}>x</div>"#)
+        self.refused("any other _latte_ name", "", r#"$_latte_anything"#)
+
+        // The controls. Only a **bare** `b` is refused, and only a `_latte_`
+        // name that is not a member: both predicates step over a name that
+        // follows a dot, so a field of your own called either is untouched.
+        self.accepted("self.b is a field, not the Builder", r#"pub b: int = 0"#, r#"$self.b"#)
+        self.accepted("self._latte_x is a member name", r#"pub _latte_x: int = 0"#, r#"$self._latte_x"#)
+        self.accepted("a longer name that starts with b", r#"pub books: List<int> = []"#,
+                      r#"$for bx in self.books { <p>x</p> }"#)
+        self.accepted("b inside a string or a comment is not a binding", "",
+                      r#"<p>$(self.title("b") /* b */)</p>"#)
+    }
+
+    // =============================================================== SECTION 10
+    //
+    // **`key=` where the differ cannot use it.** A key names the identity of
+    // one row so a reorder is a move instead of a rewrite. It is hoisted off a
+    // **direct child of a `$for` body**; anywhere else it names nothing, and
+    // silently emitting an attribute called `key` into the page would be the
+    // worst of both.
+
+    fn key_placement() {
+        self.heading("key= away from a $for body's direct child")
+        self.refused("at the top level", r#"pub id: int = 0"#, r#"<li key={self.id}>x</li>"#)
+        self.refused("on a grandchild of the body", r#"pub rows: List<int> = []"#,
+                     r#"$for row: int in self.rows { <ul><li key={row}>x</li></ul> }"#)
+        self.refused("on a component tag", r#"pub id: int = 0"#, r#"<Hint key={self.id} />"#)
+        self.refused("inside an $if, not a $for", r#"pub on: bool = false; pub id: int = 0"#,
+                     r#"$if self.on { <li key={self.id}>x</li> }"#)
+        self.refused("two keys in one $for body", r#"pub rows: List<int> = []"#,
+                     r#"$for row: int in self.rows { <li key={row}>a</li><li key={row}>b</li> }"#)
+        self.refused("key with no expression", "", r#"<li key="1">x</li>"#)
+
+        self.accepted("on a direct child of a $for body", r#"pub rows: List<int> = []"#,
+                      r#"$for row: int in self.rows { <li key={row}>x</li> }"#)
+        self.accepted("a keyless $for is indexed instead", r#"pub rows: List<int> = []"#,
+                      r#"$for row: int in self.rows { <li>x</li> }"#)
+    }
+
+    // =============================================================== SECTION 11
+    //
+    // **`ref=` on a component tag is NOT refused.** It was, until
+    // `probes/BUILDER.md` resolved it the other way: every attribute-position
+    // call needs `in_attributes`, only `open()` sets it, and a component tag
+    // opens no element — so a `Reference` there had no spelling any emission
+    // could reach. The setup closure assigns instead.
+    //
+    // This section is a **control**, and it is here so that reinstating the
+    // refusal fails the suite. The emission is printed because what it compiles
+    // to is the whole point: the concrete type, no downcast, and no sequence
+    // number of its own.
+
+    fn component_ref() {
+        self.heading("ref= on a component tag is an assignment")
+        self.accepted_showing("ref= on a component tag, written first",
+                              r#"pub panel: Option<Hint> = none; pub label: string = """#,
+                              r#"<Hint ref={self.panel} label={self.label} />"#)
+        self.accepted_showing("ref= on an element is still a Reference sink",
+                              r#"pub box: Reference = new Reference()"#,
+                              r#"<input ref={self.box} name="boxed" />"#)
+        self.refused("ref= still needs a place, not a call", "", r#"<Hint ref={self.find()} />"#)
+        self.refused("ref= still needs an expression", "", r#"<Hint ref="x" />"#)
+    }
+
+    // =============================================================== SECTION 12
+    //
+    // **A `<beans>` import that collides with the generated one.** Every
+    // generated file opens with `import {Builder, Callback, Component,
+    // FocusEvent, InputEvent, KeyboardEvent, MouseEvent, Reference,
+    // SubmitEvent} from latte`. An author who imports one of those names again
+    // gets "already declared" in a file they did not write, about a line they
+    // did not type. Refused where the line they did type is.
+
+    fn import_collisions() {
+        self.heading("a <beans> import that collides with the generated one")
+        self.refused_file("Builder, imported again", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"import {Builder} from latte"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<p>x</p>"#]))
+        self.refused_file("two of them at once", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"import {MouseEvent, InputEvent} from latte"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<p>x</p>"#]))
+        self.refused_file("Component, which the class extends", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"import {Component} from latte"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<p>x</p>"#]))
+
+        self.accepted_file("a latte name the generated line does not bind", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"import {Serializer} from latte"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<p>x</p>"#]))
+        self.accepted_file("the same name under an alias binds a different one", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"import {Component as Base} from latte"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<p>x</p>"#]))
+        self.accepted_file("the same name from somewhere else is not a collision here", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"import {Builder} from std.fmt"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<p>x</p>"#]))
+    }
+
+    // =============================================================== SECTION 13
+    //
+    // **The `<beans>` block itself.** One per file, all lowercase, at the top
+    // level, declaring the partial class the file's name calls for.
+
+    fn beans_block() {
+        self.heading("the <beans> block")
+        self.refused_file("no block at all", r#"<p>x</p>"#)
+        self.refused_file("an empty file", "")
+        self.refused_file("a block declaring no partial class", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"</beans>"#,
+            r#"<p>x</p>"#]))
+        self.refused_file("a block declaring the wrong class", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"pub partial class Other extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<p>x</p>"#]))
+        self.refused_file("capitalised", lines([
+            r#"<Beans>"#,
+            r#"package pages"#,
+            r#"</Beans>"#,
+            r#"<p>x</p>"#]))
+        self.refused_file("a second block", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"</beans>"#]))
+        self.refused_file("attributes on the block", lines([
+            r#"<beans lang="beans">"#,
+            r#"package pages"#,
+            r#"</beans>"#]))
+        self.refused_file("never closed", lines([
+            r#"<beans>"#,
+            r#"package pages"#]))
+        self.refused_file("a second block, written inside a tag", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<div><beans>package other</beans></div>"#]))
+        // The only block in the file, written inside a tag. This was **silently
+        // hoisted out** until the parser learned its nesting depth: the Beans
+        // came through at the top of the generated file and the <div> rendered
+        // empty. The emitter has carried a message for the shape all along and
+        // could never reach it, because parse_beans lifts the block into
+        // Document.beans and never puts a node in the tree.
+        self.refused_file("the only block, written inside a tag", lines([
+            r#"<div>"#,
+            r#"  <beans>"#,
+            r#"package pages"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"  </beans>"#,
+            r#"  x"#,
+            r#"</div>"#]))
+        self.refused_file("the only block, written inside a $if body", lines([
+            r#"$if true {"#,
+            r#"  <beans>"#,
+            r#"package pages"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"  </beans>"#,
+            r#"}"#]))
+        self.refused_file("no package, and no directory to take one from", lines([
+            r#"<beans>"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<p>x</p>"#]))
+        self.refused_file("a generic component may not spell its type parameter", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"pub partial class Refusal<T> extends Component { pub rows: List<T> = []; pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"$for row: T in self.rows { <p>x</p> }"#]))
+
+        self.accepted_file("a generic component that lets the element type be inferred", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"pub partial class Refusal<T> extends Component { pub rows: List<T> = []; pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"$for row in self.rows { <p>x</p> }"#]))
+        self.accepted_file("a comment mentioning partial class is not a declaration", lines([
+            r#"<beans>"#,
+            r#"package pages"#,
+            r#"// partial class Ghost — a comment, not a declaration"#,
+            r#"pub partial class Refusal extends Component { pub fn init() {} }"#,
+            r#"</beans>"#,
+            r#"<p>x</p>"#]))
+    }
+
+    // =============================================================== SECTION 14
+    //
+    // **`live`, and every `bind:` shape.** `live` is W7's signal tier: marking
+    // a subtree live before signals exist would compile to an ordinary render
+    // that never updates the way the attribute promises, so it is refused
+    // rather than accepted and ignored. `bind:value` on a `<select>` is the
+    // other one PLAN.md names: a select's value is not an attribute, it is
+    // which `<option>` carries `selected`, so a binding there would set nothing
+    // and look right.
+
+    fn bindings_and_live() {
+        self.heading("live, and the bind: shapes")
+        self.refused("live on its own", r#"pub ticks: int = 0"#, r#"<span live>$self.ticks</span>"#)
+        self.refused("live with a value", "", r#"<div live="yes">y</div>"#)
+        self.refused("bind:value on a <select>", r#"pub choice: string = """#,
+                     r#"<select bind:value={self.choice}><option>a</option></select>"#)
+        self.refused("bind:value on anything else", r#"pub note: string = """#,
+                     r#"<p bind:value={self.note}>x</p>"#)
+        self.refused("bind:checked away from an <input>", r#"pub on: bool = false"#,
+                     r#"<select bind:checked={self.on}></select>"#)
+        self.refused("bind:checked with a conversion", r#"pub on: bool = false"#,
+                     r#"<input bind:checked.int={self.on} />"#)
+        self.refused("a bind: target latte does not have", r#"pub note: string = """#,
+                     r#"<input bind:text={self.note} />"#)
+        self.refused("a conversion latte does not have", r#"pub note: string = """#,
+                     r#"<input bind:value.date={self.note} />"#)
+        self.refused("bind: with no place", "", r#"<input bind:value />"#)
+        self.refused("a bind: place that is a call", "", r#"<input bind:value={self.get()} />"#)
+        self.refused("bind: on a component tag", r#"pub note: string = """#,
+                     r#"<Hint bind:value={self.note} />"#)
+        self.refused("a <textarea> that binds AND has children", r#"pub note: string = """#,
+                     r#"<textarea bind:value={self.note}>extra</textarea>"#)
+
+        self.accepted("bind:value on an <input>", r#"pub note: string = """#,
+                      r#"<input bind:value={self.note} />"#)
+        self.accepted("bind:value on a <textarea>", r#"pub note: string = """#,
+                      r#"<textarea bind:value={self.note}></textarea>"#)
+        self.accepted("the three conversions", r#"pub n: int = 0; pub r: float = 0.0; pub f: bool = false"#,
+                      r#"<input bind:value.int={self.n} /><input bind:value.float={self.r} /><input bind:value.bool={self.f} />"#)
+        self.accepted("bind:checked on an <input>", r#"pub on: bool = false"#,
+                      r#"<input type="checkbox" bind:checked={self.on} />"#)
+        self.accepted("a select with an explicit selected= and on:change",
+                      r#"pub choice: string = """#,
+                      r#"<select on:change={fn(e: InputEvent) { self.choice = e.value }}><option selected={self.choice == "a"}>a</option></select>"#)
+    }
 }
 
 fn main() {
@@ -477,6 +803,12 @@ fn main() {
     suite.unsafe_attribute_names()
     suite.refused_url_schemes()
     suite.raw_text_bodies()
+    suite.reserved_names()
+    suite.key_placement()
+    suite.component_ref()
+    suite.import_collisions()
+    suite.beans_block()
+    suite.bindings_and_live()
 
     io.println("")
     io.println("{suite.refusals} refusal(s) fired, {suite.controls} control(s) compiled")
