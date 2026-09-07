@@ -268,8 +268,15 @@ pub class Parser {
         }
 
         let component: bool = names_a_component(tag)
-        if tag.contains("<") {
-            self.report(at, "a closed generic component tag is not supported — reflection cannot construct one and the two backends disagree about reading its fields (BLOCKERS.md B1)")
+        // `<Grid<int>>`. A tag name stops at the `<` — `is_name_byte` does not
+        // include one — so this is the byte that follows the name, not a
+        // substring of it. The refusal used to ask `tag.contains("<")`, which
+        // no tag can ever answer yes to, and `<Grid<int>>` fell through to
+        // "a < inside <Grid> — the tag before it is missing its >".
+        if component && self.peek() == 60 {
+            self.report(at, "a closed generic component tag is not supported — reflection cannot construct {tag}<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends {tag}<Order>")
+            self.skip_past(62)
+            return none
         }
         let node: ElementNode = ElementNode.of(tag, component, at)
         self.parse_attributes(node)
@@ -394,7 +401,9 @@ pub class Parser {
             }
             none => {}
         }
-        self.beans = some(BeansNode.of(code, at))
+        let block: BeansNode = BeansNode.of(code, at)
+        block.start = start
+        self.beans = some(block)
         return none
     }
 
@@ -444,7 +453,12 @@ pub class Parser {
         }
         pieces.push(body.slice(run, body.len()))
         self.lex.advance_to(close + closer.len())
-        node.children.push(RawTextNode.of(pieces.join(""), at))
+        let text: string = pieces.join("")
+        // `<script src="/app.js"></script>` has an empty body, and an empty
+        // frame is a frame the differ still walks. Nothing serializes it, so
+        // nothing is lost by leaving it out.
+        if text.len() == 0 { return }
+        node.children.push(RawTextNode.of(text, at))
     }
 
     // -------------------------------------------------------- attributes
@@ -568,7 +582,11 @@ pub class Parser {
             return some(PreserveAttr.of(at))
         }
         if is_inline_handler_attribute(name) {
-            self.report(at, "{name} is an inline script handler and latte refuses it — a handler exists only as an id and the client never evaluates a string. Write on:{name.slice(2, name.len())}=\{fn(e: <EventType>) \{ ... \}\} instead")
+            if names_an_event_handler(name) {
+                self.report(at, "{name} is an inline script handler and latte refuses it — a handler exists only as an id and the client never evaluates a string. Write on:{name.slice(2, name.len()).to_lower()}=\{fn(e: <EventType>) \{ ... \}\} instead")
+            } else {
+                self.report(at, "{name} starts with on, and latte refuses every attribute whose name does — HTML's inline handlers all have that shape, latte.Builder drops such an attribute at run time, and a folded constant subtree would keep what the unfolded walk dropped. Rename it, or write on:<event>=\{...\} if you meant a handler")
+            }
             return none
         }
         if is_boolean_attribute(name) {

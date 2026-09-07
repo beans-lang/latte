@@ -1,0 +1,160 @@
+fold=true: generated frames == hand-written frames: true
+fold=false: generated frames == hand-written frames: true
+folded html == unfolded html: true
+html: <section class="counter"><h2>Count: 1</h2><p class="muted">a fixed line</p><button>Add one</button><input value="hi" placeholder="A note"><aside>Keep going<em>child content</em><b>extra 7</b></aside><ul><li>four</li><li>nine</li></ul><ol><li>red</li><li>blue</li></ol><div data-x="1" class="base">splat</div><div><span>owned</span></div><div><i>raw</i></div><footer class="c"><small>fixed</small></footer></section>
+frames folded=56 unfolded=66
+onclick through the splat is in the html: false
+faults:
+  fault 0: refused splatted inline handler "onclick"
+---- frames, folded ----
+component 0
+0 open section
+  1 attr class=counter
+  2 open h2
+    3 text Count: 1
+  /close
+  4 const <p class="muted">a fixed line</p>
+  7 open button
+    8 on:click -> 1
+    9 text Add one
+  /close
+  10 open input
+    11 attr value=hi
+    12 on:input -> 2
+    13 attr placeholder=A note
+  /close
+  17 child Hint #3
+  18 open ul
+    19 region 4
+      0 open li
+        1 text four
+      /close
+    /region
+    19 region 9
+      0 open li
+        1 text nine
+      /close
+    /region
+  /close
+  20 open ol
+    21 region 0
+      0 open li
+        1 text red
+      /close
+    /region
+    21 region 1
+      0 open li
+        1 text blue
+      /close
+    /region
+  /close
+  22 open div
+    23 splat 2
+    23 attr class=from-the-splat
+    23 attr data-x=1
+    24 attr class=base
+    25 text splat
+  /close
+  26 open div
+    27 preserve
+    28 const <span>owned</span>
+  /close
+  30 open div
+    31 raw <i>raw</i>
+  /close
+  32 const <footer class="c"><small>fixed</small></footer>
+/close
+component 3
+0 open aside
+  1 text Keep going
+  2 fragment
+    0 const <em>child content</em>
+  /fragment
+  3 fragment
+    0 open b
+      1 text extra 7
+    /close
+  /fragment
+/close
+---- frames, unfolded ----
+component 0
+0 open section
+  1 attr class=counter
+  2 open h2
+    3 text Count: 1
+  /close
+  4 open p
+    5 attr class=muted
+    6 text a fixed line
+  /close
+  7 open button
+    8 on:click -> 1
+    9 text Add one
+  /close
+  10 open input
+    11 attr value=hi
+    12 on:input -> 2
+    13 attr placeholder=A note
+  /close
+  17 child Hint #3
+  18 open ul
+    19 region 4
+      0 open li
+        1 text four
+      /close
+    /region
+    19 region 9
+      0 open li
+        1 text nine
+      /close
+    /region
+  /close
+  20 open ol
+    21 region 0
+      0 open li
+        1 text red
+      /close
+    /region
+    21 region 1
+      0 open li
+        1 text blue
+      /close
+    /region
+  /close
+  22 open div
+    23 splat 2
+    23 attr class=from-the-splat
+    23 attr data-x=1
+    24 attr class=base
+    25 text splat
+  /close
+  26 open div
+    27 preserve
+    28 open span
+      29 text owned
+    /close
+  /close
+  30 open div
+    31 raw <i>raw</i>
+  /close
+  32 open footer
+    33 attr class=c
+    34 open small
+      35 text fixed
+    /close
+  /close
+/close
+component 3
+0 open aside
+  1 text Keep going
+  2 fragment
+    0 open em
+      1 text child content
+    /close
+  /fragment
+  3 fragment
+    0 open b
+      1 text extra 7
+    /close
+  /fragment
+/close
