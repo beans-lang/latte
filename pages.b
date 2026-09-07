@@ -663,6 +663,11 @@ pub class PagePlan {
     pub layouts: List<reflect.Type> = []
     pub params: List<ParamBinding> = []
     pub requirements: List<AuthRequirement> = []
+    /// Why this page cannot be served. A plan with a fault stays in the map so
+    /// `report()` can name it and a test can inspect what survived — but
+    /// `find()` never routes to it, so a host that ignored `ok()` still cannot
+    /// serve a page latte refused.
+    pub faults: List<string> = []
     described: Option<reflect.Type> = none
     /// Cached at scan time. W0 measured the lookup as about half of what a
     /// reflective activation costs, and a page activates once per request.
@@ -670,6 +675,8 @@ pub class PagePlan {
     pub fn init() {}
 
     pub fn describes() -> Option<reflect.Type> { return self.described }
+
+    pub fn usable() -> bool { return self.faults.len() == 0 }
 
     pub fn serves(method: string) -> bool {
         return self.methods.contains(method.to_upper())
@@ -775,7 +782,7 @@ pub class PageMap {
         var index: int = 0
         for index < self.pages.len() {
             let plan: PagePlan = self.pages[index]
-            if plan.serves(method) {
+            if plan.usable() && plan.serves(method) {
                 match plan.route.matches(path) {
                     some(values) => {
                         let score: int = plan.route.specificity()
@@ -806,7 +813,7 @@ pub fn scan_pages() -> PageMap {
     let layout_name: string = type_of(Layout).qualified_name()
     let all: List<reflect.Type> = reflect.types()
 
-    var shapes: Map<string, string> = {}
+    var shapes: Map<string, int> = {}
     for described: reflect.Type in all {
         var uses: List<reflect.Annotation> = annotations_named(described.annotations(), "page")
         if uses.len() == 0 {
@@ -829,51 +836,82 @@ pub fn scan_pages() -> PageMap {
             map.faults.push("{described.qualified_name()} carries @page more than once")
             continue
         }
-        var plan: PagePlan = plan_for(described, uses[0], component_name, map)
+        var plan: PagePlan = plan_for(described, uses[0], component_name)
         match plan.describes() {
-            none => { continue }
+            none => {
+                for fault: string in plan.faults { map.faults.push(fault) }
+                continue
+            }
             some(_) => {}
         }
-        resolve_layouts(plan, described, all, layout_name, map)
+        resolve_layouts(plan, described, all, layout_name)
+        // A route that did not parse has no shape worth comparing: an
+        // unparseable pattern collapses to zero segments, which would then
+        // "clash" with the page at "/" and refuse a healthy page for somebody
+        // else's typo.
         let shape: string = plan.route.shape()
         for method: string in plan.methods {
+            if !plan.route.ok() { break }
             let key: string = "{method} {shape}"
             match shapes.get(key) {
-                some(owner) => {
-                    map.faults.push(
-                        "{plan.type_name} and {owner} both answer {method} {shape}; nothing at request time could choose between them")
+                some(first) => {
+                    // BOTH pages are refused, not only the second one. Nothing
+                    // at request time could choose between them, so serving
+                    // either is serving a coin toss — and refusing only the one
+                    // that happened to be scanned second would make the answer
+                    // depend on declaration order across files.
+                    let message: string = "{plan.type_name} and {map.pages[first].type_name} both answer {method} {shape}; nothing at request time could choose between them"
+                    plan.faults.push(message)
+                    map.pages[first].faults.push(message)
                 }
-                none => { shapes[key] = plan.type_name }
+                none => { shapes[key] = map.pages.len() }
             }
         }
         map.pages.push(plan)
     }
+    // The map's fault list is built LAST, because a clash discovered by a later
+    // page adds a fault to an earlier one.
+    for plan: PagePlan in map.pages {
+        for fault: string in plan.faults { map.faults.push(fault) }
+    }
     return map
 }
 
-fn plan_for(described: reflect.Type, use: reflect.Annotation,
-            component_name: string, map: PageMap) -> PagePlan {
+fn plan_for(described: reflect.Type, use: reflect.Annotation, component_name: string) -> PagePlan {
     var plan: PagePlan = new PagePlan()
     plan.type_name = described.qualified_name()
     plan.name = described.name()
 
     if !extends_named(described, component_name) {
-        map.faults.push(
+        plan.faults.push(
             "{plan.type_name} is annotated @page but does not extend {component_name}, so it has nothing to render")
         return plan
     }
 
+    // BLOCKERS.md B1 and B7. A page is activated reflectively — that is what
+    // "no registry" costs — and reflection cannot construct a closed generic at
+    // all (B1: `initializer()` is `none`), while a NON-generic subclass of one
+    // has an initializer descriptor that constructs under `beansc run` and
+    // answers `unsupported` natively (B7). The second is the dangerous one: a
+    // page that renders all through the edit loop and returns a 500 as a
+    // binary. Latte refuses both here, by name, at startup.
+    let generic_base: string = generic_ancestor(described)
+    if generic_base != "" {
+        plan.faults.push(
+            "{plan.type_name} is a @page whose type chain includes the closed generic {generic_base}; reflection constructs it under beansc run and answers unsupported natively (BLOCKERS.md B1 and B7), so latte refuses it here rather than shipping a page that fails only as a binary")
+    }
+
     let route_text: string = argument_string(use, "route")
     plan.route = new RoutePattern(route_text)
-    for fault: string in plan.route.faults { map.faults.push("{plan.type_name}: {fault}") }
+    for fault: string in plan.route.faults { plan.faults.push("{plan.type_name}: {fault}") }
 
     plan.methods = upper_all(argument_strings(use, "methods"))
     if plan.methods.len() == 0 {
-        map.faults.push("{plan.type_name}: @page(methods:) is empty")
+        plan.faults.push("{plan.type_name}: @page(methods:) is empty")
     }
     for method: string in plan.methods {
         if !is_identifier(method) {
-            map.faults.push("{plan.type_name}: \"{method}\" is not an HTTP method")
+            plan.faults.push("{plan.type_name}: \"{method}\" is not an HTTP method")
         }
     }
 
@@ -892,25 +930,28 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation,
 
     let layouts: List<reflect.Annotation> = annotations_named(described.annotations(), "layout")
     if layouts.len() > 1 {
-        map.faults.push("{plan.type_name} carries @layout more than once")
+        plan.faults.push("{plan.type_name} carries @layout more than once")
     } else if layouts.len() == 1 {
         plan.layout_name = argument_string(layouts[0], "name")
         if plan.layout_name == "" {
-            map.faults.push("{plan.type_name}: @layout(name:) is empty")
+            plan.faults.push("{plan.type_name}: @layout(name:) is empty")
         }
     }
 
-    bind_params(plan, described, map)
+    var declared: List<string> = []
+    bind_params(plan, described, declared)
 
     // Every placeholder must be a parameter. A route that captures into
     // nothing is a page that can never see half its own URL.
+    //
+    // `declared` holds every `@param` wire name the scan SAW, including the
+    // ones it refused, so a field refused for B1a does not also produce "no
+    // @param binds it" — one cause, one message. Without that, the specific
+    // refusal reads like a missing declaration and the reader fixes the wrong
+    // thing.
     for name: string in plan.route.names() {
-        var bound: bool = false
-        for binding: ParamBinding in plan.params {
-            if binding.wire_name == name { bound = true }
-        }
-        if !bound {
-            map.faults.push(
+        if !declared.contains(name) {
+            plan.faults.push(
                 "{plan.type_name}: route \"{plan.route.source}\" captures \"{name}\" but no @param binds it")
         }
     }
@@ -920,13 +961,13 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation,
     return plan
 }
 
-fn bind_params(plan: PagePlan, described: reflect.Type, map: PageMap) {
+fn bind_params(plan: PagePlan, described: reflect.Type, declared: List<string>) {
     var seen: Map<string, string> = {}
     for field: reflect.Field in described.fields() {
         let uses: List<reflect.Annotation> = annotations_named(field.annotations(), "param")
         if uses.len() == 0 { continue }
         if uses.len() > 1 {
-            map.faults.push("{plan.type_name}.{field.name()} carries @param more than once")
+            plan.faults.push("{plan.type_name}.{field.name()} carries @param more than once")
             continue
         }
         var binding: ParamBinding = new ParamBinding()
@@ -938,10 +979,11 @@ fn bind_params(plan: PagePlan, described: reflect.Type, map: PageMap) {
         binding.kind = kind_of(field.type())
         binding.from_route = plan.route.names_parameter(binding.wire_name)
         binding.adopt(field)
+        declared.push(binding.wire_name)
 
         match seen.get(binding.wire_name) {
             some(other) => {
-                map.faults.push(
+                plan.faults.push(
                     "{plan.type_name}: \"{binding.wire_name}\" names both {other} and {binding.field_name}")
                 continue
             }
@@ -949,7 +991,7 @@ fn bind_params(plan: PagePlan, described: reflect.Type, map: PageMap) {
         }
 
         if !field.is_public() {
-            map.faults.push(
+            plan.faults.push(
                 "{plan.type_name}.{binding.field_name} is a @param but is not public, and reflection does not bypass visibility")
             continue
         }
@@ -957,20 +999,20 @@ fn bind_params(plan: PagePlan, described: reflect.Type, map: PageMap) {
         // BLOCKERS.md B1a. Read `generic_declaration` before changing this.
         let generic: string = generic_declaration(described, field)
         if generic != "" {
-            map.faults.push(
+            plan.faults.push(
                 "{plan.type_name}.{binding.field_name} is a @param declared by {generic}; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time")
             continue
         }
 
         if binding.required && !binding.from_route {
-            map.faults.push(
+            plan.faults.push(
                 "{plan.type_name}.{binding.field_name} is @param(required: true) but route \"{plan.route.source}\" does not capture \"{binding.wire_name}\"")
             continue
         }
         if binding.from_route {
             match binding.kind {
                 other => {
-                    map.faults.push(
+                    plan.faults.push(
                         "{plan.type_name}.{binding.field_name} is captured by route \"{plan.route.source}\" but is a {binding.type_name}; a route can bind string, int, bool and float")
                     continue
                 }
@@ -1024,6 +1066,29 @@ pub fn generic_declaration(owner: reflect.Type, field: reflect.Field) -> string 
     return ""
 }
 
+/// The first link in `described`'s own chain that is a closed generic, or `""`.
+///
+/// This is the RECEIVER-side question, and it is a different one from
+/// `generic_declaration` above, which asks about a FIELD. They co-occur for a
+/// page — a `@param` can only be generic-declared if the page has a generic
+/// ancestor — and latte reports both, because they refuse different things: one
+/// says the page cannot be constructed natively, the other says one of its
+/// parameters cannot be written natively. A reader who fixed only the ancestor
+/// would still be holding the field problem.
+pub fn generic_ancestor(described: reflect.Type) -> string {
+    var walk: Option<reflect.Type> = some(described)
+    for true {
+        match walk {
+            some(link) => {
+                if link.type_arguments().len() > 0 { return link.qualified_name() }
+                walk = link.base_type()
+            }
+            none => { return "" }
+        }
+    }
+    return ""
+}
+
 pub fn strip_type_arguments(name: string) -> string {
     match name.find("<") {
         some(at) => { return name.slice(0, at) }
@@ -1054,18 +1119,17 @@ pub fn extends_named(described: reflect.Type, wanted: string) -> bool {
 
 // ---- layout resolution -----------------------------------------------------
 
-fn resolve_layouts(plan: PagePlan, described: reflect.Type, all: List<reflect.Type>,
-                   layout_name: string, map: PageMap) {
+fn resolve_layouts(plan: PagePlan, described: reflect.Type, all: List<reflect.Type>, layout_name: string) {
     var chain: List<reflect.Type> = []
     var seen: List<string> = []
     var wanted: string = plan.layout_name
     var owner: string = plan.type_name
     for wanted != "" {
-        match find_layout(wanted, all, layout_name, owner, map) {
+        match find_layout(wanted, all, layout_name, owner, plan.faults) {
             none => { return }
             some(found) => {
                 if seen.contains(found.qualified_name()) {
-                    map.faults.push(
+                    plan.faults.push(
                         "{plan.type_name}: the layout chain loops at {found.qualified_name()}")
                     return
                 }
@@ -1075,7 +1139,7 @@ fn resolve_layouts(plan: PagePlan, described: reflect.Type, all: List<reflect.Ty
                 let nested: List<reflect.Annotation> =
                     annotations_named(found.annotations(), "layout")
                 if nested.len() > 1 {
-                    map.faults.push("{owner} carries @layout more than once")
+                    plan.faults.push("{owner} carries @layout more than once")
                     return
                 }
                 if nested.len() == 1 { wanted = argument_string(nested[0], "name") }
@@ -1088,8 +1152,7 @@ fn resolve_layouts(plan: PagePlan, described: reflect.Type, all: List<reflect.Ty
     plan.layouts = move chain
 }
 
-fn find_layout(wanted: string, all: List<reflect.Type>, layout_name: string,
-               owner: string, map: PageMap) -> Option<reflect.Type> {
+fn find_layout(wanted: string, all: List<reflect.Type>, layout_name: string, owner: string, into: List<string>) -> Option<reflect.Type> {
     var hits: List<reflect.Type> = []
     for described: reflect.Type in all {
         if described.qualified_name() == wanted || described.name() == wanted {
@@ -1097,31 +1160,30 @@ fn find_layout(wanted: string, all: List<reflect.Type>, layout_name: string,
         }
     }
     if hits.len() == 0 {
-        map.faults.push("{owner}: @layout(name: \"{wanted}\") names no type in this program")
+        into.push("{owner}: @layout(name: \"{wanted}\") names no type in this program")
         return none
     }
     if hits.len() > 1 {
         var names: List<string> = []
         for hit: reflect.Type in hits { names.push(hit.qualified_name()) }
         let listed: string = names.join(", ")
-        map.faults.push(
+        into.push(
             "{owner}: @layout(name: \"{wanted}\") is ambiguous — {listed}; spell the qualified name")
         return none
     }
     let found: reflect.Type = hits[0]
     if !extends_named(found, layout_name) {
-        map.faults.push(
+        into.push(
             "{owner}: @layout(name: \"{wanted}\") resolves to {found.qualified_name()}, which does not extend {layout_name}")
         return none
     }
     if found.initializer().is_none() {
-        map.faults.push(
+        into.push(
             "{owner}: layout {found.qualified_name()} has no zero-argument initializer")
         return none
     }
     return some(found)
 }
-
 // ---- reading annotations ---------------------------------------------------
 //
 // An annotation's `qualified_name()` is `latte.page`, so matching on the simple

@@ -1,0 +1,164 @@
+== 1. the scan finds the healthy pages ==
+ok   a page nothing references is still found
+ok   Counter's route: /counter/{start}
+ok   Counter's methods: GET
+ok   Counter's parameters: start
+ok   Counter's layout chain: 1
+ok   Counter is usable
+ok   Todo's methods: GET,POST
+ok   Todo's parameters: body,done,id,q,ratio
+ok   Todo's layout chain is two deep: 2
+ok   Todo's authorization requirements: 2
+ok   Todo is usable
+
+== 2. B1a — the refusal, its control, and the trap that reads false ==
+ok   THE TRAP: title's declaring type reports 0 type arguments: 0
+ok   ...while the receiver's chain reports the closed form: latte$entry.Grid<int>
+ok   the CONTROL: label is declared by a non-generic base, so it is accepted: 
+ok   the scan refuses title by name
+ok   the scan does NOT refuse label
+ok   ...and label survives into the plan while title does not: label
+
+== 2b. B7 — a page whose chain holds a closed generic ==
+ok   OrderGrid's generic ancestor: latte$entry.Grid<int>
+ok   the CONTROL: PlainGrid has none: 
+ok   the scan refuses OrderGrid for its chain
+ok   the CONTROL: PlainGrid is not refused
+ok   PlainGrid is usable
+ok   ...and its inherited @param binds: label
+
+== 3. every other refusal, each beside a control ==
+ok   a @page that is not a Component
+ok   a route that does not start with a slash
+ok   a placeholder that is not a whole segment
+ok   a catch-all placeholder
+ok   one name captured twice
+ok   required with no placeholder
+ok   a route capturing an unbindable type
+ok   a @param that is not public
+ok   a placeholder nothing binds
+ok   two pages answering one method and shape
+ok   a layout naming no type
+ok   a layout naming a page
+ok   a layout name two types answer to
+ok   a layout chain that loops
+ok   @authorize where nothing checks it
+ok   @layout where nothing wraps it
+ok   a page that serves no method
+-- the controls: every one of these is USABLE --
+ok   Counter
+ok   Todo
+ok   Home
+ok   NewOrder
+ok   ShowOrder
+ok   PlainGrid
+-- and every one of these is not --
+ok   NotAComponent has no plan at all
+ok   BadRouteStart
+ok   BadPlaceholder
+ok   BadCatchAll
+ok   BadDuplicatePlaceholder
+ok   BadRequiredNotInRoute
+ok   BadUnbindable
+ok   BadPrivateParam
+ok   BadOrphanPlaceholder
+ok   BadClashA — the FIRST of the pair, not only the second
+ok   BadClashB
+ok   BadLayoutUnknown
+ok   BadLayoutNotALayout
+ok   BadLayoutAmbiguous
+ok   BadLayoutLoop
+ok   BadNoMethods
+ok   OrderGrid
+ok   the map as a whole is ok
+
+== 3b. every refusal message, sorted, so the golden reads them ==
+  latte$entry.BadCatchAll: route "/files/{*rest}": a catch-all placeholder ("{*rest}") is not supported — a placeholder captures one segment
+  latte$entry.BadClashB and latte$entry.BadClashA both answer GET /clash/{}; nothing at request time could choose between them
+  latte$entry.BadClashB and latte$entry.BadClashA both answer GET /clash/{}; nothing at request time could choose between them
+  latte$entry.BadDuplicatePlaceholder: route "/dup/{a}/{a}" names "a" twice
+  latte$entry.BadLayoutAmbiguous: @layout(name: "Attr") is ambiguous — latte.Attr, latte$entry.Attr; spell the qualified name
+  latte$entry.BadLayoutLoop: the layout chain loops at latte$entry.LoopA
+  latte$entry.BadLayoutNotALayout: @layout(name: "Counter") resolves to latte$entry.Counter, which does not extend latte.Layout
+  latte$entry.BadLayoutUnknown: @layout(name: "Nope") names no type in this program
+  latte$entry.BadNoMethods: @page(methods:) is empty
+  latte$entry.BadOrphanPlaceholder: route "/orphan/{missing}" captures "missing" but no @param binds it
+  latte$entry.BadPlaceholder: route "/x/o{id}": a placeholder is a whole segment, so "o{id}" is not one
+  latte$entry.BadPrivateParam.secret is a @param but is not public, and reflection does not bypass visibility
+  latte$entry.BadRequiredNotInRoute.id is @param(required: true) but route "/needs-nothing" does not capture "id"
+  latte$entry.BadRouteStart: a route must start with "/"; this one is "counter"
+  latte$entry.BadUnbindable.tags is captured by route "/unbindable/{tags}" but is a List<string>; a route can bind string, int, bool and float
+  latte$entry.NotAComponent is annotated @page but does not extend latte.Component, so it has nothing to render
+  latte$entry.NotAPageButGuarded is annotated @authorize but is not a @page; the requirement would never be checked
+  latte$entry.NotAPageButWrapped is annotated @layout but is neither a @page nor a latte.Layout, so nothing would ever wrap it
+  latte$entry.OrderGrid is a @page whose type chain includes the closed generic latte$entry.Grid<int>; reflection constructs it under beansc run and answers unsupported natively (BLOCKERS.md B1 and B7), so latte refuses it here rather than shipping a page that fails only as a binary
+  latte$entry.OrderGrid.title is a @param declared by latte$entry.Grid<int>; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time
+
+== 4. a refused page is never routed to ==
+ok   a healthy page routes
+ok   a refused one does not
+ok   nor does the ambiguous pair
+
+== 5. routes: parsing, matching, specificity, encoding ==
+ok   segments: 3
+ok   shape: /orders/{}/lines
+ok   a trailing slash is the same page
+ok   a longer path is not
+ok   a shorter path is not
+ok   a percent-escaped slash stays inside its segment: a/b
+ok   percent_decode leaves a malformed escape alone: a%zzb
+ok   percent_encode escapes a slash: a%2Fb
+ok   a link round-trips through the encoder: /orders/a%2Fb
+ok   a link with no value is refused
+ok   a literal route wins: NewOrder
+ok   a placeholder takes the rest: ShowOrder
+ok   a method the page does not serve is not a match
+ok   a method it does is
+
+== 6. binding: every type, and every way it can fail ==
+ok   bound with no problem: 0
+ok   and rendered: <main class="shell"><div class="admin"><article>todo 12 done=true q= ratio=0</article></div></main>
+ok   a bad int is one problem: 1
+ok   ...and says which parameter: "x" is not an int for "id"
+ok   a bad bool: "maybe" is not a bool for "done"
+ok   a trailing-garbage int is refused, not truncated: 1
+ok   an overflowing int is refused, not saturated: 1
+
+== 7. authorization ==
+ok   no requirement allows anyone: allow
+ok   anonymous is challenged, not forbidden: challenge
+ok   signed in without the role is forbidden: forbid
+ok   one of the roles is enough...: forbid
+ok   ...but the second @authorize must also hold: allow
+ok   the other role works too: allow
+ok   the policy alone is not enough: forbid
+ok   open_page refuses an unauthorized mount
+ok   ...and says which: Todo: challenge
+ok   mount_page will not mount it
+ok   ...and nothing was mounted: 0
+
+== 8. a layout chain is MOUNTED, not inlined ==
+ok   mounted
+ok   three components: two layouts and the page: 3
+ok   each rendered once: 3
+ok   the page is the innermost: 2
+ok   marking the page runs ONE render: 1
+ok   the outer layout stayed at one: 1
+ok   the inner layout stayed at one: 1
+ok   the page is at two: 2
+ok   faults: 0
+ok   a page with no layout mounts
+ok   ...as one component: 1
+ok   ...and is the whole document: home
+
+== 9. ParamWatch, beside the mistake it exists to stop ==
+ok   both children mounted: 3
+ok   Watched rendered once: 1
+ok   Unwatched rendered once: 1
+ok   a parent pass with the SAME parameter: 2
+ok   Watched did not re-render: 1
+ok   the hand-written version DID — that is the trap: 2
+ok   a parameter that changed re-renders Watched: 2
+ok   ParamWatch has been fed
+
+checks failed: 0
