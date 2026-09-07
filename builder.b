@@ -531,6 +531,10 @@ pub class Builder {
         self.enter_scope(SCOPE_ELEMENT)
     }
 
+    pub fn unguarded_probe() {
+        self.faults.push("a twenty-fifth site nobody wrote a case for")
+    }
+
     pub fn close() {
         if self.top().kind != SCOPE_ELEMENT {
             self.faults.push("close with no open element")
