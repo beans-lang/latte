@@ -240,6 +240,9 @@ class BoundaryMark {
     pub regions: int = 0
     pub scopes: int = 0
     pub paths: int = 0
+    /// How many slots the pass had reached when this boundary opened. Anything
+    /// the body went on to reach dies with the body.
+    pub touched: int = 0
     pub fn init() {}
 }
 
@@ -300,6 +303,14 @@ pub class Builder {
 
     slots: Map<string, int> = {}
     live: Map<int, bool> = {}
+    /// The slot keys this pass has resolved, in order. `fail_boundary` needs
+    /// to know which ones the failed body reached, and a Map cannot say.
+    touched: List<string> = []
+    /// Slots this pass ALLOCATED, as opposed to reused from an earlier pass.
+    /// A component born and dropped inside one pass was never presented to
+    /// anybody, so its disposal is not news the applier can use — it holds no
+    /// root for a mount frame that never survived the pass.
+    born: Map<int, bool> = {}
     path: List<string> = [""]
     scopes: List<Scope> = []
     boundaries: List<BoundaryMark> = []
@@ -345,12 +356,14 @@ pub class Builder {
     /// hands all N rows one shared child and one shared handler.
     fn slot_for(seq: int) -> int {
         let key: string = "{self.path[self.path.len() - 1]}{seq}"
+        self.touched.push(key)
         match self.slots.get(key) {
             some(existing) => { self.live[existing] = true; return existing }
             none => {
                 let made: int = self.registry.fresh()
                 self.slots[key] = made
                 self.live[made] = true
+                self.born[made] = true
                 return made
             }
         }
@@ -687,6 +700,7 @@ pub class Builder {
         mark.regions = self.regions
         mark.scopes = self.scopes.len()
         mark.paths = self.path.len()
+        mark.touched = self.touched.len()
         self.boundaries.push(mark)
         self.frames.push(Frame.boundary_open(seq, false))
         self.push_path("b{seq}|")
@@ -707,6 +721,19 @@ pub class Builder {
             let _: Frame = self.frames.items.remove(self.frames.len() - 1)
         }
         self.frames.items[mark.frame] = Frame.boundary_open(mark.seq, true)
+        // Slots are the sixth thing the body wrote, and they unwind like the
+        // other five. A component mounted inside the failed body is no longer
+        // on the page, so leaving it mounted would keep its `dispose` from ever
+        // running and leave its handlers reachable by a wire id for content
+        // nobody can see. It would also hand the differ a buffer with unsent
+        // frames whose mount frame the truncation removed, which reaches the
+        // applier as "update for component N arrived before its mount".
+        //
+        // Dropping them is also what lets the fallback number itself from 0
+        // again — which it does, because the scope restarts — without landing
+        // on the slot ids the truncated body had already taken at those very
+        // numbers.
+        self.drop_touched_since(mark.touched)
         self.depth = mark.depth
         self.regions = mark.regions
         for self.scopes.len() > mark.scopes {
@@ -732,6 +759,23 @@ pub class Builder {
         self.leave_scope()
         self.pop_path()
         self.frames.push(Frame.boundary_close)
+    }
+
+    /// Drop every slot the pass reached after `mark`, disposing what they held.
+    /// Used by `fail_boundary`: the body's frames are gone, so its mounts, its
+    /// handlers and its references are gone with them.
+    fn drop_touched_since(mark: int) {
+        for self.touched.len() > mark {
+            let key: string = self.touched.remove(self.touched.len() - 1)
+            match self.slots.get(key) {
+                some(slot) => {
+                    self.drop_slot(slot)
+                    let _: bool = self.slots.remove(key)
+                    let _: bool = self.live.remove(slot)
+                }
+                none => {}
+            }
+        }
     }
 
     /// Close whatever a body left open, loudly. A frame list that is not
@@ -882,6 +926,8 @@ pub class Builder {
         self.faults.clear()
         self.failures.clear()
         self.live.clear()
+        self.touched.clear()
+        self.born.clear()
         self.depth = 0
         self.regions = 0
         self.in_attributes = false
@@ -944,7 +990,16 @@ pub class Builder {
         // Only a slot that actually held a component is a disposal the applier
         // has to hear about. A handler slot leaves with the frame that named
         // it, carried out by the parent's `remove` edit.
-        if self.children.contains_key(slot) { self.registry.note_disposed(slot) }
+        //
+        // And only a component that survived a whole pass: one born and dropped
+        // inside a single pass — which is what a failed error boundary does to
+        // everything its body mounted — was never presented, so the applier
+        // holds no root for it and "disposed" would name an id it has never
+        // seen. The ordinary sweep never reaches this case, because a slot born
+        // this pass is by definition one the pass reached.
+        if self.children.contains_key(slot) && !self.born.contains_key(slot) {
+            self.registry.note_disposed(slot)
+        }
         match self.nested.get(slot) {
             some(buffer) => { buffer.tear_down() }
             none => {}
