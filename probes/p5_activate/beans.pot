@@ -1,0 +1,9 @@
+module p5_activate
+kind application
+
+# espresso sits four directories above this manifest from BOTH
+# `community-libs/latte/probes/p5_activate` and
+# `.worktrees/latte-wN/probes/p5_activate`, so one row serves the worktree and
+# the merged tree. If this ever stops resolving, count the segments before
+# changing anything else.
+require path "../../../../community-libs/espresso"
