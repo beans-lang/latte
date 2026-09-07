@@ -143,11 +143,33 @@ ok no handlers are left
 -- attribute-outside-its-run
    html: <div>content first</div>
    balanced: true
-   fault: 0: attribute 2 is outside an element's attribute run
+   fault: 0: attribute 2:"class" is outside an element's attribute run
 -- attribute-out-of-order
-   html: <div a="1" b="2"></div>
+   html: <div a="1"></div>
    balanced: true
-   fault: 0: attribute 1 is before 3 on one element
+   fault: 0: attribute 1:"b" does not follow 3:"a" in this element's attribute run
+-- attribute-name-out-of-order
+   html: <div z="1"></div>
+   balanced: true
+   fault: 0: attribute 1:"a" does not follow 1:"z" in this element's attribute run
+-- attribute-slot-repeats
+   html: <div same="first"></div>
+   balanced: true
+   fault: 0: attribute 1:"same" does not follow 1:"same" in this element's attribute run
+-- two-handlers-at-one-seq
+   html: <div></div>
+   balanced: true
+   fault: 0: on:dblclick 1:"" does not follow 1:"" in this element's attribute run
+-- handler-then-attribute-at-one-seq
+   html: <div class="x"></div>
+   balanced: true
+-- splat-under-an-earlier-name
+   html: <div z="explicit"></div>
+   balanced: true
+   fault: 0: attrs 1:"" does not follow 1:"z" in this element's attribute run
+-- splat-then-name-at-one-seq
+   html: <div class="first" a="one" b="two" id="last"></div>
+   balanced: true
 -- sibling-seq-goes-backwards
    html: <p></p><p></p>
    balanced: true
@@ -193,7 +215,7 @@ ok no handlers are left
    fault: 0: an element was left open
    fault: 0: an element was left open
 ok the refusal corpus raised faults
-faults raised across the corpus: 26
+faults raised across the corpus: 30
 ok an allowed URL raises nothing
 ok and it is still balanced
 == 7 unbalanced bodies
