@@ -42,12 +42,20 @@ pub class FocusEvent {
     pub fn init() {}
 }
 
-/// A handle to a rendered element or a mounted child, filled in after render.
-/// `node` is the element's slot id — stable for a source position within a
-/// component, and the id the wire uses.
+/// A handle to a rendered ELEMENT: `node` is the element's slot id — stable for
+/// a source position within a component, and the id the wire uses.
+///
+/// It carries nothing else, and in particular no handle to a mounted child.
+/// `ref` on a component tag is not an attribute-position call at all: every
+/// attribute-position call needs `in_attributes`, which only `open()` sets, and
+/// a component tag opens no element. W2 compiles it to an assignment inside the
+/// setup closure instead — `b.component<Grid>(18, fn(c: Grid) { self.grid =
+/// some(c) })` — which hands back the CONCRETE type rather than a `Component`
+/// needing a downcast, and fills it at mount rather than after a render.
+/// An element ref genuinely cannot be filled before the applier has run, which
+/// is why that one stays a `fn(Reference)` sink. See probes/BUILDER.md.
 pub class Reference {
     pub node: int = -1
-    pub child: Option<Component> = none
     pub fn init() {}
 }
 
@@ -844,10 +852,6 @@ pub class Builder {
         self.frames.push(Frame.reference(seq))
         let handle: Reference = new Reference()
         handle.node = id
-        match self.children.get(id) {
-            some(stored) => { handle.child = stored.copy() as? Component }
-            none => {}
-        }
         sink(handle)
     }
 
