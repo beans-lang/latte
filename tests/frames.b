@@ -25,8 +25,9 @@
 package main
 
 import std.io
-import {Builder, Component, Frame, FocusEvent, InputEvent, KeyboardEvent,
-        MouseEvent, Reference, Serializer, SubmitEvent, describe_frame} from latte
+import {Builder, Callback, Component, DirtySink, Frame, FocusEvent, InputEvent,
+        KeyboardEvent, MouseEvent, Reference, Renderer, Serializer, SubmitEvent,
+        describe_frame} from latte
 
 // ---------------------------------------------------------------- reporting
 //
@@ -1095,6 +1096,380 @@ fn component_ref(r: Report) {
     r.eqi("no faults anywhere", b.all_faults().len(), 0)
 }
 
+
+// ------------------------------------------------- the factory mount
+
+/// A GENERIC component. Reflection cannot build one: `type_of(Cell<int>)`
+/// answers `none` for `initializer()` on both backends (BLOCKERS.md B1), so
+/// `component<Cell<int>>` faults and `component_made<Cell<int>>` is the whole
+/// reason that call exists.
+pub class Cell<T> extends Component {
+    pub label: string = ""
+    pub renders: int = 0
+    pub inits: int = 0
+    pub fn init() {}
+    pub override fn on_init() { self.inits += 1 }
+    pub override fn render(b: Builder) {
+        self.renders += 1
+        b.open(0, "td")
+        b.text(1, "{self.label}/{self.renders}")
+        b.close()
+    }
+}
+
+/// The control: the same call over a NON-generic component. Without it a green
+/// run cannot tell "the factory route works" from "the factory route did
+/// nothing and the assertions were about an empty page".
+pub class Plain extends Component {
+    pub label: string = ""
+    pub renders: int = 0
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        self.renders += 1
+        b.open(0, "p")
+        b.text(1, "{self.label}/{self.renders}")
+        b.close()
+    }
+}
+
+/// A second non-generic component, so "this slot holds the wrong class" has
+/// two classes to be wrong between.
+pub class Other extends Component {
+    pub fn init() {}
+    pub override fn render(b: Builder) { b.text(0, "other") }
+}
+
+/// A page that mounts one child, by whichever route and class the case picks.
+pub class Mounts extends Component {
+    pub route: int = 0
+    pub label: string = ""
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        if self.route == 0 {
+            b.component_made<Cell<int>>(0,
+                fn() -> Cell<int> { return new Cell<int>() },
+                fn(c: Cell<int>) { c.label = self.label })
+        } else if self.route == 1 {
+            b.component_made<Plain>(0,
+                fn() -> Plain { return new Plain() },
+                fn(c: Plain) { c.label = self.label })
+        } else if self.route == 2 {
+            b.component<Plain>(0, fn(c: Plain) { c.label = self.label })
+        } else if self.route == 3 {
+            b.component_made<Other>(0, fn() -> Other { return new Other() }, fn(c: Other) {})
+        } else {
+            b.component<Cell<int>>(0, fn(c: Cell<int>) { c.label = self.label })
+        }
+    }
+}
+
+fn factory_mount(r: Report) {
+    io.println("== 11 the factory mount")
+
+    // The subject: a closed generic, which is what reflection cannot build.
+    let host: Mounts = new Mounts()
+    host.label = "one"
+    let b: Builder = new Builder()
+    b.render_root(host)
+    io.println("-- component_made<Cell<int>>")
+    io.println(b.dump_tree())
+    io.println("   html: {html_of(b)}")
+    r.eq("a generic component mounts through a factory", html_of(b), "<td>one/1</td>")
+    r.eqi("no faults", b.all_faults().len(), 0)
+    r.eqi("one child buffer", b.nested.keys().len(), 1)
+
+    // Two renders at one slot, because a mount that is never reused is the n=1
+    // shape that proves nothing: the SAME instance has to come back.
+    host.label = "two"
+    b.render_root(host)
+    r.eq("and the second render reuses it", html_of(b), "<td>two/2</td>")
+    r.eqi("still one child", b.nested.keys().len(), 1)
+    r.eqi("still no faults", b.all_faults().len(), 0)
+
+    // The control. Same call, non-generic component.
+    let plain_host: Mounts = new Mounts()
+    plain_host.route = 1
+    plain_host.label = "p"
+    let pb: Builder = new Builder()
+    pb.render_root(plain_host)
+    pb.render_root(plain_host)
+    r.eq("the same call mounts a non-generic component too", html_of(pb), "<p>p/2</p>")
+    r.eqi("no faults", pb.all_faults().len(), 0)
+
+    // The reflective route on the SAME generic type: this is the fault that
+    // makes `component_made` necessary, and it reads the same on both backends
+    // (B1 -- a closed generic has no initializer DESCRIPTOR, which is a
+    // different thing from B7's descriptor that only fails when called).
+    let reflective: Mounts = new Mounts()
+    reflective.route = 4
+    let rb: Builder = new Builder()
+    rb.render_root(reflective)
+    io.println("-- component<Cell<int>>, the reflective route")
+    show_faults(rb)
+    r.eqi("reflection cannot build a closed generic", rb.all_faults().len(), 1)
+    r.yes("and says which type",
+        rb.all_faults()[0].contains("has no zero-argument initializer"))
+    r.eq("so nothing renders", html_of(rb), "")
+
+    // The factory route's own refusal, and it must be the same message the
+    // reflective route gives, because `mount_made` is not allowed to invent a
+    // second vocabulary for the same mistake.
+    let bad: Builder = new Builder()
+    render_body(bad, fn(inner: Builder) {
+        inner.component_made<NotAComponent>(0,
+            fn() -> NotAComponent { return new NotAComponent() },
+            fn(x: NotAComponent) { x.value = 1 })
+    })
+    io.println("-- component_made<NotAComponent>")
+    show_faults(bad)
+    r.eqi("a factory that does not build a Component is refused",
+        bad.all_faults().len(), 1)
+    r.eq("with the same message the reflective route gives",
+        bad.all_faults()[0], "0: NotAComponent is not a Component")
+
+    // The two routes share one slot table, so a slot filled by one is reused
+    // by the other. If they did not, a markup compiler that switched routes
+    // between two releases would silently re-activate every component on a page.
+    let shared: Mounts = new Mounts()
+    shared.route = 1
+    shared.label = "s"
+    let sb: Builder = new Builder()
+    sb.render_root(shared)
+    shared.route = 2                      // the reflective call, same seq
+    sb.render_root(shared)
+    r.eq("a slot mounted by the factory is reused by component<T>",
+        html_of(sb), "<p>s/2</p>")
+    r.eqi("and nothing was refused", sb.all_faults().len(), 0)
+
+    // The wrong class at one slot -- through the FACTORY route, so the shared
+    // tail is what raises it. This is the fault site the sweep can never reach,
+    // because the sweep asserts there are none.
+    let flip: Mounts = new Mounts()
+    flip.route = 1
+    flip.label = "f"
+    let fb: Builder = new Builder()
+    fb.render_root(flip)
+    flip.route = 3                        // Other, at the same seq
+    fb.render_root(flip)
+    io.println("-- a slot asked for a different class")
+    show_faults(fb)
+    r.eqi("a slot that holds another class is refused", fb.all_faults().len(), 1)
+    r.eq("and names both", fb.all_faults()[0],
+        "0: slot 1 holds a Plain, not a Other")
+    // The control beside it: the SAME class at the same seq is not a fault.
+    flip.route = 1
+    fb.render_root(flip)
+    r.eqi("the same class at the same seq is not", fb.all_faults().len(), 0)
+    r.eq("and the original instance is still there", html_of(fb), "<p>f/3</p>")
+}
+
+// ------------------------------------------------- the dirty sink
+
+/// A sink that records rather than renders. It is a subclass, which is the
+/// reason `DirtySink` is a class and not an interface: a component holds one
+/// `weak`, and a weak field's type must be `Option<C>` for a class `C`.
+pub class Recorder extends DirtySink {
+    pub marks: List<int> = []
+    pub fn init() { super.init() }
+    pub override fn mark(id: int) { self.marks.push(id) }
+}
+
+/// A child that hands its parent a `Callback` and fires it. The code the
+/// callback runs is the PARENT's, so the component the renderer would mark on
+/// its own -- the one that bound the DOM handler, which is this child -- is the
+/// wrong one. That is the whole reason `Callback.call` notifies.
+pub class Speaker extends Component {
+    pub out: Option<Callback<string>> = none
+    pub renders: int = 0
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        self.renders += 1
+        b.open(0, "button")
+        b.on_click(1, fn(e: MouseEvent) { self.shout() })
+        b.text(2, "speak")
+        b.close()
+    }
+    pub fn shout() {
+        match self.out {
+            some(cb) => { cb.call("hello") }
+            none => {}
+        }
+    }
+}
+
+pub class Listener extends Component {
+    pub heard: string = ""
+    pub renders: int = 0
+    pub kid: Option<Speaker> = none
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        self.renders += 1
+        b.open(0, "div")
+        b.text(1, self.heard)
+        b.component<Speaker>(2, fn(c: Speaker) {
+            self.kid = some(c)
+            c.out = some(new Callback<string>(self, fn(word: string) {
+                self.heard = word
+            }))
+        })
+        b.close()
+    }
+}
+
+/// A page whose one row can be dropped, so a component can be disposed while
+/// the test still holds it.
+pub class Board extends Component {
+    pub keep: bool = true
+    pub held: Option<Row> = none
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "ul")
+        if self.keep {
+            b.component<Row>(1, fn(row: Row) {
+                row.label = "kept"
+                self.held = some(row)
+            })
+        }
+        b.close()
+    }
+}
+
+fn dirty_sink(r: Report) {
+    io.println("== 12 the dirty sink")
+
+    // Without a renderer there is no sink, and `notify()` is a no-op rather
+    // than a crash. That is what a Builder driven by hand looks like -- every
+    // other suite in this repo -- so it has to be the quiet case.
+    let bare_host: Mounts = new Mounts()
+    bare_host.route = 1
+    let bare: Builder = new Builder()
+    bare.render_root(bare_host)
+    var mounted: List<int> = bare.nested.keys()
+    r.eqi("a hand-driven Builder mounts a child", mounted.len(), 1)
+    match bare.children.get(mounted[0]) {
+        some(stored) => {
+            match stored.copy() as? Component {
+                some(child) => {
+                    r.eqi("the child knows its slot id", child.id(), mounted[0])
+                    child.notify()
+                    r.yes("and notify() with no sink does nothing", true)
+                }
+                none => { r.yes("the child is a Component", false) }
+            }
+        }
+        none => { r.yes("the child is there", false) }
+    }
+
+    // A component nothing has mounted must mark NOTHING. With an id defaulting
+    // to 0 it would mark the page root instead and re-render the whole page,
+    // which is the one wrong answer that looks like it works.
+    let orphan: Row = new Row()
+    let book: Recorder = new Recorder()
+    orphan.mount.sink = some(book)
+    r.eqi("an unmounted component has no id", orphan.id(), -1)
+    orphan.notify()
+    r.eqi("and marks nothing", book.marks.len(), 0)
+
+    // With a renderer: every mounted component knows its own id, and notify()
+    // reaches the renderer.
+    let page: Listener = new Listener()
+    let engine: Renderer = new Renderer()
+    engine.mount(page)
+    r.eqi("the page is component 0", page.id(), 0)
+    r.eqi("no faults", engine.all_faults().len(), 0)
+    var kid_id: int = -1
+    match page.kid {
+        some(kid) => { kid_id = kid.id() }
+        none => {}
+    }
+    r.yes("the mounted child has an id of its own", kid_id > 0)
+    r.eqi("the page rendered once", engine.render_count(0), 1)
+    r.eqi("and the child once", engine.render_count(kid_id), 1)
+
+    page.notify()
+    r.yes("notify() marks the page", engine.is_dirty(0))
+    // TWO, not one: rendering a parent runs `component<T>` for every child it
+    // still has, and `Speaker` does not override `should_render`. The number
+    // is the renderer's own count of buffers that ran, so it says what really
+    // happened rather than what the dirty set asked for.
+    r.eqi("the page and its child rendered", engine.flush(), 2)
+    r.eqi("the page rendered twice", engine.render_count(0), 2)
+
+    // The callback. The CHILD fires it; the PARENT is what has to be marked,
+    // because the parent is whose state the handler changed.
+    r.eqi("nothing is pending", engine.pending(), 0)
+    match page.kid {
+        some(kid) => { kid.shout() }
+        none => {}
+    }
+    r.eq("the parent's state changed", page.heard, "hello")
+    r.yes("and the PARENT is the one marked dirty", engine.is_dirty(0))
+    r.no("not the child that fired it", engine.is_dirty(kid_id))
+    let ran: int = engine.flush()
+    r.eqi("the marked parent and its child rendered", ran, 2)
+    r.eq("and the page says so", engine.html(),
+        "<div>hello<button>speak</button></div>")
+    r.eqi("no faults anywhere", engine.all_faults().len(), 0)
+
+    // The dead owner. A disposed component that something still holds DOES
+    // reach the live renderer through `notify()` -- that is not prevented, and
+    // it does not need to be. `Renderer.mark` drops an id it no longer holds,
+    // and ids are never reused, so the mark can never land on somebody else.
+    let board: Board = new Board()
+    let engine2: Renderer = new Renderer()
+    engine2.mount(board)
+    var row_id: int = -1
+    match board.held {
+        some(row) => { row_id = row.id() }
+        none => {}
+    }
+    r.yes("the row mounted", row_id > 0)
+    board.keep = false
+    board.notify()
+    let _: int = engine2.flush()
+    r.no("the row is gone", engine2.mounted(row_id))
+    r.eqi("nothing is pending", engine2.pending(), 0)
+
+    // It is still ALIVE, because the test holds it. Now let it notify.
+    match board.held {
+        some(row) => {
+            r.eqi("the disposed row still remembers its id", row.id(), row_id)
+            row.notify()
+        }
+        none => { r.yes("the row is still held", false) }
+    }
+    r.eqi("a disposed component's notify() marks nothing", engine2.pending(), 0)
+    r.no("and did not mark the page instead", engine2.is_dirty(0))
+
+    // The second half of the same argument, and it is the half that would be
+    // silent if it broke: the mark reaches the sink and is dropped THERE. A
+    // Recorder says so where a Renderer cannot.
+    let watcher: Recorder = new Recorder()
+    match board.held {
+        some(row) => {
+            row.mount.sink = some(watcher)
+            row.notify()
+        }
+        none => {}
+    }
+    r.eqi("the mark really was raised", watcher.marks.len(), 1)
+    r.eqi("with the dead component's own id", watcher.marks[0], row_id)
+
+    // ...which is safe only because ids are never reused. A row that comes
+    // back gets a NEW id, so the stale mark above can never name it.
+    board.keep = true
+    board.notify()
+    let _again: int = engine2.flush()
+    var back_id: int = -1
+    match board.held {
+        some(row) => { back_id = row.id() }
+        none => {}
+    }
+    r.yes("the row came back", back_id > 0)
+    r.no("with an id that is not the dead one", back_id == row_id)
+    r.eqi("no faults", engine2.all_faults().len(), 0)
+}
+
 // ---------------------------------------------------------------- main
 
 fn main() {
@@ -1113,6 +1488,8 @@ fn main() {
     boundaries(r)
     handles(r)
     component_ref(r)
+    factory_mount(r)
+    dirty_sink(r)
 
     io.println("== summary")
     io.println("checks: {r.checks}, failed: {r.bad}")

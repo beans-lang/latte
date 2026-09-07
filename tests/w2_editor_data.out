@@ -1,0 +1,68 @@
+{
+  "$generated": "Written by community-libs/latte/tests/w2_editor_data.b, out of latte's own tables. Do not edit by hand.",
+  "$source": "latte bx/vocabulary.b, bx/events.b, bx/html.b, bx/parse.b",
+  "$language": "latte markup — a whole-file document, not Beans with tags in it: outside <beans> every < opens a tag",
+  "blocks": [
+    {"name": "$if", "detail": "$if <expr> { ... }", "note": "A branch. Its arms take disjoint sequence ranges out of the enclosing counter, so a flip renumbers nothing."},
+    {"name": "else", "detail": "$if <expr> { ... } else if <expr> { ... } else { ... }", "note": "Written without a $, because it continues the $if that opened the block."},
+    {"name": "$for", "detail": "$for <name> in <expr> { ... }", "note": "A region. Its body restarts sequence numbering at 0, and a direct child may carry key={ } to name a row's identity."},
+    {"name": "$match", "detail": "$match <expr> { <pattern> => { ... } }", "note": "A branch with more than two arms. At least one arm is required."},
+    {"name": "$slot", "detail": "$slot | $slot(<expr>) | $slot:<name> | $slot:<name> as <expr> | $slot:<name> as <p>: <Type> { ... }", "note": "Places or defines a fragment. A body makes it a definition and only reads that way inside a component tag."},
+    {"name": "$html", "detail": "$html(<expr>)", "note": "Unescaped HTML — the only bypass latte has, named so it greps."}
+  ],
+  "interpolations": [
+    {"name": "$<chain>", "detail": "$self.count, $row.title, $self.rows[0]", "note": "An implicit chain. It ends where the chain ends, so $5.00 and US$ are ordinary text."},
+    {"name": "$( )", "detail": "$(a + b)", "note": "A parenthesised expression. One line: a newline inside it is refused."},
+    {"name": "${ }", "detail": "${self.name}", "note": "A braced expression. One line, and a } in running text closes an enclosing block, so write \\} for a literal one."},
+    {"name": "$$", "detail": "$$", "note": "A literal $ in front of a word. Everywhere else a $ that is not followed by an identifier, ( or { is already text."}
+  ],
+  "namespaces": [
+    {"name": "on:", "detail": "on:<event>={fn(e: <EventType>) { ... }}", "note": "A DOM event handler. The event must be one latte's table has; see events."},
+    {"name": "bind:", "detail": "bind:value={<place>} | bind:checked={<place>}", "note": "A two-way binding. It emits an attribute and a handler, so it takes two sequence numbers."},
+    {"name": "xlink:", "detail": "xlink:href=\"...\"", "note": "An ordinary XML attribute. xlink:href carries a URL and passes the scheme allowlist, because an SVG <a xlink:href=\"javascript:\"> runs script."},
+    {"name": "xml:", "detail": "xml:lang=\"...\"", "note": "An ordinary XML attribute."},
+    {"name": "xmlns:", "detail": "xmlns:xlink=\"...\"", "note": "An ordinary XML attribute."}
+  ],
+  "events": [
+    {"event": "click", "family": "MouseEvent", "method": "on_click"},
+    {"event": "dblclick", "family": "MouseEvent", "method": "on_dblclick"},
+    {"event": "mousedown", "family": "MouseEvent", "method": "on_mousedown"},
+    {"event": "mouseup", "family": "MouseEvent", "method": "on_mouseup"},
+    {"event": "mouseenter", "family": "MouseEvent", "method": "on_mouseenter"},
+    {"event": "mouseleave", "family": "MouseEvent", "method": "on_mouseleave"},
+    {"event": "mouseover", "family": "MouseEvent", "method": "on_mouseover"},
+    {"event": "mouseout", "family": "MouseEvent", "method": "on_mouseout"},
+    {"event": "mousemove", "family": "MouseEvent", "method": "on_mousemove"},
+    {"event": "contextmenu", "family": "MouseEvent", "method": "on_contextmenu"},
+    {"event": "input", "family": "InputEvent", "method": "on_input"},
+    {"event": "change", "family": "InputEvent", "method": "on_change"},
+    {"event": "keydown", "family": "KeyboardEvent", "method": "on_keydown"},
+    {"event": "keyup", "family": "KeyboardEvent", "method": "on_keyup"},
+    {"event": "keypress", "family": "KeyboardEvent", "method": "on_keypress"},
+    {"event": "submit", "family": "SubmitEvent", "method": "on_submit"},
+    {"event": "reset", "family": "SubmitEvent", "method": "on_reset"},
+    {"event": "focus", "family": "FocusEvent", "method": "on_focus"},
+    {"event": "blur", "family": "FocusEvent", "method": "on_blur"},
+    {"event": "focusin", "family": "FocusEvent", "method": "on_focusin"},
+    {"event": "focusout", "family": "FocusEvent", "method": "on_focusout"}
+  ],
+  "bindings": [
+    {"name": "bind:value", "detail": "<input> and <textarea>", "note": "On an input it is value= plus on_input; on a textarea it is on_input plus the text child, and the element may then have no other children. On a <select> it is refused: a select's value is which option carries selected."},
+    {"name": "bind:checked", "detail": "<input>", "note": "flag(checked) plus on_change. It takes no conversion."}
+  ],
+  "conversions": ["int", "float", "bool"],
+  "reservedAttributes": [
+    {"name": "key", "detail": "key={<expr>}", "note": "The identity of one row. It belongs on a tag directly inside a $for body and nowhere else."},
+    {"name": "ref", "detail": "ref={<place>}", "note": "On an element, a Reference to the node. On a component tag, an assignment of the child into an Option<T> place, written after every parameter and taking no sequence number."},
+    {"name": "attrs", "detail": "attrs={<expr>}", "note": "A map of attributes splatted onto the element. Each still passes the name and URL checks at run time."},
+    {"name": "preserve", "detail": "preserve", "note": "The subtree is left alone by the differ."},
+    {"name": "live", "detail": "live", "note": "W7's signal tier. Refused today rather than accepted and ignored, because a subtree marked live that renders like any other is a promise the runtime does not keep."}
+  ],
+  "voidElements": ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"],
+  "rawTextElements": ["script", "style"],
+  "rcdataElements": ["textarea", "title"],
+  "newlineEatingElements": ["pre", "textarea", "listing"],
+  "booleanAttributes": ["allowfullscreen", "async", "autofocus", "autoplay", "checked", "controls", "default", "defer", "disabled", "formnovalidate", "inert", "ismap", "itemscope", "loop", "multiple", "muted", "nomodule", "novalidate", "open", "playsinline", "readonly", "required", "reversed", "selected"],
+  "urlAttributes": ["href", "src", "action", "formaction", "poster", "data", "xlink:href"],
+  "allowedSchemes": ["http", "https", "mailto", "tel"]
+}
