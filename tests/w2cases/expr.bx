@@ -1,0 +1,2 @@
+<h2>Count: $self.count</h2>
+<p>$user.name (active)</p>

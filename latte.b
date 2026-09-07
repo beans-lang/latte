@@ -16,4 +16,8 @@ package latte
 // Nothing here imports std.fs, std.net or std.io. See beans.pot for why.
 
 /// The version of latte this package is.
-pub let version: string = "0.0.0-dev"
+///
+/// A module-level constant is `const NAME`, not `pub let` — `pub let` at
+/// module scope is `error: expected a declaration` in 0.1.40 (SYNTAX.md:
+/// "only `const <NAME>` starting a module-level declaration declares one").
+pub const VERSION: string = "0.0.0-dev"
