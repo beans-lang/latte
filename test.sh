@@ -416,10 +416,68 @@ else
     skipped=$((skipped + 1))
 fi
 
+
+# --- the refusal-coverage leg --------------------------------------------
+#
+# Every `self.faults.push(...)` in builder.b must have a case in tests/frames.b
+# § 13 — a trip with the exact fault text, a positive control that must be
+# accepted, and a name the deletion pass can map back to the site.
+#
+# § 13 already asserts that IT reached 24 distinct sites. What it cannot see is
+# builder.b growing a 25th, because a refusal nothing feeds raises nothing and
+# is counted by nobody. So this compares the two numbers, and it is the whole
+# reason a new refusal cannot be added here and quietly go untested — the
+# failure mode RULES.md calls "the refusal that never runs", which in this repo
+# has already produced one control that could not fire and one that never ran.
+#
+# Nothing here SKIPs. Both inputs are files in this repo; if either is missing
+# or shaped differently, the audit has moved and that is a failure, not a shrug.
+run_refusal_coverage_leg() {
+    local source="$ROOT/builder.b"
+    local recorded="$ROOT/tests/frames.out"
+    if [[ ! -f "$source" || ! -f "$recorded" ]]; then
+        echo "--- refusal-coverage FAILED: builder.b or tests/frames.out is missing ---" >&2
+        failed=1
+        return 0
+    fi
+
+    local sites listed
+    sites=$(grep -c 'self\.faults\.push' "$source" || true)
+    # The tally § 13 prints, one line per distinct site, between its header and
+    # the assertion that closes it.
+    listed=$(awk '/^-- the sites, and how many shapes reach each$/ {on=1; next}
+                  /^ok every fault site in builder\.b has a case$/ {on=0}
+                  on && /^   [0-9]+x /  {n++}
+                  END {print n + 0}' "$recorded")
+
+    if [[ "$listed" -eq 0 ]]; then
+        echo "--- refusal-coverage FAILED: tests/frames.out has no site tally ---" >&2
+        echo "    § 13 of tests/frames.b prints one line per fault site it reached." >&2
+        echo "    An empty tally means the audit moved and this leg is now blind." >&2
+        failed=1
+        return 0
+    fi
+    if [[ "$sites" -ne "$listed" ]]; then
+        echo "--- refusal-coverage FAILED: builder.b has $sites report sites, the audit covers $listed ---" >&2
+        echo "    A new refusal needs a case in tests/frames.b § 13: an input that trips" >&2
+        echo "    it with the exact fault text, and a positive control beside it that must" >&2
+        echo "    be ACCEPTED. Then add its label to probes/delete_faults.sh, in file" >&2
+        echo "    order, and run that script — a refusal whose deletion changes nothing is" >&2
+        echo "    either untested or unreachable, and neither shows up in a green run." >&2
+        failed=1
+        return 0
+    fi
+    echo "ok refusal-coverage — all $sites report sites in builder.b have a case and a control"
+}
+
 # latte-bx generates, beansc refuses. Run before the suite loop, because the leg
 # stages two scratch files in tests/ and removes them again, and the loop globs
 # that directory. Skipped only when a single suite was named, like the wasm leg.
 [[ -n "$only" ]] || run_component_type_leg
+
+# Reads two files and always runs, even for a single named suite: a check that
+# cannot be skipped cannot rot.
+run_refusal_coverage_leg
 
 for case in "$ROOT"/tests/*.b; do
     name=$(basename "$case" .b)
