@@ -1,0 +1,605 @@
+== 1 the first render, and no render at all
+-- first render  (6 edit(s))
+component 0
+  insert 0 <- ref@0
+component 3
+  insert 0 <- ref@49
+component 5
+  insert 0 <- ref@53
+component 7
+  insert 0 <- ref@57
+component 9
+  insert 0 <- ref@61
+component 11
+  insert 0 <- ref@65
+   html: <div id="root" data-title="title" hidden="">title<b>m</b><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok first render: edit count
+ok first render: applier == serializer
+ok first render: differ faults
+ok first render: applier faults
+ok first render: builder faults
+-- nothing changed  (0 edit(s))
+   html: <div id="root" data-title="title" hidden="">title<b>m</b><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok nothing changed: edit count
+ok nothing changed: applier == serializer
+ok nothing changed: differ faults
+ok nothing changed: applier faults
+ok nothing changed: builder faults
+ok an unchanged pass produces an empty batch
+ok and stages nothing
+== 2 text, markup, attributes, flags, splats, handlers
+-- a changed field touches its attribute and its text  (4 edit(s))
+component 0
+  in 0
+    attr 2:data-title = second
+    text 0 = second
+  out
+   html: <div id="root" data-title="second" hidden="">second<b>m</b><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok a changed field touches its attribute and its text: edit count
+ok a changed field touches its attribute and its text: applier == serializer
+ok a changed field touches its attribute and its text: differ faults
+ok a changed field touches its attribute and its text: applier faults
+ok a changed field touches its attribute and its text: builder faults
+-- raw markup  (3 edit(s))
+component 0
+  in 0
+    markup 1 = <i>changed</i>
+  out
+   html: <div id="root" data-title="second" hidden="">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok raw markup: edit count
+ok raw markup: applier == serializer
+ok raw markup: differ faults
+ok raw markup: applier faults
+ok raw markup: builder faults
+-- a flag turns off  (3 edit(s))
+component 0
+  in 0
+    flag 3:hidden = false
+  out
+   html: <div id="root" data-title="second">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok a flag turns off: edit count
+ok a flag turns off: applier == serializer
+ok a flag turns off: differ faults
+ok a flag turns off: applier faults
+ok a flag turns off: builder faults
+-- and back on  (3 edit(s))
+component 0
+  in 0
+    flag 3:hidden = true
+  out
+   html: <div id="root" data-title="second" hidden="">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok and back on: edit count
+ok and back on: applier == serializer
+ok and back on: differ faults
+ok and back on: applier faults
+ok and back on: builder faults
+-- a splat gains two names  (4 edit(s))
+component 0
+  in 0
+    attr 4:aria-live = polite
+    attr 4:data-z = z
+  out
+   html: <div id="root" data-title="second" hidden="" aria-live="polite" data-z="z">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok a splat gains two names: edit count
+ok a splat gains two names: applier == serializer
+ok a splat gains two names: differ faults
+ok a splat gains two names: applier faults
+ok a splat gains two names: builder faults
+-- and loses one  (3 edit(s))
+component 0
+  in 0
+    -attr 4:data-z
+  out
+   html: <div id="root" data-title="second" hidden="" aria-live="polite">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok and loses one: edit count
+ok and loses one: applier == serializer
+ok and loses one: differ faults
+ok and loses one: applier faults
+ok and loses one: builder faults
+-- and changes one  (3 edit(s))
+component 0
+  in 0
+    attr 4:aria-live = assertive
+  out
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok and changes one: edit count
+ok and changes one: applier == serializer
+ok and changes one: differ faults
+ok and changes one: applier faults
+ok and changes one: builder faults
+-- a handler goes away  (3 edit(s))
+component 0
+  in 0
+    -on:click 5
+  out
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok a handler goes away: edit count
+ok a handler goes away: applier == serializer
+ok a handler goes away: differ faults
+ok a handler goes away: applier faults
+ok a handler goes away: builder faults
+-- and comes back with a fresh id  (3 edit(s))
+component 0
+  in 0
+    on:click 5 -> 12
+  out
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok and comes back with a fresh id: edit count
+ok and comes back with a fresh id: applier == serializer
+ok and comes back with a fresh id: differ faults
+ok and comes back with a fresh id: applier faults
+ok and comes back with a fresh id: builder faults
+== 3 keyed rows — the shapes people hit
+-- append one row  (6 edit(s))
+component 0
+  in 0
+    in 2
+      insert 5 <- ref@0
+    out
+  out
+component 14
+  insert 0 <- ref@7
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li><li data-key="f"><span class="row">f</span></li></ul><section>one</section></div>
+ok append one row: edit count
+ok append one row: applier == serializer
+ok append one row: differ faults
+ok append one row: applier faults
+ok append one row: builder faults
+-- prepend one row  (6 edit(s))
+component 0
+  in 0
+    in 2
+      insert 0 <- ref@0
+    out
+  out
+component 16
+  insert 0 <- ref@7
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="z"><span class="row">z</span></li><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li><li data-key="f"><span class="row">f</span></li></ul><section>one</section></div>
+ok prepend one row: edit count
+ok prepend one row: applier == serializer
+ok prepend one row: differ faults
+ok prepend one row: applier faults
+ok prepend one row: builder faults
+-- remove from the middle  (5 edit(s))
+component 0
+  in 0
+    in 2
+      remove 3
+    out
+  out
+disposed [7]
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="z"><span class="row">z</span></li><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li><li data-key="f"><span class="row">f</span></li></ul><section>one</section></div>
+ok remove from the middle: edit count
+ok remove from the middle: applier == serializer
+ok remove from the middle: differ faults
+ok remove from the middle: applier faults
+ok remove from the middle: builder faults
+-- rotate left  (9 edit(s))
+component 0
+  in 0
+    in 2
+      move 1 -> 0
+      move 2 -> 1
+      move 3 -> 2
+      move 4 -> 3
+      move 5 -> 4
+    out
+  out
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li><li data-key="f"><span class="row">f</span></li><li data-key="z"><span class="row">z</span></li></ul><section>one</section></div>
+ok rotate left: edit count
+ok rotate left: applier == serializer
+ok rotate left: differ faults
+ok rotate left: applier faults
+ok rotate left: builder faults
+-- rotate right  (5 edit(s))
+component 0
+  in 0
+    in 2
+      move 5 -> 0
+    out
+  out
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="z"><span class="row">z</span></li><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li><li data-key="f"><span class="row">f</span></li></ul><section>one</section></div>
+ok rotate right: edit count
+ok rotate right: applier == serializer
+ok rotate right: differ faults
+ok rotate right: applier faults
+ok rotate right: builder faults
+-- reverse  (9 edit(s))
+component 0
+  in 0
+    in 2
+      move 5 -> 0
+      move 5 -> 1
+      move 5 -> 2
+      move 5 -> 3
+      move 5 -> 4
+    out
+  out
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="f"><span class="row">f</span></li><li data-key="e"><span class="row">e</span></li><li data-key="d"><span class="row">d</span></li><li data-key="b"><span class="row">b</span></li><li data-key="a"><span class="row">a</span></li><li data-key="z"><span class="row">z</span></li></ul><section>one</section></div>
+ok reverse: edit count
+ok reverse: applier == serializer
+ok reverse: differ faults
+ok reverse: applier faults
+ok reverse: builder faults
+-- drop four  (8 edit(s))
+component 0
+  in 0
+    in 2
+      remove 1
+      remove 1
+      remove 1
+      remove 1
+    out
+  out
+disposed [3, 5, 9, 11]
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="f"><span class="row">f</span></li><li data-key="z"><span class="row">z</span></li></ul><section>one</section></div>
+ok drop four: edit count
+ok drop four: applier == serializer
+ok drop four: differ faults
+ok drop four: applier faults
+ok drop four: builder faults
+-- empty the list  (6 edit(s))
+component 0
+  in 0
+    in 2
+      remove 0
+      remove 0
+    out
+  out
+disposed [14, 16]
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul></ul><section>one</section></div>
+ok empty the list: edit count
+ok empty the list: applier == serializer
+ok empty the list: differ faults
+ok empty the list: applier faults
+ok empty the list: builder faults
+ok emptying disposed both rows
+-- refill with five new rows  (14 edit(s))
+component 0
+  in 0
+    in 2
+      insert 0 <- ref@0
+      insert 1 <- ref@7
+      insert 2 <- ref@14
+      insert 3 <- ref@21
+      insert 4 <- ref@28
+    out
+  out
+component 18
+  insert 0 <- ref@35
+component 20
+  insert 0 <- ref@39
+component 22
+  insert 0 <- ref@43
+component 24
+  insert 0 <- ref@47
+component 26
+  insert 0 <- ref@51
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="p"><span class="row">p</span></li><li data-key="q"><span class="row">q</span></li><li data-key="r"><span class="row">r</span></li><li data-key="s"><span class="row">s</span></li><li data-key="t"><span class="row">t</span></li></ul><section>one</section></div>
+ok refill with five new rows: edit count
+ok refill with five new rows: applier == serializer
+ok refill with five new rows: differ faults
+ok refill with five new rows: applier faults
+ok refill with five new rows: builder faults
+== 4 every permutation of five keyed rows
+permutations: 120, disagreements: 0, worst batch: 8 edits
+total edits across the sweep: 650
+ok all 120 permutations of five rows
+ok every one applied to the same html
+ok five children survived the whole sweep
+ok no row was ever re-activated
+row renders across the sweep: 600
+ok the sweep found no faults anywhere
+== 5 every subset of five keyed rows
+subsets: 32, disagreements: 0, worst batch: 10 edits
+ok all 32 subsets
+ok every one applied to the same html
+ok the sweep found no faults anywhere
+== 6 branch flips and nested component swaps
+-- back to five rows  (19 edit(s))
+component 0
+  in 0
+    in 2
+      remove 0
+      remove 0
+      remove 0
+      remove 0
+      remove 0
+      insert 0 <- ref@0
+      insert 1 <- ref@7
+      insert 2 <- ref@14
+      insert 3 <- ref@21
+      insert 4 <- ref@28
+    out
+  out
+component 28
+  insert 0 <- ref@35
+component 30
+  insert 0 <- ref@39
+component 32
+  insert 0 <- ref@43
+component 34
+  insert 0 <- ref@47
+component 36
+  insert 0 <- ref@51
+disposed [18, 20, 22, 24, 26]
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok back to five rows: edit count
+ok back to five rows: applier == serializer
+ok back to five rows: differ faults
+ok back to five rows: applier faults
+ok back to five rows: builder faults
+-- the branch flips to the other arm  (4 edit(s))
+component 0
+  in 0
+    remove 2
+    insert 2 <- ref@0
+  out
+disposed [28, 30, 32, 34, 36]
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i>note<section>one</section></div>
+ok the branch flips to the other arm: edit count
+ok the branch flips to the other arm: applier == serializer
+ok the branch flips to the other arm: differ faults
+ok the branch flips to the other arm: applier faults
+ok the branch flips to the other arm: builder faults
+ok five children were disposed
+-- and flips back  (9 edit(s))
+component 0
+  in 0
+    insert 2 <- ref@0
+    remove 3
+  out
+component 38
+  insert 0 <- ref@37
+component 40
+  insert 0 <- ref@41
+component 42
+  insert 0 <- ref@45
+component 44
+  insert 0 <- ref@49
+component 46
+  insert 0 <- ref@53
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok and flips back: edit count
+ok and flips back: applier == serializer
+ok and flips back: differ faults
+ok and flips back: applier faults
+ok and flips back: builder faults
+-- mount Alpha  (4 edit(s))
+component 0
+  in 0
+    insert 3 <- ref@0
+  out
+component 47
+  insert 0 <- ref@1
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><em>alpha</em><section>one</section></div>
+ok mount Alpha: edit count
+ok mount Alpha: applier == serializer
+ok mount Alpha: differ faults
+ok mount Alpha: applier faults
+ok mount Alpha: builder faults
+-- swap Alpha for Beta  (5 edit(s))
+component 0
+  in 0
+    remove 3
+    insert 3 <- ref@0
+  out
+component 48
+  insert 0 <- ref@1
+disposed [47]
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><strong>beta</strong><section>one</section></div>
+ok swap Alpha for Beta: edit count
+ok swap Alpha for Beta: applier == serializer
+ok swap Alpha for Beta: differ faults
+ok swap Alpha for Beta: applier faults
+ok swap Alpha for Beta: builder faults
+ok Alpha was disposed
+-- unmount both  (3 edit(s))
+component 0
+  in 0
+    remove 3
+  out
+disposed [48]
+   html: <div id="root" data-title="second" hidden="" aria-live="assertive">second<i>changed</i><ul><li data-key="a"><span class="row">a</span></li><li data-key="b"><span class="row">b</span></li><li data-key="c"><span class="row">c</span></li><li data-key="d"><span class="row">d</span></li><li data-key="e"><span class="row">e</span></li></ul><section>one</section></div>
+ok unmount both: edit count
+ok unmount both: applier == serializer
+ok unmount both: differ faults
+ok unmount both: applier faults
+ok unmount both: builder faults
+== 7 a child that answers should_render() == false
+ok the pass still applies cleanly
+edits with one quiet child: 4
+ok a second diff with no render in between emits nothing
+ok and names no component at all
+ok and the tree agrees again
+ok no faults in the quiet section
+== 8 preserve — the divergence that is on purpose
+-- before preserve  (1 edit(s))
+component 0
+  insert 0 <- ref@0
+   html: <div id="root" data-title="title" hidden="">title<b>m</b>note<section>one</section></div>
+ok before preserve: edit count
+ok before preserve: applier == serializer
+ok before preserve: differ faults
+ok before preserve: applier faults
+ok before preserve: builder faults
+-- preserve on, text changed  (0 edit(s))
+   html: <div id="root" data-title="title" hidden="">title<b>m</b>note<section>two</section></div>
+ok preserve on, text changed: edit count
+ok preserve on, text changed: applier deliberately differs
+   applier: <div id="root" data-title="title" hidden="">title<b>m</b>note<section>one</section></div>
+ok preserve on, text changed: differ faults
+ok preserve on, text changed: applier faults
+ok preserve on, text changed: builder faults
+-- still preserved  (0 edit(s))
+   html: <div id="root" data-title="title" hidden="">title<b>m</b>note<section>three</section></div>
+ok still preserved: edit count
+ok still preserved: applier deliberately differs
+   applier: <div id="root" data-title="title" hidden="">title<b>m</b>note<section>one</section></div>
+ok still preserved: differ faults
+ok still preserved: applier faults
+ok still preserved: builder faults
+-- preserve off — still silent, because the old side had it  (0 edit(s))
+   html: <div id="root" data-title="title" hidden="">title<b>m</b>note<section>four</section></div>
+ok preserve off — still silent, because the old side had it: edit count
+ok preserve off — still silent, because the old side had it: applier deliberately differs
+   applier: <div id="root" data-title="title" hidden="">title<b>m</b>note<section>one</section></div>
+ok preserve off — still silent, because the old side had it: differ faults
+ok preserve off — still silent, because the old side had it: applier faults
+ok preserve off — still silent, because the old side had it: builder faults
+-- the pass after that resyncs  (5 edit(s))
+component 0
+  in 0
+    in 3
+      text 0 = five
+    out
+  out
+   html: <div id="root" data-title="title" hidden="">title<b>m</b>note<section>five</section></div>
+ok the pass after that resyncs: edit count
+ok the pass after that resyncs: applier == serializer
+ok the pass after that resyncs: differ faults
+ok the pass after that resyncs: applier faults
+ok the pass after that resyncs: builder faults
+ok three passes diverged, on purpose
+== 9 a keyed row inside a keyed row
+ok a 5x5 grid builds
+ok reordering the outer rows
+outer reorder: 6 edits for 25 cells
+ok a 5-row reversal is four moves and one step pair
+ok reordering every inner run
+inner reorder: 27 edits
+ok dropping in both dimensions
+ok no faults
+0 open table
+  1 region r5
+    0 open tr
+      1 attr data-row=r5
+      2 region c5
+        0 open td
+          1 text r5/c5
+        /close
+      /region
+      2 region c1
+        0 open td
+          1 text r5/c1
+        /close
+      /region
+      2 region c3
+        0 open td
+          1 text r5/c3
+        /close
+      /region
+      2 region c4
+        0 open td
+          1 text r5/c4
+        /close
+      /region
+    /close
+  /region
+  1 region r4
+    0 open tr
+      1 attr data-row=r4
+      2 region c5
+        0 open td
+          1 text r4/c5
+        /close
+      /region
+      2 region c1
+        0 open td
+          1 text r4/c1
+        /close
+      /region
+      2 region c3
+        0 open td
+          1 text r4/c3
+        /close
+      /region
+      2 region c4
+        0 open td
+          1 text r4/c4
+        /close
+      /region
+    /close
+  /region
+  1 region r2
+    0 open tr
+      1 attr data-row=r2
+      2 region c5
+        0 open td
+          1 text r2/c5
+        /close
+      /region
+      2 region c1
+        0 open td
+          1 text r2/c1
+        /close
+      /region
+      2 region c3
+        0 open td
+          1 text r2/c3
+        /close
+      /region
+      2 region c4
+        0 open td
+          1 text r2/c4
+        /close
+      /region
+    /close
+  /region
+  1 region r1
+    0 open tr
+      1 attr data-row=r1
+      2 region c5
+        0 open td
+          1 text r1/c5
+        /close
+      /region
+      2 region c1
+        0 open td
+          1 text r1/c1
+        /close
+      /region
+      2 region c3
+        0 open td
+          1 text r1/c3
+        /close
+      /region
+      2 region c4
+        0 open td
+          1 text r1/c4
+        /close
+      /region
+    /close
+  /region
+/close
+
+== 10 a boundary whose failure flips
+ok the body rendered
+ok the boundary failed
+failure flip: 4 edits
+component 0
+  in 0
+    remove 0
+    insert 0 <- ref@0
+  out
+ok a failed flip replaces rather than matches
+ok and recovers
+ok also a replacement
+ok no faults
+== 11 fragments — a parent's markup placed in a child
+ok a fragment builds
+ok keyed rows inside a fragment reorder
+fragment reorder: 8 edits
+component 0
+  in 0
+    in 0
+      move 4 -> 0
+      move 4 -> 1
+      move 4 -> 2
+      move 4 -> 3
+    out
+  out
+ok the fragment goes away
+ok no faults
+== summary
+checks: 190, failed: 0
