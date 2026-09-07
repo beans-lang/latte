@@ -154,6 +154,31 @@ for name in "${build_must_fail[@]}"; do
     fi
 done
 
+# probe 6's answer is half a deinit count and half `leaks` reporting zero, and
+# a claim that is only ever made by hand is a claim nobody re-checks. macOS
+# only — and it SAYS so rather than skipping quietly, because a gate that
+# skips on a missing tool dies silently when the layout moves (RULES.md 5).
+if command -v leaks >/dev/null 2>&1; then
+    if (cd "$beans" && "$beansc" build "$here/p6_cycle/main.b" -o "$tmp/p6.bin") \
+            >"$tmp/p6.leakbuild" 2>&1; then
+        if leaks --atExit -- "$tmp/p6.bin" >"$tmp/p6.leaks" 2>&1 &&
+           grep -q "0 leaks for 0 total leaked bytes" "$tmp/p6.leaks"; then
+            echo "ok p6_cycle under leaks — $(grep -o '[0-9]* leaks for [0-9]* total leaked bytes' "$tmp/p6.leaks" | tail -1)"
+        else
+            echo "--- p6_cycle: leaks did not report zero ---" >&2
+            grep -E "leaks for|Leak" "$tmp/p6.leaks" | tail -20 >&2
+            failed=1
+        fi
+    else
+        echo "--- p6_cycle: could not build for the leaks run ---" >&2
+        cat "$tmp/p6.leakbuild" >&2
+        failed=1
+    fi
+else
+    echo "SKIP p6_cycle under leaks: no \`leaks\` on this machine (macOS only)."
+    echo "     ANSWERS.md \u00a76's zero-leaks claim is UNVERIFIED on this run."
+fi
+
 bash "$here/check_refusals.sh" || failed=1
 
 [[ $failed -eq 0 ]] || { echo "probes: FAILED" >&2; exit 1; }
