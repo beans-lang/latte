@@ -152,6 +152,179 @@ pub class Suite {
     self.check("a far miss suggests nothing", bx.nearest_event("wheel") == "")
 }
 
+// -------------------------------------- section 1b: the editor vocabulary
+//
+// `bx/vocabulary.b` writes latte's `.bx` surface down as data, and
+// `tests/w2_editor_data.b` prints it as the JSON an editor reads. Every list
+// in it mirrors a predicate in `html.b`, and a predicate is a chain of `==`
+// that cannot be enumerated — the same problem `event_names()` has.
+//
+// So the gate is **two-sided over a corpus**: for every name in the corpus,
+// the predicate and the list must give the same answer. Adding a name to
+// `html.b` and forgetting the list fails here, and so does the reverse. A
+// one-sided check — "every listed name satisfies the predicate" — would pass
+// forever while the editor quietly went blind to a new element.
+//
+// The corpora are wide on purpose. `is_void_element` growing a `dialog` is
+// exactly the shape this has to catch, so `dialog` is in the corpus even
+// though nothing in latte mentions it.
+
+    fn element_corpus() -> List<string> {
+    return ["a", "abbr", "address", "area", "article", "aside", "audio", "b",
+            "base", "bdi", "bdo", "blockquote", "body", "br", "button",
+            "canvas", "caption", "cite", "code", "col", "colgroup", "data",
+            "datalist", "dd", "del", "details", "dfn", "dialog", "div", "dl",
+            "dt", "em", "embed", "fieldset", "figcaption", "figure", "footer",
+            "form", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header",
+            "hgroup", "hr", "html", "i", "iframe", "img", "input", "ins",
+            "kbd", "label", "legend", "li", "link", "listing", "main", "map",
+            "mark", "menu", "meta", "meter", "nav", "noscript", "object",
+            "ol", "optgroup", "option", "output", "p", "picture", "pre",
+            "progress", "q", "rp", "rt", "ruby", "s", "samp", "script",
+            "search", "section", "select", "slot", "small", "source", "span",
+            "strong", "style", "sub", "summary", "sup", "svg", "table",
+            "tbody", "td", "template", "textarea", "tfoot", "th", "thead",
+            "time", "title", "tr", "track", "u", "ul", "var", "video", "wbr"]
+}
+
+    fn attribute_name_corpus() -> List<string> {
+    return ["accept", "accesskey", "action", "allowfullscreen", "alt", "async",
+            "attrs", "autocomplete", "autofocus", "autoplay", "charset",
+            "checked", "cite", "class", "cols", "colspan", "content",
+            "contenteditable", "controls", "coords", "crossorigin", "data",
+            "data-x", "datetime", "default", "defer", "dir", "disabled",
+            "download", "draggable", "enctype", "for", "form", "formaction",
+            "formnovalidate", "headers", "height", "hidden", "href",
+            "hreflang", "id", "inert", "inputmode", "ismap", "itemscope",
+            "key", "kind", "label", "lang", "list", "live", "loading", "loop",
+            "max", "maxlength", "media", "method", "min", "minlength",
+            "multiple", "muted", "name", "nomodule", "novalidate", "open",
+            "pattern", "ping", "placeholder", "playsinline", "poster",
+            "preload", "preserve", "readonly", "ref", "referrerpolicy", "rel",
+            "required", "reversed", "rows", "rowspan", "sandbox", "scope",
+            "selected", "shape", "size", "sizes", "span", "spellcheck", "src",
+            "srcdoc", "srclang", "srcset", "start", "step", "style",
+            "tabindex", "target", "title", "translate", "type", "usemap",
+            "value", "width", "wrap", "xlink:href", "xml:lang"]
+}
+
+    fn scheme_corpus() -> List<string> {
+    return ["http", "https", "mailto", "tel", "javascript", "data", "vbscript",
+            "about", "file", "ftp", "blob", "ws", "wss", "sms", "chrome"]
+}
+
+    fn prefix_corpus() -> List<string> {
+    return ["xlink", "xml", "xmlns", "on", "bind", "bnd", "svg", "aria", "x",
+            "data", "html"]
+}
+
+/// The names in `bx/vocabulary.b`'s XML-namespace rows, without the colon.
+    fn vocabulary_xml_prefixes() -> List<string> {
+    let out: List<string> = []
+    for row: bx.VocabRow in bx.namespaces() {
+        if row.name == "on:" || row.name == "bind:" { continue }
+        out.push(row.name.slice(0, row.name.len() - 1))
+    }
+    return move out
+}
+
+    fn vocabulary_reserved_names() -> List<string> {
+    let out: List<string> = []
+    for row: bx.VocabRow in bx.reserved_attributes() { out.push(row.name) }
+    return move out
+}
+
+    fn vocabulary_agrees() {
+    for tag: string in self.element_corpus() {
+        self.check("voidElements lists {tag}",
+              bx.is_void_element(tag) == bx.void_elements().contains(tag))
+        self.check("rawTextElements lists {tag}",
+              bx.is_raw_text_element(tag) == bx.raw_text_elements().contains(tag))
+        self.check("rcdataElements lists {tag}",
+              bx.is_rcdata_element(tag) == bx.rcdata_elements().contains(tag))
+        self.check("newlineEatingElements lists {tag}",
+              bx.eats_leading_newline(tag) == bx.newline_eating_elements().contains(tag))
+    }
+    for name: string in self.attribute_name_corpus() {
+        self.check("booleanAttributes lists {name}",
+              bx.is_boolean_attribute(name) == bx.boolean_attributes().contains(name))
+        self.check("urlAttributes lists {name}",
+              bx.is_url_attribute(name) == bx.url_attributes().contains(name))
+        self.check("reservedAttributes lists {name}",
+              bx.is_reserved_attribute(name) == self.vocabulary_reserved_names().contains(name))
+    }
+    for scheme: string in self.scheme_corpus() {
+        self.check("allowedSchemes lists {scheme}",
+              bx.scheme_is_allowed("{scheme}:x") == bx.allowed_schemes().contains(scheme))
+    }
+    for prefix: string in self.prefix_corpus() {
+        self.check("namespaces lists {prefix}:",
+              bx.is_xml_namespace(prefix) == self.vocabulary_xml_prefixes().contains(prefix))
+    }
+    // The events are read straight out of `event_names()` rather than written
+    // down again, so the only thing to check is that every row has both halves
+    // — a name with no family would print `"family": ""` into the JSON.
+    for name: string in bx.event_names() {
+        self.check("event {name} has a family", bx.event_family(name) != "")
+        self.check("event {name} has a method", bx.event_method(name) != "")
+    }
+    self.check("no bind: conversion is missing", bx.conversions().len() == 3)
+}
+
+/// Each `$` block keyword parses as its block, and a word that is not one
+/// parses as an implicit chain instead.
+///
+/// The dispatcher in `parse.b` is another chain of `==`, so this is the only
+/// way to say the list in `vocabulary.b` is the list `parse.b` answers to. The
+/// control is the half that matters: without it, a keyword deleted from the
+/// dispatcher would still "parse" — as text — and every case would pass.
+    fn block_keywords_parse() {
+    self.same("$if parses as a block", self.first_node("$if self.on \{ <p>x</p> \}"), "if")
+    self.same("$for parses as a block",
+         self.first_node("$for row in self.rows \{ <p>x</p> \}"), "for")
+    self.same("$match parses as a block",
+         self.first_node("$match self.n \{ 0 => \{ <p>x</p> \} \}"), "match")
+    self.same("$slot parses as a block", self.first_node("$slot"), "slot")
+    self.same("$html parses as a block", self.first_node("$html(self.body)"), "html")
+    self.same("an unknown $word is a chain, not a block",
+         self.first_node("$notablock"), "implicit")
+    self.same("$$ is text", self.first_node("$$notablock"), "text")
+    // Every keyword the vocabulary names is one of the five above, spelled
+    // with its `$`. `else` is the exception and carries none, because it
+    // continues the `$if` rather than opening a block.
+    for row: bx.VocabRow in bx.blocks() {
+        if row.name == "else" { continue }
+        self.check("{row.name} starts with a $", row.name.starts_with("$"))
+        self.check("{row.name} is one parse.b dispatches on",
+              ["$if", "$for", "$match", "$slot", "$html"].contains(row.name))
+    }
+}
+
+/// The first word of the parse tree's first line — `if`, `for`, `text`, …
+    fn first_node(markup: string) -> string {
+    let doc: bx.Document = bx.parse_document(markup)
+    let dump: string = doc.show()
+    let lines: List<string> = dump.split("\n")
+    if lines.is_empty() { return "" }
+    let words: List<string> = lines[0].trim().split(" ")
+    if words.is_empty() { return "" }
+    return words[0]
+}
+
+/// The JSON escaper, on the four bytes JSON names and one it does not.
+///
+/// A note in `vocabulary.b` holds a quote and a backslash today, so a broken
+/// escaper writes a file no editor can parse — and nothing else in this repo
+/// parses JSON, so nothing else would notice.
+    fn json_escaping() {
+    self.same("a quote", bx.json_string("a\"b"), "\"a\\\"b\"")
+    self.same("a backslash", bx.json_string("a\\b"), "\"a\\\\b\"")
+    self.same("a newline", bx.json_string("a\nb"), "\"a\\nb\"")
+    self.same("a tab", bx.json_string("a\tb"), "\"a\\tb\"")
+    self.same("a bare control byte", bx.json_string("a\u{1}b"), "\"a\\u0001b\"")
+    self.same("nothing to escape", bx.json_string("plain"), "\"plain\"")
+}
+
 // ------------------------------------------- section 2 and 3: the fixtures
 
     fn fixture(name: string) -> string {
@@ -483,6 +656,10 @@ fn main() {
     suite.contract_agrees()
     suite.event_table_agrees()
     io.println("both copies of the escaping and refusal rules agree over the corpus")
+    suite.vocabulary_agrees()
+    suite.block_keywords_parse()
+    suite.json_escaping()
+    io.println("the editor vocabulary and the tables it mirrors agree over the corpus")
 
     suite.show_tree("price")
     suite.show_tree("blocks")
