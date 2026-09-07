@@ -22,9 +22,14 @@
 //   8  boundaries           — ok, failed, failed mid-element, nested
 //   9  handles              — an element `ref`, and `preserve`
 //  10  a component-tag ref  — the assignment that replaced `Reference.child`
+//  11  the factory mount    — component_made<T> over a closed generic
+//  12  the dirty sink       — MountHandle, Component.id(), Callback.call
+//  13  every fault site     — all 24, each with a trip, a control and a count
+//  14  an imported base     — why BLOCKERS.md B8 does not reach the mount path
 package main
 
 import std.io
+import std.reflect
 import {Builder, Callback, Component, DirtySink, Frame, FocusEvent, InputEvent,
         KeyboardEvent, MouseEvent, Reference, Renderer, Serializer, SubmitEvent,
         describe_frame} from latte
@@ -196,6 +201,24 @@ pub class NotAComponent {
     pub fn init() {}
 }
 
+/// A real Component that reflection cannot activate: its initializer takes an
+/// argument. `initializer()` still answers `some` — the descriptor exists — so
+/// this reaches `ctor.call([])` and fails there, which is a DIFFERENT site from
+/// the closed generic that has no descriptor at all.
+pub class NeedsSeed extends Component {
+    pub seed: int = 0
+    pub fn init(seed: int) { self.seed = seed }
+    pub override fn render(b: Builder) { b.text(0, "seed={self.seed}") }
+}
+
+/// The other way an activation fails: a zero-argument initializer that is not
+/// `pub`. Reflection finds it and refuses to call it.
+pub class HiddenInit extends Component {
+    pub value: int = 0
+    fn init() {}
+    pub override fn render(b: Builder) { b.text(0, "hidden") }
+}
+
 // ---------------------------------------------------------------- frame reads
 
 fn child_ids(b: Builder) -> List<int> {
@@ -302,6 +325,17 @@ fn render_body(b: Builder, body: fn(Builder)) {
 
 fn show_faults(b: Builder) {
     for fault: string in b.all_faults() { io.println("   fault: {fault}") }
+}
+
+/// The first fault, or a sentinel. `all_faults()[0]` on a builder that raised
+/// none is a panic, and a panic ends the whole suite at that line — so a
+/// refusal that stops working takes every later check down with it and names
+/// nothing. This turns the same mistake into one FAIL that says which rule
+/// went missing. `probes/delete_faults.sh` found all three of these by
+/// deleting the report sites they guard.
+fn first_fault(b: Builder) -> string {
+    if b.all_faults().len() == 0 { return "<no fault was raised>" }
+    return b.all_faults()[0]
 }
 
 fn html_of(b: Builder) -> string {
@@ -1208,7 +1242,7 @@ fn factory_mount(r: Report) {
     show_faults(rb)
     r.eqi("reflection cannot build a closed generic", rb.all_faults().len(), 1)
     r.yes("and says which type",
-        rb.all_faults()[0].contains("has no zero-argument initializer"))
+        first_fault(rb).contains("has no zero-argument initializer"))
     r.eq("so nothing renders", html_of(rb), "")
 
     // The factory route's own refusal, and it must be the same message the
@@ -1225,7 +1259,7 @@ fn factory_mount(r: Report) {
     r.eqi("a factory that does not build a Component is refused",
         bad.all_faults().len(), 1)
     r.eq("with the same message the reflective route gives",
-        bad.all_faults()[0], "0: NotAComponent is not a Component")
+        first_fault(bad), "0: NotAComponent is not a Component")
 
     // The two routes share one slot table, so a slot filled by one is reused
     // by the other. If they did not, a markup compiler that switched routes
@@ -1254,13 +1288,82 @@ fn factory_mount(r: Report) {
     io.println("-- a slot asked for a different class")
     show_faults(fb)
     r.eqi("a slot that holds another class is refused", fb.all_faults().len(), 1)
-    r.eq("and names both", fb.all_faults()[0],
+    r.eq("and names both", first_fault(fb),
         "0: slot 1 holds a Plain, not a Other")
     // The control beside it: the SAME class at the same seq is not a fault.
     flip.route = 1
     fb.render_root(flip)
     r.eqi("the same class at the same seq is not", fb.all_faults().len(), 0)
     r.eq("and the original instance is still there", html_of(fb), "<p>f/3</p>")
+}
+
+// ------------------------------------------------- B8 and the mount path
+
+/// **Is the mount path affected by BLOCKERS.md B8?** No, and this is the case
+/// that says so rather than a paragraph claiming it.
+///
+/// B8: `type_of(T)` for an IMPORTED `T` reports the importing package's name
+/// joined to the simple name — a type that does not exist — while the
+/// inheritance chain reports the real one, so `is_assignable_from` answers
+/// **false** for a genuine base and subclass, on both backends.
+///
+/// Every component in this repo is declared in `package main` and mounted
+/// through `latte`'s `Builder.component<T>` / `component_made<T>`, which is
+/// exactly the imported-base shape. It works because the mount path never asks
+/// that question: `mount`, `mount_made` and `fill_slot` each use an `as?`
+/// downcast, which goes through the inheritance chain, and `type_of(T)` is used
+/// only for `initializer()` and for the simple `name()` in a fault message.
+///
+/// It also measures the question, and the measurement is a finding: B8's
+/// failure **does not reproduce here**. `type_of(Component).qualified_name()`
+/// asked from `package main` answers `latte.Component`, the real name, and
+/// `is_assignable_from` answers **true** for `Plain extends Component`. B8's
+/// repro imports its base from a SUBPACKAGE (`p11_type_of_name.core`) into the
+/// module root; latte's base comes from the module root itself. So whatever B8
+/// is, it is narrower than "any imported type", and these two assertions are
+/// what will say so the day it widens.
+fn imported_base_downcast(r: Report) {
+    io.println("== 14 an imported base, and B8")
+
+    let base: reflect.Type = type_of(Component)
+    let leaf: reflect.Type = type_of(Plain)
+    io.println("   type_of(Component).qualified_name() = {base.qualified_name()}")
+    io.println("   type_of(Plain).qualified_name()     = {leaf.qualified_name()}")
+    io.println("   is_assignable_from                  = {base.is_assignable_from(leaf)}")
+    r.eq("an imported base reports its real package", base.qualified_name(),
+        "latte.Component")
+    r.yes("and is_assignable_from answers true for a real subclass",
+        base.is_assignable_from(leaf))
+
+    // The reflective route: the descriptor is the right class even when its
+    // reported name is not, because the initializer it hands back builds one.
+    let reflective: Builder = new Builder()
+    render_body(reflective, fn(b: Builder) {
+        b.component<Plain>(0, fn(c: Plain) { c.label = "reflective" })
+    })
+    r.eq("a main-package component mounts through the imported base",
+        html_of(reflective), "<p>reflective/1</p>")
+    r.eqi("with no faults", reflective.all_faults().len(), 0)
+
+    // The factory route boxes the static type and downcasts the same way.
+    let made: Builder = new Builder()
+    render_body(made, fn(b: Builder) {
+        b.component_made<Plain>(0,
+            fn() -> Plain { return new Plain() },
+            fn(c: Plain) { c.label = "factory" })
+    })
+    r.eq("and so does the factory route", html_of(made), "<p>factory/1</p>")
+    r.eqi("with no faults", made.all_faults().len(), 0)
+
+    // The control that makes the two above mean something: the same downcast
+    // asked of a class that is NOT a Component must still answer none, so
+    // "everything downcasts" cannot pass for "the downcast works".
+    let wrong: Builder = new Builder()
+    render_body(wrong, fn(b: Builder) {
+        b.component<NotAComponent>(0, fn(x: NotAComponent) {})
+    })
+    r.eq("while a non-Component is still refused", first_fault(wrong),
+        "0: NotAComponent is not a Component")
 }
 
 // ------------------------------------------------- the dirty sink
@@ -1470,6 +1573,1183 @@ fn dirty_sink(r: Report) {
     r.eqi("no faults", engine2.all_faults().len(), 0)
 }
 
+// ------------------------------------------------- 13 every fault site
+//
+// One entry per `self.faults.push(...)` in `builder.b`, and there are 24 of
+// them. Each entry is four facts and not one:
+//
+//   1. an input that trips THAT site, with the EXACT fault text and count —
+//      not "a fault happened". A count and a message are what tell a coarser
+//      refusal standing in front of a finer one from the finer one firing.
+//   2. what the refusal left behind: the substituted tag, the inert URL, the
+//      dropped slot. A refusal that reports and then writes the value anyway
+//      is not a refusal.
+//   3. the pass is still BALANCED. Every one of these runs through
+//      `render_root`, so `settle` has closed whatever the case left open; a
+//      refusal that leaves the frame list unbalanced hands the differ and the
+//      applier a tree they have to guess at.
+//   4. a POSITIVE CONTROL beside it — the nearest legal input, which must be
+//      accepted and must render. Without one you cannot tell "refused for the
+//      right reason" from "refused earlier, for a coarser one", and the
+//      message in the golden is the only thing that would have told you.
+//
+// RULES.md, "The refusal that never runs": W2 found four bugs by exercising
+// refusals that had been written and never run, and the worst of them was a
+// live refusal no input could reach, because a broader rule upstream swallowed
+// it first — `xlink:href`'s scheme check, listed as covered in two files and
+// never once executed. The same shape was live in THIS file: `attrs`' copy of
+// the URL-scheme check had never run, because § 6's splat case carried no URL
+// name. It does now: `attrs-refused-scheme` below.
+//
+// The other half of the audit does not live in a suite and cannot: each of the
+// 24 report sites was deleted, one at a time, and the case below that names it
+// was watched to FAIL. A refusal whose deletion changes nothing is either
+// untested or unreachable, and this file says which in the lane notes.
+// `probes/delete_faults.sh` re-runs the whole pass.
+
+/// One fault site, one trip, one control.
+pub class Site {
+    /// The report site, named by the method it lives in and its message. A
+    /// name and not a line number, because a line number in a golden goes
+    /// stale the first time anything above it moves.
+    pub site: string = ""
+    /// This case's own name — one site can be reached by several shapes.
+    pub name: string = ""
+    /// Input that must be refused.
+    pub trip: fn(Builder) = fn(b: Builder) {}
+    /// The exact faults it must raise, joined with " | ". Empty means none.
+    pub want: string = ""
+    /// The html the refusal leaves behind.
+    pub left: string = ""
+    /// The nearest legal input, which must be accepted.
+    pub control: fn(Builder) = fn(b: Builder) {}
+    /// What the control renders. An empty control proves nothing, so every one
+    /// of these is non-empty and asserted.
+    pub accepted: string = ""
+
+    pub fn init(site: string, name: string, trip: fn(Builder), want: string,
+                left: string, control: fn(Builder), accepted: string) {
+        self.site = site
+        self.name = name
+        self.trip = trip
+        self.want = want
+        self.left = left
+        self.control = control
+        self.accepted = accepted
+    }
+}
+
+fn joined(b: Builder) -> string {
+    var out: string = ""
+    var first: bool = true
+    for fault: string in b.all_faults() {
+        if !first { out = "{out} | " }
+        out = "{out}{fault}"
+        first = false
+    }
+    return out
+}
+
+const SITE_SIBLING: string = "note_sibling / sequence N does not follow M in this scope"
+const SITE_OUTSIDE: string = "take_attribute_slot / X is outside an element's attribute run"
+const SITE_ORDER: string = "take_attribute_slot / X does not follow Y in this element's attribute run"
+const SITE_TAG: string = "open / refused tag name"
+const SITE_CLOSE: string = "close / close with no open element"
+const SITE_ATTR_URL: string = "attr / attribute N carried a refused scheme"
+const SITE_ATTR_NAME: string = "name_is_writable / refused attribute name"
+const SITE_ATTR_ON: string = "name_is_writable / refused inline handler attribute"
+const SITE_SPLAT_NAME: string = "attrs / refused splatted attribute name"
+const SITE_SPLAT_ON: string = "attrs / refused splatted inline handler"
+const SITE_SPLAT_URL: string = "attrs / attribute N carried a refused scheme"
+const SITE_WRONG_CLASS: string = "fill_slot / slot N holds a X, not a Y"
+const SITE_NOT_COMPONENT: string = "mount / X is not a Component"
+const SITE_ACTIVATE: string = "mount / cannot activate X"
+const SITE_NO_CTOR: string = "mount / X has no zero-argument initializer"
+const SITE_MADE_NOT_COMPONENT: string = "mount_made / X is not a Component"
+const SITE_DUP_KEY: string = "region / duplicate key"
+const SITE_END_REGION: string = "end_region / end_region with no open region"
+const SITE_FAIL_BOUNDARY: string = "fail_boundary / fail_boundary with no open boundary"
+const SITE_END_BOUNDARY: string = "end_boundary / end_boundary with no open boundary"
+const SITE_OPEN_ELEMENT: string = "unwind_to / an element was left open"
+const SITE_OPEN_REGION: string = "unwind_to / a region was left open"
+const SITE_OPEN_FRAGMENT: string = "unwind_to / a fragment was left open"
+const SITE_OPEN_BOUNDARY: string = "unwind_to / a boundary was left open"
+
+/// Every report site in `builder.b` except the one that needs two render
+/// passes; `wrong_class_at_one_slot` below carries that one.
+fn sites() -> List<Site> {
+    var out: List<Site> = []
+
+    // -- note_sibling -----------------------------------------------------
+    out.push(new Site(SITE_SIBLING, "sibling-seq-repeats",
+        fn(b: Builder) {
+            b.text(0, "one")
+            b.text(0, "two")
+        },
+        "0: sequence 0 does not follow 0 in this scope", "onetwo",
+        fn(b: Builder) {
+            b.text(0, "one")
+            b.text(1, "two")
+        }, "onetwo"))
+
+    out.push(new Site(SITE_SIBLING, "sibling-seq-goes-backwards",
+        fn(b: Builder) {
+            b.open(5, "p")
+            b.close()
+            b.open(2, "p")
+            b.close()
+        },
+        "0: sequence 2 does not follow 5 in this scope", "<p></p><p></p>",
+        fn(b: Builder) {
+            b.open(2, "p")
+            b.close()
+            b.open(5, "p")
+            b.close()
+        }, "<p></p><p></p>"))
+
+    // The exception the rule carries, and the reason it needs its own control:
+    // a run of regions from one loop all share the loop's seq, and that is NOT
+    // a violation. A test that only ever fed increasing numbers could not tell
+    // this rule from "seq must always increase", which would refuse every
+    // keyed list in the framework.
+    out.push(new Site(SITE_SIBLING, "a-plain-sibling-reusing-the-loops-number",
+        fn(b: Builder) {
+            b.region(1, "a")
+            b.text(0, "row")
+            b.end_region()
+            b.text(1, "tail")
+        },
+        "0: sequence 1 does not follow 1 in this scope", "rowtail",
+        fn(b: Builder) {
+            b.region(1, "a")
+            b.text(0, "one")
+            b.end_region()
+            b.region(1, "b")
+            b.text(0, "two")
+            b.end_region()
+            b.text(2, "tail")
+        }, "onetwotail"))
+
+    // -- take_attribute_slot, outside the run -----------------------------
+    out.push(new Site(SITE_OUTSIDE, "attribute-after-content",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.text(1, "content first")
+            b.attr(2, "class", "too late")
+            b.close()
+        },
+        "0: attribute 2:\"class\" is outside an element's attribute run",
+        "<div>content first</div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "class", "in time")
+            b.text(2, "content after")
+            b.close()
+        }, "<div class=\"in time\">content after</div>"))
+
+    out.push(new Site(SITE_OUTSIDE, "attribute-with-no-element-at-all",
+        fn(b: Builder) {
+            b.attr(0, "class", "nowhere")
+            b.text(1, "text")
+        },
+        "0: attribute 0:\"class\" is outside an element's attribute run", "text",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "class", "somewhere")
+            b.close()
+            b.text(2, "text")
+        }, "<div class=\"somewhere\"></div>text"))
+
+    out.push(new Site(SITE_OUTSIDE, "handler-after-the-element-closed",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.close()
+            b.on_click(1, fn(e: MouseEvent) {})
+        },
+        "0: on:click 1:\"\" is outside an element's attribute run", "<div></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.on_click(1, fn(e: MouseEvent) {})
+            b.close()
+        }, "<div></div>"))
+
+    // -- take_attribute_slot, ordering ------------------------------------
+    out.push(new Site(SITE_ORDER, "attribute-seq-goes-backwards",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(3, "a", "1")
+            b.attr(1, "b", "2")
+            b.close()
+        },
+        "0: attribute 1:\"b\" does not follow 3:\"a\" in this element's attribute run",
+        "<div a=\"1\"></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "b", "2")
+            b.attr(3, "a", "1")
+            b.close()
+        }, "<div b=\"2\" a=\"1\"></div>"))
+
+    // The half of the rule only the differ needs: the merge key is the pair,
+    // so within one seq the NAMES have to increase too. The control is the
+    // same two names in the other order, which must be accepted — otherwise
+    // the rule would be "one attribute per seq", which is not what it says.
+    out.push(new Site(SITE_ORDER, "attribute-name-goes-backwards",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "z", "1")
+            b.attr(1, "a", "2")
+            b.close()
+        },
+        "0: attribute 1:\"a\" does not follow 1:\"z\" in this element's attribute run",
+        "<div z=\"1\"></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "a", "2")
+            b.attr(1, "z", "1")
+            b.close()
+        }, "<div a=\"2\" z=\"1\"></div>"))
+
+    out.push(new Site(SITE_ORDER, "attribute-slot-repeats",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "same", "first")
+            b.attr(1, "same", "second")
+            b.close()
+        },
+        "0: attribute 1:\"same\" does not follow 1:\"same\" in this element's attribute run",
+        "<div same=\"first\"></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "same", "first")
+            b.attr(2, "same", "second")
+            b.close()
+        }, "<div same=\"second\"></div>"))
+
+    out.push(new Site(SITE_ORDER, "two-handlers-at-one-seq",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.on_click(1, fn(e: MouseEvent) {})
+            b.on_dblclick(1, fn(e: MouseEvent) {})
+            b.close()
+        },
+        "0: on:dblclick 1:\"\" does not follow 1:\"\" in this element's attribute run",
+        "<div></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.on_click(1, fn(e: MouseEvent) {})
+            b.attr(1, "class", "x")
+            b.on_dblclick(2, fn(e: MouseEvent) {})
+            b.close()
+        }, "<div class=\"x\"></div>"))
+
+    out.push(new Site(SITE_ORDER, "a-ref-and-a-preserve-at-one-seq",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.reference(1, fn(h: Reference) {})
+            b.preserve(1)
+            b.close()
+        },
+        "0: preserve 1:\"\" does not follow 1:\"\" in this element's attribute run",
+        "<div></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.reference(1, fn(h: Reference) {})
+            b.preserve(2)
+            b.close()
+        }, "<div></div>"))
+
+    out.push(new Site(SITE_ORDER, "splat-marker-under-an-earlier-name",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["a"] = "from splat"
+            b.open(0, "div")
+            b.attr(1, "z", "explicit")
+            b.attrs(1, extra)
+            b.close()
+        },
+        "0: attrs 1:\"\" does not follow 1:\"z\" in this element's attribute run",
+        "<div z=\"explicit\"></div>",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["a"] = "from splat"
+            b.open(0, "div")
+            b.attr(1, "z", "explicit")
+            b.attrs(2, extra)
+            b.close()
+        }, "<div z=\"explicit\" a=\"from splat\"></div>"))
+
+    // -- open -------------------------------------------------------------
+    out.push(new Site(SITE_TAG, "unsafe-tag",
+        fn(b: Builder) {
+            b.open(0, "sc ript>")
+            b.text(1, "inside")
+            b.close()
+        },
+        "0: refused tag name \"sc ript>\"", "<span>inside</span>",
+        fn(b: Builder) {
+            b.open(0, "script")
+            b.text(1, "let x = 1")
+            b.close()
+        }, "<script>let x = 1</script>"))
+
+    out.push(new Site(SITE_TAG, "empty-tag",
+        fn(b: Builder) {
+            b.open(0, "")
+            b.close()
+        },
+        "0: refused tag name \"\"", "<span></span>",
+        fn(b: Builder) {
+            b.open(0, "my-widget")
+            b.text(1, "x")
+            b.close()
+        }, "<my-widget>x</my-widget>"))
+
+    out.push(new Site(SITE_TAG, "digit-first-tag",
+        fn(b: Builder) {
+            b.open(0, "1bad")
+            b.close()
+        },
+        "0: refused tag name \"1bad\"", "<span></span>",
+        fn(b: Builder) {
+            b.open(0, "h1")
+            b.close()
+        }, "<h1></h1>"))
+
+    // -- close ------------------------------------------------------------
+    out.push(new Site(SITE_CLOSE, "close-with-nothing-open",
+        fn(b: Builder) {
+            b.close()
+            b.text(0, "after")
+        },
+        "0: close with no open element", "after",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.close()
+            b.text(1, "after")
+        }, "<div></div>after"))
+
+    // A `close` whose top scope is a REGION and not an element. The extra
+    // fault is `settle` finding the region still open, which is the right
+    // answer: refusing the close is what stopped the region from being
+    // silently ended by the wrong call.
+    out.push(new Site(SITE_CLOSE, "close-inside-a-region",
+        fn(b: Builder) {
+            b.region(0, "k")
+            b.close()
+        },
+        "0: close with no open element | 0: a region was left open", "",
+        fn(b: Builder) {
+            b.region(0, "k")
+            b.open(0, "li")
+            b.close()
+            b.end_region()
+        }, "<li></li>"))
+
+    // -- attr, the URL allowlist ------------------------------------------
+    out.push(new Site(SITE_ATTR_URL, "url-scheme",
+        fn(b: Builder) {
+            b.open(0, "a")
+            b.attr(1, "href", "javascript:alert(1)")
+            b.close()
+        },
+        "0: attribute href carried a refused scheme", "<a href=\"about:blank\"></a>",
+        fn(b: Builder) {
+            b.open(0, "a")
+            b.attr(1, "href", "https://example.com/a:b")
+            b.close()
+        }, "<a href=\"https://example.com/a:b\"></a>"))
+
+    // A browser drops TAB, LF and CR from inside a URL, so this reaches the
+    // scheme parser as `javascript:`. The control is a URL with a colon in its
+    // PATH, which is not a scheme and must survive.
+    out.push(new Site(SITE_ATTR_URL, "url-scheme-obfuscated",
+        fn(b: Builder) {
+            b.open(0, "a")
+            b.attr(1, "href", "java\tscript:alert(1)")
+            b.close()
+        },
+        "0: attribute href carried a refused scheme", "<a href=\"about:blank\"></a>",
+        fn(b: Builder) {
+            b.open(0, "a")
+            b.attr(1, "href", "/local/path:with-colon")
+            b.close()
+        }, "<a href=\"/local/path:with-colon\"></a>"))
+
+    // The name W2 found dead in their own lane: an SVG `<a xlink:href>` runs
+    // script in every browser that renders SVG, and the check on it had never
+    // executed once while two files documented it as covered. Its control is
+    // an xlink:href that must be KEPT, so "refused because xlink:href is
+    // rejected outright" cannot pass for "refused because of the scheme".
+    out.push(new Site(SITE_ATTR_URL, "url-scheme-xlink",
+        fn(b: Builder) {
+            b.open(0, "a")
+            b.attr(1, "xlink:href", "javascript:alert(1)")
+            b.close()
+        },
+        "0: attribute xlink:href carried a refused scheme",
+        "<a xlink:href=\"about:blank\"></a>",
+        fn(b: Builder) {
+            b.open(0, "a")
+            b.attr(1, "xlink:href", "https://example.com/icon.svg#x")
+            b.close()
+        }, "<a xlink:href=\"https://example.com/icon.svg#x\"></a>"))
+
+    out.push(new Site(SITE_ATTR_URL, "url-scheme-data-on-a-void-element",
+        fn(b: Builder) {
+            b.open(0, "img")
+            b.attr(1, "src", "data:text/html,<script>alert(1)</script>")
+            b.close()
+        },
+        "0: attribute src carried a refused scheme", "<img src=\"about:blank\">",
+        fn(b: Builder) {
+            b.open(0, "img")
+            b.attr(1, "src", "https://example.com/a.png")
+            b.close()
+        }, "<img src=\"https://example.com/a.png\">"))
+
+    // The other direction of the same rule: a value that LOOKS like a scheme
+    // on an attribute that is not a URL must be left alone. `download` takes a
+    // filename, and rewriting it to about:blank would be the allowlist
+    // over-reaching into content it does not govern.
+    out.push(new Site(SITE_ATTR_URL, "not-a-url-attribute",
+        fn(b: Builder) {
+            b.open(0, "a")
+            b.attr(1, "href", "vbscript:msgbox(1)")
+            b.attr(2, "download", "javascript:not-a-url")
+            b.close()
+        },
+        "0: attribute href carried a refused scheme",
+        "<a href=\"about:blank\" download=\"javascript:not-a-url\"></a>",
+        fn(b: Builder) {
+            b.open(0, "a")
+            b.attr(1, "href", "mailto:x@example.com")
+            b.attr(2, "download", "javascript:not-a-url")
+            b.close()
+        }, "<a href=\"mailto:x@example.com\" download=\"javascript:not-a-url\"></a>"))
+
+    // -- name_is_writable, the name --------------------------------------
+    out.push(new Site(SITE_ATTR_NAME, "unsafe-attribute-name",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "class\" onload=\"x", "y")
+            b.attr(2, "ok", "kept")
+            b.close()
+        },
+        "0: refused attribute name \"class\" onload=\"x\"", "<div ok=\"kept\"></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "data-x:y.z_w-1", "punctuation is fine")
+            b.attr(2, "ok", "kept")
+            b.close()
+        }, "<div data-x:y.z_w-1=\"punctuation is fine\" ok=\"kept\"></div>"))
+
+    out.push(new Site(SITE_ATTR_NAME, "empty-attribute-name",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "", "x")
+            b.attr(2, "ok", "kept")
+            b.close()
+        },
+        "0: refused attribute name \"\"", "<div ok=\"kept\"></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "_private", "x")
+            b.attr(2, "ok", "kept")
+            b.close()
+        }, "<div _private=\"x\" ok=\"kept\"></div>"))
+
+    // The `flag` route into the same check. Two callers reach
+    // `name_is_writable`, and a case that only used `attr` would leave the
+    // other one covered by nothing.
+    out.push(new Site(SITE_ATTR_NAME, "unsafe-flag-name",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.flag(1, "a>b", true)
+            b.flag(2, "hidden", true)
+            b.close()
+        },
+        "0: refused attribute name \"a>b\"", "<div hidden=\"\"></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.flag(1, "a-b", true)
+            b.flag(2, "hidden", true)
+            b.close()
+        }, "<div a-b=\"\" hidden=\"\"></div>"))
+
+    // -- name_is_writable, the on* rule -----------------------------------
+    //
+    // Its control is the length edge: the rule is `len >= 3 && starts_with
+    // "on"`, so an attribute literally named `on` is not an inline handler and
+    // must be written. Without that control, a rule that refused every name
+    // beginning "on" — or every name at all — would pass this case.
+    out.push(new Site(SITE_ATTR_ON, "inline-handler-attribute",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "onclick", "steal()")
+            b.attr(2, "ok", "kept")
+            b.close()
+        },
+        "0: refused inline handler attribute \"onclick\"", "<div ok=\"kept\"></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "on", "two bytes, not a handler")
+            b.attr(2, "data-onclick", "does not start with on")
+            b.close()
+        }, "<div on=\"two bytes, not a handler\" data-onclick=\"does not start with on\"></div>"))
+
+    out.push(new Site(SITE_ATTR_ON, "inline-handler-in-capitals",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "ONCLICK", "steal()")
+            b.close()
+        },
+        "0: refused inline handler attribute \"ONCLICK\"", "<div></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.attr(1, "ON", "still two bytes")
+            b.close()
+        }, "<div ON=\"still two bytes\"></div>"))
+
+    out.push(new Site(SITE_ATTR_ON, "inline-handler-as-a-flag",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.flag(1, "onerror", true)
+            b.flag(2, "hidden", true)
+            b.close()
+        },
+        "0: refused inline handler attribute \"onerror\"", "<div hidden=\"\"></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.flag(1, "on", true)
+            b.flag(2, "hidden", true)
+            b.close()
+        }, "<div on=\"\" hidden=\"\"></div>"))
+
+    // -- attrs, the splat -------------------------------------------------
+    out.push(new Site(SITE_SPLAT_NAME, "splatted-unsafe-name",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["bad name"] = "x"
+            extra["fine"] = "kept"
+            b.open(0, "div")
+            b.attrs(1, extra)
+            b.close()
+        },
+        "0: refused splatted attribute name \"bad name\"", "<div fine=\"kept\"></div>",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["data-bad-name"] = "x"
+            extra["fine"] = "kept"
+            b.open(0, "div")
+            b.attrs(1, extra)
+            b.close()
+        }, "<div data-bad-name=\"x\" fine=\"kept\"></div>"))
+
+    out.push(new Site(SITE_SPLAT_NAME, "splatted-empty-name",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra[""] = "x"
+            extra["fine"] = "kept"
+            b.open(0, "div")
+            b.attrs(1, extra)
+            b.close()
+        },
+        "0: refused splatted attribute name \"\"", "<div fine=\"kept\"></div>",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["_"] = "x"
+            extra["fine"] = "kept"
+            b.open(0, "div")
+            b.attrs(1, extra)
+            b.close()
+        }, "<div _=\"x\" fine=\"kept\"></div>"))
+
+    out.push(new Site(SITE_SPLAT_ON, "splatted-inline-handler",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["onmouseover"] = "steal()"
+            extra["fine"] = "kept"
+            b.open(0, "div")
+            b.attrs(1, extra)
+            b.close()
+        },
+        "0: refused splatted inline handler \"onmouseover\"", "<div fine=\"kept\"></div>",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["on"] = "two bytes"
+            extra["fine"] = "kept"
+            b.open(0, "div")
+            b.attrs(1, extra)
+            b.close()
+        }, "<div fine=\"kept\" on=\"two bytes\"></div>"))
+
+    // -- attrs, the URL allowlist -----------------------------------------
+    //
+    // THE ONE THAT HAD NEVER RUN. It is a second copy of `attr`'s scheme
+    // check, on the path a splatted map takes, and § 6's splat case carried no
+    // URL name — so a `javascript:` value arriving through `attrs={...}`
+    // exercised nothing at all, in a control that is the difference between a
+    // link and an XSS. Nothing swallows it: `href` is a safe name, it is not
+    // an `on*` name, and it takes its slot; the check was simply never fed.
+    out.push(new Site(SITE_SPLAT_URL, "splatted-refused-scheme",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["href"] = "javascript:alert(1)"
+            b.open(0, "a")
+            b.attrs(1, extra)
+            b.close()
+        },
+        "0: attribute href carried a refused scheme", "<a href=\"about:blank\"></a>",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["href"] = "https://example.com/x"
+            b.open(0, "a")
+            b.attrs(1, extra)
+            b.close()
+        }, "<a href=\"https://example.com/x\"></a>"))
+
+    out.push(new Site(SITE_SPLAT_URL, "splatted-refused-scheme-xlink",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["xlink:href"] = "java\tscript:alert(1)"
+            b.open(0, "a")
+            b.attrs(1, extra)
+            b.close()
+        },
+        "0: attribute xlink:href carried a refused scheme",
+        "<a xlink:href=\"about:blank\"></a>",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["xlink:href"] = "#gradient"
+            b.open(0, "a")
+            b.attrs(1, extra)
+            b.close()
+        }, "<a xlink:href=\"#gradient\"></a>"))
+
+    // Two refused names in one splat, so the loop is proven to keep going
+    // rather than stopping at the first. Sorted, so href comes before poster.
+    out.push(new Site(SITE_SPLAT_URL, "two-refused-schemes-in-one-splat",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["href"] = "javascript:alert(1)"
+            extra["poster"] = "data:text/html,x"
+            b.open(0, "a")
+            b.attrs(1, extra)
+            b.close()
+        },
+        "0: attribute href carried a refused scheme | 0: attribute poster carried a refused scheme",
+        "<a href=\"about:blank\" poster=\"about:blank\"></a>",
+        fn(b: Builder) {
+            var extra: Map<string, string> = {}
+            extra["href"] = "https://example.com/v"
+            extra["poster"] = "https://example.com/p.png"
+            b.open(0, "a")
+            b.attrs(1, extra)
+            b.close()
+        }, "<a href=\"https://example.com/v\" poster=\"https://example.com/p.png\"></a>"))
+
+    // -- mounting ---------------------------------------------------------
+    out.push(new Site(SITE_NOT_COMPONENT, "mount-a-non-component",
+        fn(b: Builder) {
+            b.component<NotAComponent>(0, fn(x: NotAComponent) { x.value = 1 })
+        },
+        "0: NotAComponent is not a Component", "",
+        fn(b: Builder) {
+            b.component<Plain>(0, fn(c: Plain) { c.label = "ok" })
+        }, "<p>ok/1</p>"))
+
+    // Reflection CAN find an initializer here and cannot call it. Two shapes
+    // reach it and they are different reflect failures, so both are named.
+    out.push(new Site(SITE_ACTIVATE, "mount-a-component-whose-init-takes-an-argument",
+        fn(b: Builder) {
+            b.component<NeedsSeed>(0, fn(c: NeedsSeed) {})
+        },
+        "0: cannot activate NeedsSeed: wrong reflected argument count", "",
+        fn(b: Builder) {
+            b.component<Plain>(0, fn(c: Plain) { c.label = "ok" })
+        }, "<p>ok/1</p>"))
+
+    out.push(new Site(SITE_ACTIVATE, "mount-a-component-whose-init-is-not-public",
+        fn(b: Builder) {
+            b.component<HiddenInit>(0, fn(c: HiddenInit) {})
+        },
+        "0: cannot activate HiddenInit: reflected member is not public", "",
+        fn(b: Builder) {
+            b.component<Plain>(0, fn(c: Plain) { c.label = "ok" })
+        }, "<p>ok/1</p>"))
+
+    // A closed generic has no initializer DESCRIPTOR at all (BLOCKERS.md B1),
+    // which is the whole reason `component_made` exists — and that is its
+    // control: the same type, mounted by the route that works.
+    out.push(new Site(SITE_NO_CTOR, "mount-a-closed-generic-reflectively",
+        fn(b: Builder) {
+            b.component<Cell<int>>(0, fn(c: Cell<int>) { c.label = "g" })
+        },
+        "0: Cell has no zero-argument initializer", "",
+        fn(b: Builder) {
+            b.component_made<Cell<int>>(0,
+                fn() -> Cell<int> { return new Cell<int>() },
+                fn(c: Cell<int>) { c.label = "g" })
+        }, "<td>g/1</td>"))
+
+    out.push(new Site(SITE_MADE_NOT_COMPONENT, "a-factory-that-does-not-build-a-component",
+        fn(b: Builder) {
+            b.component_made<NotAComponent>(0,
+                fn() -> NotAComponent { return new NotAComponent() },
+                fn(x: NotAComponent) { x.value = 1 })
+        },
+        "0: NotAComponent is not a Component", "",
+        fn(b: Builder) {
+            b.component_made<Plain>(0,
+                fn() -> Plain { return new Plain() },
+                fn(c: Plain) { c.label = "ok" })
+        }, "<p>ok/1</p>"))
+
+    // -- region -----------------------------------------------------------
+    //
+    // Three rows with one key: the second and third are both refused, and each
+    // keeps a distinct key so the differ still has something well-defined to
+    // match on. Its control is three DISTINCT keys at the same seq — which is
+    // an ordinary keyed loop and must be silent.
+    out.push(new Site(SITE_DUP_KEY, "duplicate-key",
+        fn(b: Builder) {
+            b.open(0, "ul")
+            b.region(1, "same")
+            b.text(0, "first")
+            b.end_region()
+            b.region(1, "same")
+            b.text(0, "second")
+            b.end_region()
+            b.region(1, "same")
+            b.text(0, "third")
+            b.end_region()
+            b.close()
+        },
+        "0: duplicate key \"same\" in the loop at 1 | 0: duplicate key \"same\" in the loop at 1",
+        "<ul>firstsecondthird</ul>",
+        fn(b: Builder) {
+            b.open(0, "ul")
+            b.region(1, "a")
+            b.text(0, "first")
+            b.end_region()
+            b.region(1, "b")
+            b.text(0, "second")
+            b.end_region()
+            b.region(1, "c")
+            b.text(0, "third")
+            b.end_region()
+            b.close()
+        }, "<ul>firstsecondthird</ul>"))
+
+    // The key table is per RUN, not per pass: a key used by the loop at seq 1
+    // may be used again by the loop at seq 2. Two loops with the same key must
+    // be silent, or every page with two lists over the same ids would fault.
+    out.push(new Site(SITE_DUP_KEY, "a-key-repeating-inside-one-loop-only",
+        fn(b: Builder) {
+            b.region(1, "k")
+            b.text(0, "one")
+            b.end_region()
+            b.region(1, "k")
+            b.text(0, "two")
+            b.end_region()
+            b.region(2, "k")
+            b.text(0, "three")
+            b.end_region()
+        },
+        "0: duplicate key \"k\" in the loop at 1", "onetwothree",
+        fn(b: Builder) {
+            b.region(1, "k")
+            b.text(0, "one")
+            b.end_region()
+            b.region(2, "k")
+            b.text(0, "two")
+            b.end_region()
+        }, "onetwo"))
+
+    // -- end_region -------------------------------------------------------
+    out.push(new Site(SITE_END_REGION, "end-region-with-nothing-open",
+        fn(b: Builder) {
+            b.end_region()
+            b.text(0, "after")
+        },
+        "0: end_region with no open region", "after",
+        fn(b: Builder) {
+            b.region(0, "k")
+            b.text(0, "row")
+            b.end_region()
+            b.text(1, "after")
+        }, "rowafter"))
+
+    out.push(new Site(SITE_END_REGION, "end-region-with-an-element-on-top",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.end_region()
+            b.close()
+        },
+        "0: end_region with no open region", "<div></div>",
+        fn(b: Builder) {
+            b.region(0, "k")
+            b.open(0, "div")
+            b.close()
+            b.end_region()
+        }, "<div></div>"))
+
+    // -- fail_boundary ----------------------------------------------------
+    out.push(new Site(SITE_FAIL_BOUNDARY, "fail-boundary-with-nothing-open",
+        fn(b: Builder) {
+            b.fail_boundary("nothing to fail")
+            b.text(0, "after")
+        },
+        "0: fail_boundary with no open boundary", "after",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.text(0, "body")
+            b.fail_boundary("boom")
+            b.text(0, "fallback")
+            b.end_boundary()
+        }, "fallback"))
+
+    out.push(new Site(SITE_FAIL_BOUNDARY, "fail-boundary-after-the-boundary-closed",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.text(0, "body")
+            b.end_boundary()
+            b.fail_boundary("too late")
+        },
+        "0: fail_boundary with no open boundary", "body",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.text(0, "body")
+            b.fail_boundary("in time")
+            b.text(0, "fallback")
+            b.end_boundary()
+        }, "fallback"))
+
+    // -- end_boundary -----------------------------------------------------
+    out.push(new Site(SITE_END_BOUNDARY, "end-boundary-with-nothing-open",
+        fn(b: Builder) {
+            b.end_boundary()
+            b.text(0, "after")
+        },
+        "0: end_boundary with no open boundary", "after",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.text(0, "body")
+            b.end_boundary()
+            b.text(1, "after")
+        }, "bodyafter"))
+
+    out.push(new Site(SITE_END_BOUNDARY, "end-boundary-twice",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.text(0, "body")
+            b.end_boundary()
+            b.end_boundary()
+        },
+        "0: end_boundary with no open boundary", "body",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.text(0, "outer")
+            b.boundary(1)
+            b.text(0, "inner")
+            b.end_boundary()
+            b.end_boundary()
+        }, "outerinner"))
+
+    // -- unwind_to --------------------------------------------------------
+    out.push(new Site(SITE_OPEN_ELEMENT, "element-left-open-at-pass-end",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.text(1, "no close")
+        },
+        "0: an element was left open", "<div>no close</div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.text(1, "closed")
+            b.close()
+        }, "<div>closed</div>"))
+
+    // Two of them, because one proves the report fires and two prove the
+    // unwind is a LOOP and not a single step.
+    out.push(new Site(SITE_OPEN_ELEMENT, "two-elements-left-open",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.open(1, "p")
+            b.text(2, "neither is closed")
+        },
+        "0: an element was left open | 0: an element was left open",
+        "<div><p>neither is closed</p></div>",
+        fn(b: Builder) {
+            b.open(0, "div")
+            b.open(1, "p")
+            b.text(2, "both are closed")
+            b.close()
+            b.close()
+        }, "<div><p>both are closed</p></div>"))
+
+    // The other caller of `unwind_to`: a fragment body that leaves an element
+    // open is closed at the fragment's edge, so the text after the fragment is
+    // a sibling and not a child.
+    out.push(new Site(SITE_OPEN_ELEMENT, "element-left-open-inside-a-fragment",
+        fn(b: Builder) {
+            b.fragment(0, fn(f: Builder) {
+                f.open(0, "div")
+                f.text(1, "inside")
+            })
+            b.text(1, "after")
+        },
+        "0: an element was left open", "<div>inside</div>after",
+        fn(b: Builder) {
+            b.fragment(0, fn(f: Builder) {
+                f.open(0, "div")
+                f.text(1, "inside")
+                f.close()
+            })
+            b.text(1, "after")
+        }, "<div>inside</div>after"))
+
+    out.push(new Site(SITE_OPEN_REGION, "region-left-open-at-pass-end",
+        fn(b: Builder) {
+            b.region(0, "k")
+            b.text(0, "row")
+        },
+        "0: a region was left open", "row",
+        fn(b: Builder) {
+            b.region(0, "k")
+            b.text(0, "row")
+            b.end_region()
+        }, "row"))
+
+    // A region and an element, unwound in the order they were opened, so the
+    // frames still nest.
+    out.push(new Site(SITE_OPEN_REGION, "region-left-open-inside-an-element",
+        fn(b: Builder) {
+            b.open(0, "ul")
+            b.region(1, "r")
+            b.text(0, "row")
+        },
+        "0: a region was left open | 0: an element was left open", "<ul>row</ul>",
+        fn(b: Builder) {
+            b.open(0, "ul")
+            b.region(1, "r")
+            b.text(0, "row")
+            b.end_region()
+            b.close()
+        }, "<ul>row</ul>"))
+
+    // The ONLY route to this site, and it took a probe to find: a fragment's
+    // own scope can be closed out from under it by `end_boundary()` called
+    // from inside the body, because `end_boundary` unwinds every scope above
+    // the boundary's. `fragment` itself never sees its own scope in
+    // `unwind_to(mark + 1)`, and `settle`'s `unwind_to(1)` cannot either,
+    // because `fragment` always leaves its scope before returning. The control
+    // is the same fragment closing normally, with a sibling after it — which
+    // is exactly what the trip lost before `fragment` learned not to close a
+    // scope it no longer owns.
+    out.push(new Site(SITE_OPEN_FRAGMENT, "fragment-unwound-by-an-inner-end-boundary",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.fragment(1, fn(f: Builder) {
+                f.text(0, "in the fragment")
+                f.end_boundary()
+            })
+            b.text(2, "after")
+        },
+        "0: a fragment was left open", "in the fragmentafter",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.fragment(1, fn(f: Builder) {
+                f.text(0, "in the fragment")
+            })
+            b.end_boundary()
+            b.text(2, "after")
+        }, "in the fragmentafter"))
+
+    out.push(new Site(SITE_OPEN_FRAGMENT, "an-element-open-when-the-fragment-is-unwound",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.fragment(1, fn(f: Builder) {
+                f.open(0, "div")
+                f.end_boundary()
+            })
+            b.text(2, "after")
+        },
+        "0: an element was left open | 0: a fragment was left open",
+        "<div></div>after",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.fragment(1, fn(f: Builder) {
+                f.open(0, "div")
+                f.close()
+            })
+            b.end_boundary()
+            b.text(2, "after")
+        }, "<div></div>after"))
+
+    out.push(new Site(SITE_OPEN_BOUNDARY, "boundary-left-open-at-pass-end",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.text(0, "body")
+        },
+        "0: a boundary was left open", "body",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.text(0, "body")
+            b.end_boundary()
+        }, "body"))
+
+    out.push(new Site(SITE_OPEN_BOUNDARY, "two-boundaries-left-open",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.boundary(0)
+            b.text(0, "body")
+        },
+        "0: a boundary was left open | 0: a boundary was left open", "body",
+        fn(b: Builder) {
+            b.boundary(0)
+            b.boundary(0)
+            b.text(0, "body")
+            b.end_boundary()
+            b.end_boundary()
+        }, "body"))
+
+    return move out
+}
+
+fn fault_sites(r: Report) {
+    io.println("== 13 every fault site in builder.b")
+    var reached: Map<string, int> = {}
+    for probe: Site in sites() {
+        let b: Builder = new Builder()
+        render_body(b, probe.trip)
+        let control: Builder = new Builder()
+        render_body(control, probe.control)
+
+        io.println("-- {probe.name}")
+        io.println("   site:    {probe.site}")
+        io.println("   faults:  {joined(b)}")
+        io.println("   left:    {html_of(b)}")
+        io.println("   control: {html_of(control)}")
+
+        r.eq("{probe.name}: the exact faults", joined(b), probe.want)
+        r.eq("{probe.name}: what the refusal left", html_of(b), probe.left)
+        r.yes("{probe.name}: the pass is still balanced", b.balanced())
+        r.eq("{probe.name}: the control raises nothing", joined(control), "")
+        r.eq("{probe.name}: and the control renders", html_of(control), probe.accepted)
+
+        match reached.get(probe.site) {
+            some(n) => { reached[probe.site] = n + 1 }
+            none => { reached[probe.site] = 1 }
+        }
+    }
+
+    slots_that_write_no_html(r)
+    wrong_class_at_one_slot(r)
+    reached[SITE_WRONG_CLASS] = 1
+
+    // The accounting. A site nothing below trips is a refusal with no test,
+    // and the only way to see that is to count the sites rather than the
+    // cases. 24 is every `self.faults.push` in builder.b; `grep -c` says so.
+    var names: List<string> = reached.keys()
+    names.sort()
+    io.println("-- the sites, and how many shapes reach each")
+    for name: string in names {
+        match reached.get(name) {
+            some(n) => { io.println("   {n}x {name}") }
+            none => {}
+        }
+    }
+    r.eqi("every fault site in builder.b has a case", names.len(), 24)
+}
+
+/// Three controls in the table render no html of their own, because a handler,
+/// a `ref` and a `preserve` all serialize to nothing (D7). `<div></div>` would
+/// look exactly the same if the slot had been silently dropped, so those three
+/// are not carried by their html: their acceptance is asserted here, on the
+/// frames and on the registry.
+///
+/// This is the same trap the whole section is about, one level down — a
+/// control that cannot tell "accepted" from "quietly discarded" is not a
+/// control.
+fn slots_that_write_no_html(r: Report) {
+    io.println("-- controls whose acceptance is invisible in html")
+
+    let one: Builder = new Builder()
+    render_body(one, fn(b: Builder) {
+        b.open(0, "div")
+        b.on_click(1, fn(e: MouseEvent) {})
+        b.close()
+    })
+    io.println(one.dump())
+    r.eqi("a handler inside the run writes one frame", handler_ids(one).len(), 1)
+    r.eqi("and raises nothing", one.all_faults().len(), 0)
+    r.yes("and the registry can dispatch the id it wrote",
+        one.registry.fire_mouse(handler_ids(one)[0], new MouseEvent()))
+
+    let two: Builder = new Builder()
+    render_body(two, fn(b: Builder) {
+        b.open(0, "div")
+        b.on_click(1, fn(e: MouseEvent) {})
+        b.attr(1, "class", "x")
+        b.on_dblclick(2, fn(e: MouseEvent) {})
+        b.close()
+    })
+    io.println(two.dump())
+    r.eqi("a handler and a named attribute at one seq are two distinct keys",
+        handler_ids(two).len(), 2)
+    r.eqi("with distinct ids", count_distinct(handler_ids(two)), 2)
+    r.eqi("and nothing was refused", two.all_faults().len(), 0)
+
+    let three: Builder = new Builder()
+    let sink: Ledger = new Ledger()
+    render_body(three, fn(b: Builder) {
+        b.open(0, "div")
+        b.reference(1, fn(handle: Reference) { sink.record("ref->{handle.node}") })
+        b.preserve(2)
+        b.close()
+    })
+    io.println(three.dump())
+    r.eqi("a ref and a preserve at their own seqs both land",
+        three.frames.len(), 4)
+    r.eqi("the ref sink was called", sink.disposed.len(), 1)
+    r.eqi("and nothing was refused", three.all_faults().len(), 0)
+}
+
+/// `fill_slot / slot N holds a X, not a Y` — the one site that needs two
+/// render passes, so it cannot be a `Site` with one `fn(Builder)` body.
+///
+/// Its control is the strongest one in this file: the SAME class at the same
+/// seq must be silent AND must keep the instance, because a rule that refused
+/// on every re-render would look identical here and would tear down every
+/// component on the page once a pass.
+fn wrong_class_at_one_slot(r: Report) {
+    let host: Mounts = new Mounts()
+    host.route = 2                          // component<Plain>
+    host.label = "one"
+    let b: Builder = new Builder()
+    b.render_root(host)
+    io.println("-- a-slot-that-holds-another-class")
+    io.println("   site:    {SITE_WRONG_CLASS}")
+    r.eq("a-slot-that-holds-another-class: the first pass is clean", joined(b), "")
+    r.eq("a-slot-that-holds-another-class: and it rendered", html_of(b), "<p>one/1</p>")
+
+    host.route = 3                          // component_made<Other>, same seq
+    b.render_root(host)
+    io.println("   faults:  {joined(b)}")
+    io.println("   left:    {html_of(b)}")
+    r.eq("a-slot-that-holds-another-class: the exact fault", joined(b),
+        "0: slot 1 holds a Plain, not a Other")
+    r.yes("a-slot-that-holds-another-class: the pass is still balanced", b.balanced())
+
+    host.route = 2                          // the same class again
+    b.render_root(host)
+    io.println("   control: {html_of(b)}")
+    r.eq("a-slot-that-holds-another-class: the same class at the same seq raises nothing", joined(b), "")
+    r.eq("a-slot-that-holds-another-class: and the instance survived all three passes",
+        html_of(b), "<p>one/3</p>")
+}
+
 // ---------------------------------------------------------------- main
 
 fn main() {
@@ -1490,6 +2770,8 @@ fn main() {
     component_ref(r)
     factory_mount(r)
     dirty_sink(r)
+    imported_base_downcast(r)
+    fault_sites(r)
 
     io.println("== summary")
     io.println("checks: {r.checks}, failed: {r.bad}")

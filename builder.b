@@ -812,6 +812,22 @@ pub class Builder {
         self.push_path("f{seq}|")
         self.enter_scope(SCOPE_FRAGMENT)
         body(self)
+        // The body can close this fragment's own scope out from under it, and
+        // exactly one call does: `end_boundary()` from inside the body unwinds
+        // every scope above the boundary's, which includes this one — it
+        // raises "a fragment was left open" and writes the closing frame
+        // itself. Closing again below would write a SECOND `fragment_close`,
+        // and an unmatched close is not a cosmetic problem: the serializer,
+        // the differ and the applier all read it as this fragment's, so every
+        // sibling after it lands inside a container that has already ended and
+        // is silently dropped — no fault on any of the three.
+        //
+        // `fragment` is the only scope-owning call that needs this test,
+        // because it is the only one that is a single call. `close`,
+        // `end_region` and `end_boundary` are each the second half of a pair
+        // and already refuse when the scope they were going to close is not
+        // the one on top.
+        if self.scopes.len() <= mark { return }
         self.unwind_to(mark + 1)
         self.leave_scope()
         self.pop_path()
