@@ -418,5 +418,603 @@ ok with the dead component's own id
 ok the row came back
 ok with an id that is not the dead one
 ok no faults
+== 13 every fault site in builder.b
+-- sibling-seq-repeats
+   site:    note_sibling / sequence N does not follow M in this scope
+   faults:  0: sequence 0 does not follow 0 in this scope
+   left:    onetwo
+   control: onetwo
+ok sibling-seq-repeats: the exact faults
+ok sibling-seq-repeats: what the refusal left
+ok sibling-seq-repeats: the pass is still balanced
+ok sibling-seq-repeats: the control raises nothing
+ok sibling-seq-repeats: and the control renders
+-- sibling-seq-goes-backwards
+   site:    note_sibling / sequence N does not follow M in this scope
+   faults:  0: sequence 2 does not follow 5 in this scope
+   left:    <p></p><p></p>
+   control: <p></p><p></p>
+ok sibling-seq-goes-backwards: the exact faults
+ok sibling-seq-goes-backwards: what the refusal left
+ok sibling-seq-goes-backwards: the pass is still balanced
+ok sibling-seq-goes-backwards: the control raises nothing
+ok sibling-seq-goes-backwards: and the control renders
+-- a-plain-sibling-reusing-the-loops-number
+   site:    note_sibling / sequence N does not follow M in this scope
+   faults:  0: sequence 1 does not follow 1 in this scope
+   left:    rowtail
+   control: onetwotail
+ok a-plain-sibling-reusing-the-loops-number: the exact faults
+ok a-plain-sibling-reusing-the-loops-number: what the refusal left
+ok a-plain-sibling-reusing-the-loops-number: the pass is still balanced
+ok a-plain-sibling-reusing-the-loops-number: the control raises nothing
+ok a-plain-sibling-reusing-the-loops-number: and the control renders
+-- attribute-after-content
+   site:    take_attribute_slot / X is outside an element's attribute run
+   faults:  0: attribute 2:"class" is outside an element's attribute run
+   left:    <div>content first</div>
+   control: <div class="in time">content after</div>
+ok attribute-after-content: the exact faults
+ok attribute-after-content: what the refusal left
+ok attribute-after-content: the pass is still balanced
+ok attribute-after-content: the control raises nothing
+ok attribute-after-content: and the control renders
+-- attribute-with-no-element-at-all
+   site:    take_attribute_slot / X is outside an element's attribute run
+   faults:  0: attribute 0:"class" is outside an element's attribute run
+   left:    text
+   control: <div class="somewhere"></div>text
+ok attribute-with-no-element-at-all: the exact faults
+ok attribute-with-no-element-at-all: what the refusal left
+ok attribute-with-no-element-at-all: the pass is still balanced
+ok attribute-with-no-element-at-all: the control raises nothing
+ok attribute-with-no-element-at-all: and the control renders
+-- handler-after-the-element-closed
+   site:    take_attribute_slot / X is outside an element's attribute run
+   faults:  0: on:click 1:"" is outside an element's attribute run
+   left:    <div></div>
+   control: <div></div>
+ok handler-after-the-element-closed: the exact faults
+ok handler-after-the-element-closed: what the refusal left
+ok handler-after-the-element-closed: the pass is still balanced
+ok handler-after-the-element-closed: the control raises nothing
+ok handler-after-the-element-closed: and the control renders
+-- attribute-seq-goes-backwards
+   site:    take_attribute_slot / X does not follow Y in this element's attribute run
+   faults:  0: attribute 1:"b" does not follow 3:"a" in this element's attribute run
+   left:    <div a="1"></div>
+   control: <div b="2" a="1"></div>
+ok attribute-seq-goes-backwards: the exact faults
+ok attribute-seq-goes-backwards: what the refusal left
+ok attribute-seq-goes-backwards: the pass is still balanced
+ok attribute-seq-goes-backwards: the control raises nothing
+ok attribute-seq-goes-backwards: and the control renders
+-- attribute-name-goes-backwards
+   site:    take_attribute_slot / X does not follow Y in this element's attribute run
+   faults:  0: attribute 1:"a" does not follow 1:"z" in this element's attribute run
+   left:    <div z="1"></div>
+   control: <div a="2" z="1"></div>
+ok attribute-name-goes-backwards: the exact faults
+ok attribute-name-goes-backwards: what the refusal left
+ok attribute-name-goes-backwards: the pass is still balanced
+ok attribute-name-goes-backwards: the control raises nothing
+ok attribute-name-goes-backwards: and the control renders
+-- attribute-slot-repeats
+   site:    take_attribute_slot / X does not follow Y in this element's attribute run
+   faults:  0: attribute 1:"same" does not follow 1:"same" in this element's attribute run
+   left:    <div same="first"></div>
+   control: <div same="second"></div>
+ok attribute-slot-repeats: the exact faults
+ok attribute-slot-repeats: what the refusal left
+ok attribute-slot-repeats: the pass is still balanced
+ok attribute-slot-repeats: the control raises nothing
+ok attribute-slot-repeats: and the control renders
+-- two-handlers-at-one-seq
+   site:    take_attribute_slot / X does not follow Y in this element's attribute run
+   faults:  0: on:dblclick 1:"" does not follow 1:"" in this element's attribute run
+   left:    <div></div>
+   control: <div class="x"></div>
+ok two-handlers-at-one-seq: the exact faults
+ok two-handlers-at-one-seq: what the refusal left
+ok two-handlers-at-one-seq: the pass is still balanced
+ok two-handlers-at-one-seq: the control raises nothing
+ok two-handlers-at-one-seq: and the control renders
+-- a-ref-and-a-preserve-at-one-seq
+   site:    take_attribute_slot / X does not follow Y in this element's attribute run
+   faults:  0: preserve 1:"" does not follow 1:"" in this element's attribute run
+   left:    <div></div>
+   control: <div></div>
+ok a-ref-and-a-preserve-at-one-seq: the exact faults
+ok a-ref-and-a-preserve-at-one-seq: what the refusal left
+ok a-ref-and-a-preserve-at-one-seq: the pass is still balanced
+ok a-ref-and-a-preserve-at-one-seq: the control raises nothing
+ok a-ref-and-a-preserve-at-one-seq: and the control renders
+-- splat-marker-under-an-earlier-name
+   site:    take_attribute_slot / X does not follow Y in this element's attribute run
+   faults:  0: attrs 1:"" does not follow 1:"z" in this element's attribute run
+   left:    <div z="explicit"></div>
+   control: <div z="explicit" a="from splat"></div>
+ok splat-marker-under-an-earlier-name: the exact faults
+ok splat-marker-under-an-earlier-name: what the refusal left
+ok splat-marker-under-an-earlier-name: the pass is still balanced
+ok splat-marker-under-an-earlier-name: the control raises nothing
+ok splat-marker-under-an-earlier-name: and the control renders
+-- unsafe-tag
+   site:    open / refused tag name
+   faults:  0: refused tag name "sc ript>"
+   left:    <span>inside</span>
+   control: <script>let x = 1</script>
+ok unsafe-tag: the exact faults
+ok unsafe-tag: what the refusal left
+ok unsafe-tag: the pass is still balanced
+ok unsafe-tag: the control raises nothing
+ok unsafe-tag: and the control renders
+-- empty-tag
+   site:    open / refused tag name
+   faults:  0: refused tag name ""
+   left:    <span></span>
+   control: <my-widget>x</my-widget>
+ok empty-tag: the exact faults
+ok empty-tag: what the refusal left
+ok empty-tag: the pass is still balanced
+ok empty-tag: the control raises nothing
+ok empty-tag: and the control renders
+-- digit-first-tag
+   site:    open / refused tag name
+   faults:  0: refused tag name "1bad"
+   left:    <span></span>
+   control: <h1></h1>
+ok digit-first-tag: the exact faults
+ok digit-first-tag: what the refusal left
+ok digit-first-tag: the pass is still balanced
+ok digit-first-tag: the control raises nothing
+ok digit-first-tag: and the control renders
+-- close-with-nothing-open
+   site:    close / close with no open element
+   faults:  0: close with no open element
+   left:    after
+   control: <div></div>after
+ok close-with-nothing-open: the exact faults
+ok close-with-nothing-open: what the refusal left
+ok close-with-nothing-open: the pass is still balanced
+ok close-with-nothing-open: the control raises nothing
+ok close-with-nothing-open: and the control renders
+-- close-inside-a-region
+   site:    close / close with no open element
+   faults:  0: close with no open element | 0: a region was left open
+   left:    
+   control: <li></li>
+ok close-inside-a-region: the exact faults
+ok close-inside-a-region: what the refusal left
+ok close-inside-a-region: the pass is still balanced
+ok close-inside-a-region: the control raises nothing
+ok close-inside-a-region: and the control renders
+-- url-scheme
+   site:    attr / attribute N carried a refused scheme
+   faults:  0: attribute href carried a refused scheme
+   left:    <a href="about:blank"></a>
+   control: <a href="https://example.com/a:b"></a>
+ok url-scheme: the exact faults
+ok url-scheme: what the refusal left
+ok url-scheme: the pass is still balanced
+ok url-scheme: the control raises nothing
+ok url-scheme: and the control renders
+-- url-scheme-obfuscated
+   site:    attr / attribute N carried a refused scheme
+   faults:  0: attribute href carried a refused scheme
+   left:    <a href="about:blank"></a>
+   control: <a href="/local/path:with-colon"></a>
+ok url-scheme-obfuscated: the exact faults
+ok url-scheme-obfuscated: what the refusal left
+ok url-scheme-obfuscated: the pass is still balanced
+ok url-scheme-obfuscated: the control raises nothing
+ok url-scheme-obfuscated: and the control renders
+-- url-scheme-xlink
+   site:    attr / attribute N carried a refused scheme
+   faults:  0: attribute xlink:href carried a refused scheme
+   left:    <a xlink:href="about:blank"></a>
+   control: <a xlink:href="https://example.com/icon.svg#x"></a>
+ok url-scheme-xlink: the exact faults
+ok url-scheme-xlink: what the refusal left
+ok url-scheme-xlink: the pass is still balanced
+ok url-scheme-xlink: the control raises nothing
+ok url-scheme-xlink: and the control renders
+-- url-scheme-data-on-a-void-element
+   site:    attr / attribute N carried a refused scheme
+   faults:  0: attribute src carried a refused scheme
+   left:    <img src="about:blank">
+   control: <img src="https://example.com/a.png">
+ok url-scheme-data-on-a-void-element: the exact faults
+ok url-scheme-data-on-a-void-element: what the refusal left
+ok url-scheme-data-on-a-void-element: the pass is still balanced
+ok url-scheme-data-on-a-void-element: the control raises nothing
+ok url-scheme-data-on-a-void-element: and the control renders
+-- not-a-url-attribute
+   site:    attr / attribute N carried a refused scheme
+   faults:  0: attribute href carried a refused scheme
+   left:    <a href="about:blank" download="javascript:not-a-url"></a>
+   control: <a href="mailto:x@example.com" download="javascript:not-a-url"></a>
+ok not-a-url-attribute: the exact faults
+ok not-a-url-attribute: what the refusal left
+ok not-a-url-attribute: the pass is still balanced
+ok not-a-url-attribute: the control raises nothing
+ok not-a-url-attribute: and the control renders
+-- unsafe-attribute-name
+   site:    name_is_writable / refused attribute name
+   faults:  0: refused attribute name "class" onload="x"
+   left:    <div ok="kept"></div>
+   control: <div data-x:y.z_w-1="punctuation is fine" ok="kept"></div>
+ok unsafe-attribute-name: the exact faults
+ok unsafe-attribute-name: what the refusal left
+ok unsafe-attribute-name: the pass is still balanced
+ok unsafe-attribute-name: the control raises nothing
+ok unsafe-attribute-name: and the control renders
+-- empty-attribute-name
+   site:    name_is_writable / refused attribute name
+   faults:  0: refused attribute name ""
+   left:    <div ok="kept"></div>
+   control: <div _private="x" ok="kept"></div>
+ok empty-attribute-name: the exact faults
+ok empty-attribute-name: what the refusal left
+ok empty-attribute-name: the pass is still balanced
+ok empty-attribute-name: the control raises nothing
+ok empty-attribute-name: and the control renders
+-- unsafe-flag-name
+   site:    name_is_writable / refused attribute name
+   faults:  0: refused attribute name "a>b"
+   left:    <div hidden=""></div>
+   control: <div a-b="" hidden=""></div>
+ok unsafe-flag-name: the exact faults
+ok unsafe-flag-name: what the refusal left
+ok unsafe-flag-name: the pass is still balanced
+ok unsafe-flag-name: the control raises nothing
+ok unsafe-flag-name: and the control renders
+-- inline-handler-attribute
+   site:    name_is_writable / refused inline handler attribute
+   faults:  0: refused inline handler attribute "onclick"
+   left:    <div ok="kept"></div>
+   control: <div on="two bytes, not a handler" data-onclick="does not start with on"></div>
+ok inline-handler-attribute: the exact faults
+ok inline-handler-attribute: what the refusal left
+ok inline-handler-attribute: the pass is still balanced
+ok inline-handler-attribute: the control raises nothing
+ok inline-handler-attribute: and the control renders
+-- inline-handler-in-capitals
+   site:    name_is_writable / refused inline handler attribute
+   faults:  0: refused inline handler attribute "ONCLICK"
+   left:    <div></div>
+   control: <div ON="still two bytes"></div>
+ok inline-handler-in-capitals: the exact faults
+ok inline-handler-in-capitals: what the refusal left
+ok inline-handler-in-capitals: the pass is still balanced
+ok inline-handler-in-capitals: the control raises nothing
+ok inline-handler-in-capitals: and the control renders
+-- inline-handler-as-a-flag
+   site:    name_is_writable / refused inline handler attribute
+   faults:  0: refused inline handler attribute "onerror"
+   left:    <div hidden=""></div>
+   control: <div on="" hidden=""></div>
+ok inline-handler-as-a-flag: the exact faults
+ok inline-handler-as-a-flag: what the refusal left
+ok inline-handler-as-a-flag: the pass is still balanced
+ok inline-handler-as-a-flag: the control raises nothing
+ok inline-handler-as-a-flag: and the control renders
+-- splatted-unsafe-name
+   site:    attrs / refused splatted attribute name
+   faults:  0: refused splatted attribute name "bad name"
+   left:    <div fine="kept"></div>
+   control: <div data-bad-name="x" fine="kept"></div>
+ok splatted-unsafe-name: the exact faults
+ok splatted-unsafe-name: what the refusal left
+ok splatted-unsafe-name: the pass is still balanced
+ok splatted-unsafe-name: the control raises nothing
+ok splatted-unsafe-name: and the control renders
+-- splatted-empty-name
+   site:    attrs / refused splatted attribute name
+   faults:  0: refused splatted attribute name ""
+   left:    <div fine="kept"></div>
+   control: <div _="x" fine="kept"></div>
+ok splatted-empty-name: the exact faults
+ok splatted-empty-name: what the refusal left
+ok splatted-empty-name: the pass is still balanced
+ok splatted-empty-name: the control raises nothing
+ok splatted-empty-name: and the control renders
+-- splatted-inline-handler
+   site:    attrs / refused splatted inline handler
+   faults:  0: refused splatted inline handler "onmouseover"
+   left:    <div fine="kept"></div>
+   control: <div fine="kept" on="two bytes"></div>
+ok splatted-inline-handler: the exact faults
+ok splatted-inline-handler: what the refusal left
+ok splatted-inline-handler: the pass is still balanced
+ok splatted-inline-handler: the control raises nothing
+ok splatted-inline-handler: and the control renders
+-- splatted-refused-scheme
+   site:    attrs / attribute N carried a refused scheme
+   faults:  0: attribute href carried a refused scheme
+   left:    <a href="about:blank"></a>
+   control: <a href="https://example.com/x"></a>
+ok splatted-refused-scheme: the exact faults
+ok splatted-refused-scheme: what the refusal left
+ok splatted-refused-scheme: the pass is still balanced
+ok splatted-refused-scheme: the control raises nothing
+ok splatted-refused-scheme: and the control renders
+-- splatted-refused-scheme-xlink
+   site:    attrs / attribute N carried a refused scheme
+   faults:  0: attribute xlink:href carried a refused scheme
+   left:    <a xlink:href="about:blank"></a>
+   control: <a xlink:href="#gradient"></a>
+ok splatted-refused-scheme-xlink: the exact faults
+ok splatted-refused-scheme-xlink: what the refusal left
+ok splatted-refused-scheme-xlink: the pass is still balanced
+ok splatted-refused-scheme-xlink: the control raises nothing
+ok splatted-refused-scheme-xlink: and the control renders
+-- two-refused-schemes-in-one-splat
+   site:    attrs / attribute N carried a refused scheme
+   faults:  0: attribute href carried a refused scheme | 0: attribute poster carried a refused scheme
+   left:    <a href="about:blank" poster="about:blank"></a>
+   control: <a href="https://example.com/v" poster="https://example.com/p.png"></a>
+ok two-refused-schemes-in-one-splat: the exact faults
+ok two-refused-schemes-in-one-splat: what the refusal left
+ok two-refused-schemes-in-one-splat: the pass is still balanced
+ok two-refused-schemes-in-one-splat: the control raises nothing
+ok two-refused-schemes-in-one-splat: and the control renders
+-- mount-a-non-component
+   site:    mount / X is not a Component
+   faults:  0: NotAComponent is not a Component
+   left:    
+   control: <p>ok/1</p>
+ok mount-a-non-component: the exact faults
+ok mount-a-non-component: what the refusal left
+ok mount-a-non-component: the pass is still balanced
+ok mount-a-non-component: the control raises nothing
+ok mount-a-non-component: and the control renders
+-- mount-a-component-whose-init-takes-an-argument
+   site:    mount / cannot activate X
+   faults:  0: cannot activate NeedsSeed: wrong reflected argument count
+   left:    
+   control: <p>ok/1</p>
+ok mount-a-component-whose-init-takes-an-argument: the exact faults
+ok mount-a-component-whose-init-takes-an-argument: what the refusal left
+ok mount-a-component-whose-init-takes-an-argument: the pass is still balanced
+ok mount-a-component-whose-init-takes-an-argument: the control raises nothing
+ok mount-a-component-whose-init-takes-an-argument: and the control renders
+-- mount-a-component-whose-init-is-not-public
+   site:    mount / cannot activate X
+   faults:  0: cannot activate HiddenInit: reflected member is not public
+   left:    
+   control: <p>ok/1</p>
+ok mount-a-component-whose-init-is-not-public: the exact faults
+ok mount-a-component-whose-init-is-not-public: what the refusal left
+ok mount-a-component-whose-init-is-not-public: the pass is still balanced
+ok mount-a-component-whose-init-is-not-public: the control raises nothing
+ok mount-a-component-whose-init-is-not-public: and the control renders
+-- mount-a-closed-generic-reflectively
+   site:    mount / X has no zero-argument initializer
+   faults:  0: Cell has no zero-argument initializer
+   left:    
+   control: <td>g/1</td>
+ok mount-a-closed-generic-reflectively: the exact faults
+ok mount-a-closed-generic-reflectively: what the refusal left
+ok mount-a-closed-generic-reflectively: the pass is still balanced
+ok mount-a-closed-generic-reflectively: the control raises nothing
+ok mount-a-closed-generic-reflectively: and the control renders
+-- a-factory-that-does-not-build-a-component
+   site:    mount_made / X is not a Component
+   faults:  0: NotAComponent is not a Component
+   left:    
+   control: <p>ok/1</p>
+ok a-factory-that-does-not-build-a-component: the exact faults
+ok a-factory-that-does-not-build-a-component: what the refusal left
+ok a-factory-that-does-not-build-a-component: the pass is still balanced
+ok a-factory-that-does-not-build-a-component: the control raises nothing
+ok a-factory-that-does-not-build-a-component: and the control renders
+-- duplicate-key
+   site:    region / duplicate key
+   faults:  0: duplicate key "same" in the loop at 1 | 0: duplicate key "same" in the loop at 1
+   left:    <ul>firstsecondthird</ul>
+   control: <ul>firstsecondthird</ul>
+ok duplicate-key: the exact faults
+ok duplicate-key: what the refusal left
+ok duplicate-key: the pass is still balanced
+ok duplicate-key: the control raises nothing
+ok duplicate-key: and the control renders
+-- a-key-repeating-inside-one-loop-only
+   site:    region / duplicate key
+   faults:  0: duplicate key "k" in the loop at 1
+   left:    onetwothree
+   control: onetwo
+ok a-key-repeating-inside-one-loop-only: the exact faults
+ok a-key-repeating-inside-one-loop-only: what the refusal left
+ok a-key-repeating-inside-one-loop-only: the pass is still balanced
+ok a-key-repeating-inside-one-loop-only: the control raises nothing
+ok a-key-repeating-inside-one-loop-only: and the control renders
+-- end-region-with-nothing-open
+   site:    end_region / end_region with no open region
+   faults:  0: end_region with no open region
+   left:    after
+   control: rowafter
+ok end-region-with-nothing-open: the exact faults
+ok end-region-with-nothing-open: what the refusal left
+ok end-region-with-nothing-open: the pass is still balanced
+ok end-region-with-nothing-open: the control raises nothing
+ok end-region-with-nothing-open: and the control renders
+-- end-region-with-an-element-on-top
+   site:    end_region / end_region with no open region
+   faults:  0: end_region with no open region
+   left:    <div></div>
+   control: <div></div>
+ok end-region-with-an-element-on-top: the exact faults
+ok end-region-with-an-element-on-top: what the refusal left
+ok end-region-with-an-element-on-top: the pass is still balanced
+ok end-region-with-an-element-on-top: the control raises nothing
+ok end-region-with-an-element-on-top: and the control renders
+-- fail-boundary-with-nothing-open
+   site:    fail_boundary / fail_boundary with no open boundary
+   faults:  0: fail_boundary with no open boundary
+   left:    after
+   control: fallback
+ok fail-boundary-with-nothing-open: the exact faults
+ok fail-boundary-with-nothing-open: what the refusal left
+ok fail-boundary-with-nothing-open: the pass is still balanced
+ok fail-boundary-with-nothing-open: the control raises nothing
+ok fail-boundary-with-nothing-open: and the control renders
+-- fail-boundary-after-the-boundary-closed
+   site:    fail_boundary / fail_boundary with no open boundary
+   faults:  0: fail_boundary with no open boundary
+   left:    body
+   control: fallback
+ok fail-boundary-after-the-boundary-closed: the exact faults
+ok fail-boundary-after-the-boundary-closed: what the refusal left
+ok fail-boundary-after-the-boundary-closed: the pass is still balanced
+ok fail-boundary-after-the-boundary-closed: the control raises nothing
+ok fail-boundary-after-the-boundary-closed: and the control renders
+-- end-boundary-with-nothing-open
+   site:    end_boundary / end_boundary with no open boundary
+   faults:  0: end_boundary with no open boundary
+   left:    after
+   control: bodyafter
+ok end-boundary-with-nothing-open: the exact faults
+ok end-boundary-with-nothing-open: what the refusal left
+ok end-boundary-with-nothing-open: the pass is still balanced
+ok end-boundary-with-nothing-open: the control raises nothing
+ok end-boundary-with-nothing-open: and the control renders
+-- end-boundary-twice
+   site:    end_boundary / end_boundary with no open boundary
+   faults:  0: end_boundary with no open boundary
+   left:    body
+   control: outerinner
+ok end-boundary-twice: the exact faults
+ok end-boundary-twice: what the refusal left
+ok end-boundary-twice: the pass is still balanced
+ok end-boundary-twice: the control raises nothing
+ok end-boundary-twice: and the control renders
+-- element-left-open-at-pass-end
+   site:    unwind_to / an element was left open
+   faults:  0: an element was left open
+   left:    <div>no close</div>
+   control: <div>closed</div>
+ok element-left-open-at-pass-end: the exact faults
+ok element-left-open-at-pass-end: what the refusal left
+ok element-left-open-at-pass-end: the pass is still balanced
+ok element-left-open-at-pass-end: the control raises nothing
+ok element-left-open-at-pass-end: and the control renders
+-- two-elements-left-open
+   site:    unwind_to / an element was left open
+   faults:  0: an element was left open | 0: an element was left open
+   left:    <div><p>neither is closed</p></div>
+   control: <div><p>both are closed</p></div>
+ok two-elements-left-open: the exact faults
+ok two-elements-left-open: what the refusal left
+ok two-elements-left-open: the pass is still balanced
+ok two-elements-left-open: the control raises nothing
+ok two-elements-left-open: and the control renders
+-- element-left-open-inside-a-fragment
+   site:    unwind_to / an element was left open
+   faults:  0: an element was left open
+   left:    <div>inside</div>after
+   control: <div>inside</div>after
+ok element-left-open-inside-a-fragment: the exact faults
+ok element-left-open-inside-a-fragment: what the refusal left
+ok element-left-open-inside-a-fragment: the pass is still balanced
+ok element-left-open-inside-a-fragment: the control raises nothing
+ok element-left-open-inside-a-fragment: and the control renders
+-- region-left-open-at-pass-end
+   site:    unwind_to / a region was left open
+   faults:  0: a region was left open
+   left:    row
+   control: row
+ok region-left-open-at-pass-end: the exact faults
+ok region-left-open-at-pass-end: what the refusal left
+ok region-left-open-at-pass-end: the pass is still balanced
+ok region-left-open-at-pass-end: the control raises nothing
+ok region-left-open-at-pass-end: and the control renders
+-- region-left-open-inside-an-element
+   site:    unwind_to / a region was left open
+   faults:  0: a region was left open | 0: an element was left open
+   left:    <ul>row</ul>
+   control: <ul>row</ul>
+ok region-left-open-inside-an-element: the exact faults
+ok region-left-open-inside-an-element: what the refusal left
+ok region-left-open-inside-an-element: the pass is still balanced
+ok region-left-open-inside-an-element: the control raises nothing
+ok region-left-open-inside-an-element: and the control renders
+-- fragment-unwound-by-an-inner-end-boundary
+   site:    unwind_to / a fragment was left open
+   faults:  0: a fragment was left open
+   left:    in the fragmentafter
+   control: in the fragmentafter
+ok fragment-unwound-by-an-inner-end-boundary: the exact faults
+ok fragment-unwound-by-an-inner-end-boundary: what the refusal left
+ok fragment-unwound-by-an-inner-end-boundary: the pass is still balanced
+ok fragment-unwound-by-an-inner-end-boundary: the control raises nothing
+ok fragment-unwound-by-an-inner-end-boundary: and the control renders
+-- an-element-open-when-the-fragment-is-unwound
+   site:    unwind_to / a fragment was left open
+   faults:  0: an element was left open | 0: a fragment was left open
+   left:    <div></div>after
+   control: <div></div>after
+ok an-element-open-when-the-fragment-is-unwound: the exact faults
+ok an-element-open-when-the-fragment-is-unwound: what the refusal left
+ok an-element-open-when-the-fragment-is-unwound: the pass is still balanced
+ok an-element-open-when-the-fragment-is-unwound: the control raises nothing
+ok an-element-open-when-the-fragment-is-unwound: and the control renders
+-- boundary-left-open-at-pass-end
+   site:    unwind_to / a boundary was left open
+   faults:  0: a boundary was left open
+   left:    body
+   control: body
+ok boundary-left-open-at-pass-end: the exact faults
+ok boundary-left-open-at-pass-end: what the refusal left
+ok boundary-left-open-at-pass-end: the pass is still balanced
+ok boundary-left-open-at-pass-end: the control raises nothing
+ok boundary-left-open-at-pass-end: and the control renders
+-- two-boundaries-left-open
+   site:    unwind_to / a boundary was left open
+   faults:  0: a boundary was left open | 0: a boundary was left open
+   left:    body
+   control: body
+ok two-boundaries-left-open: the exact faults
+ok two-boundaries-left-open: what the refusal left
+ok two-boundaries-left-open: the pass is still balanced
+ok two-boundaries-left-open: the control raises nothing
+ok two-boundaries-left-open: and the control renders
+-- a-slot-that-holds-another-class
+   site:    fill_slot / slot N holds a X, not a Y
+ok wrong-class: the first pass is clean
+ok wrong-class: and it rendered
+   faults:  0: slot 1 holds a Plain, not a Other
+   left:    <p>one/2</p>
+ok wrong-class: the exact fault
+ok wrong-class: the pass is still balanced
+   control: <p>one/3</p>
+ok wrong-class: the same class at the same seq raises nothing
+ok wrong-class: and the instance survived all three passes
+-- the sites, and how many shapes reach each
+   5x attr / attribute N carried a refused scheme
+   3x attrs / attribute N carried a refused scheme
+   2x attrs / refused splatted attribute name
+   1x attrs / refused splatted inline handler
+   2x close / close with no open element
+   2x end_boundary / end_boundary with no open boundary
+   2x end_region / end_region with no open region
+   2x fail_boundary / fail_boundary with no open boundary
+   1x fill_slot / slot N holds a X, not a Y
+   1x mount / X has no zero-argument initializer
+   1x mount / X is not a Component
+   2x mount / cannot activate X
+   1x mount_made / X is not a Component
+   3x name_is_writable / refused attribute name
+   3x name_is_writable / refused inline handler attribute
+   3x note_sibling / sequence N does not follow M in this scope
+   3x open / refused tag name
+   2x region / duplicate key
+   6x take_attribute_slot / X does not follow Y in this element's attribute run
+   3x take_attribute_slot / X is outside an element's attribute run
+   2x unwind_to / a boundary was left open
+   2x unwind_to / a fragment was left open
+   2x unwind_to / a region was left open
+   3x unwind_to / an element was left open
+ok every fault site in builder.b has a case
 == summary
-checks: 156, failed: 0
+checks: 443, failed: 0
