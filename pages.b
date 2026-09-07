@@ -1098,11 +1098,19 @@ pub fn strip_type_arguments(name: string) -> string {
 
 /// Whether `described` is, or descends from, the type with this qualified name.
 ///
-/// It walks `base_type()` rather than asking `is_assignable_from`, because
-/// `is_assignable_from` answers **false** for a base class and its subclass:
-/// `type_of(Base).is_assignable_from(type_of(Derived))` is `false` on both
-/// backends in 0.1.40, while `type_of(Derived).is_assignable_from(type_of(
-/// Derived))` is true. A scan written on it would find no pages at all.
+/// It walks `base_type()` rather than asking `is_assignable_from`, and the
+/// reason is BLOCKERS.md **B8**: `type_of(T)` for an **imported** `T` reports
+/// the *importing* package's name joined to the simple name — `latte$entry
+/// .Component` in a consumer's entry file, a type that does not exist — while
+/// the inheritance chain reports the real `latte.Component`. The two disagree
+/// inside one program, so `is_assignable_from` answers **false** for a genuine
+/// base and subclass, on both backends. A scan written on it finds no pages.
+///
+/// `wanted` must therefore be produced HERE, inside `latte`, where `type_of(
+/// Component)` is right — never handed in from a consumer's file.
+///
+/// This function is `pub` because a host package needs it; the caveat above is
+/// the whole reason its argument is a string rather than a `reflect.Type`.
 pub fn extends_named(described: reflect.Type, wanted: string) -> bool {
     var walk: Option<reflect.Type> = some(described)
     for true {
