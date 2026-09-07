@@ -1,5 +1,6 @@
 ======== the contract between bx/html.b and frames.b ========
 both copies of the escaping and refusal rules agree over the corpus
+the editor vocabulary and the tables it mirrors agree over the corpus
 ======== parse tree: price.bx ========
 <p> element @9:1
   text "It costs $5.00, US$ and $ 20 and $word." @9:4

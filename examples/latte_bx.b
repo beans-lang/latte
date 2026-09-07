@@ -25,8 +25,9 @@ fn usage() {
     io.eprintln("usage: latte-bx <command> [options] <file.bx>...")
     io.eprintln("")
     io.eprintln("commands:")
-    io.eprintln("  build   compile each file, writing <stem>_gen.b beside it")
-    io.eprintln("  check   parse and emit, and write nothing")
+    io.eprintln("  build       compile each file, writing <stem>_gen.b beside it")
+    io.eprintln("  check       parse and emit, and write nothing")
+    io.eprintln("  vocabulary  print latte's .bx surface as JSON, for an editor")
     io.eprintln("")
     io.eprintln("options:")
     io.eprintln("  -o <path>          write the generated Beans to <path> (one input only)")
@@ -50,8 +51,20 @@ fn main() {
         usage()
         return
     }
+    // The vocabulary takes no input file and no option: it is the language,
+    // not a translation of anything. `editors/shared/bx.json` is this string,
+    // and `tests/w2_editor_data.out` is the same string as a golden, so the
+    // gate says the two cannot drift.
+    if command == "vocabulary" {
+        if args.len() > 1 {
+            io.eprintln("latte-bx: vocabulary takes no arguments — it prints latte's own surface")
+            os.exit(2)
+        }
+        io.print(bx.vocabulary_json())
+        return
+    }
     if command != "build" && command != "check" {
-        io.eprintln("latte-bx: {command} is not a command — the two are build and check")
+        io.eprintln("latte-bx: {command} is not a command — the three are build, check and vocabulary")
         usage()
         os.exit(2)
     }

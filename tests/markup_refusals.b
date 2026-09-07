@@ -36,8 +36,10 @@
 // it needs the real compiler, and nothing in the stdlib reads an environment
 // variable, so a suite cannot find `beansc` to run it. `test.sh` has a
 // `component-type` leg for it, where `$BEANSC` is already resolved. What this
-// file checks is latte-bx's half: that the assertion function is emitted, for
-// every distinct component tag, once.
+// file checks is latte-bx's half — section 15: that the assertion function is
+// emitted once per distinct component tag, from every shape a component tag can
+// be written in. beansc can only refuse a tag latte-bx reported, so a tag that
+// never reaches `note_component` is a tag whose type nothing checks.
 package main
 
 import std.io
@@ -159,6 +161,36 @@ pub class Suite {
         }
         self.controls = self.controls + 1
         io.println("accepted: {label}")
+    }
+
+    /// Every upcast assertion the file compiles to, in order.
+    ///
+    /// This is the half of "a `<Tag>` that is not a Component" that belongs to
+    /// latte-bx. beansc answers the other half — see the header, and the
+    /// `component-type` leg in `test.sh` — but beansc can only answer it about
+    /// tags latte-bx actually reported, so "which tags reach `note_component`"
+    /// is a question only this file can ask, on both backends, against a
+    /// golden.
+    fn assertions(label: string, decls: string, markup: string) {
+        let compiled: bx.Compiled = bx.compile_source(
+            self.wrap(decls, markup), "refusal.bx", self.options())
+        if !compiled.is_ok() {
+            self.failures = self.failures + 1
+            io.println("FAIL the control was REFUSED: {label}")
+            self.echo(markup)
+            self.show_diags(compiled)
+            return
+        }
+        self.controls = self.controls + 1
+        io.println("accepted: {label}")
+        self.echo(markup)
+        var found: int = 0
+        for line: string in compiled.source.split("\n") {
+            if !line.starts_with("fn _latte_component_") { continue }
+            found = found + 1
+            io.println("  {line}")
+        }
+        if found == 0 { io.println("  (no component tag, so no assertion)") }
     }
 
     fn heading(text: string) {
@@ -791,6 +823,44 @@ pub class Suite {
                       r#"pub choice: string = """#,
                       r#"<select on:change={fn(e: InputEvent) { self.choice = e.value }}><option selected={self.choice == "a"}>a</option></select>"#)
     }
+
+    // =============================================================== SECTION 15
+    //
+    // **latte-bx's half of "a `<Tag>` that is not a Component".** The refusal
+    // itself is beansc's, against the free function emitted here; `test.sh`'s
+    // `component-type` leg runs it. But beansc can only refuse a tag latte-bx
+    // *reported*, so a tag that never reaches `note_component` is a tag whose
+    // type nothing checks — a silent hole in a security-shaped rule, and
+    // exactly the shape of failure the header calls a refusal that never runs.
+    //
+    // So: every shape a component tag can be written in, and the assertions the
+    // file compiles to. One per DISTINCT tag — `<Hint/><Hint/>` is one, because
+    // two would be a duplicate definition and beansc would answer about that
+    // instead. A file with no component tag emits none, which is why the block
+    // is guarded rather than always written.
+
+    fn component_assertions() {
+        self.heading("the upcast assertion, per distinct component tag")
+        self.assertions("a bare component tag", "", r#"<Hint />"#)
+        self.assertions("with parameters", "", r#"<Hint label="a" count={1} />"#)
+        self.assertions("with children", "", r#"<Hint><p>x</p></Hint>"#)
+        self.assertions("with a named slot", "",
+                        r#"<Hint>$slot:extra as n: int { <b>$n</b> }</Hint>"#)
+        self.assertions("the same tag twice", "", r#"<Hint /><Hint />"#)
+        self.assertions("three different tags", "", r#"<Hint /><Panel /><Card />"#)
+        self.assertions("a dotted tag", "", r#"<ui.Table />"#)
+        self.assertions("inside a $if arm", r#"pub open: bool = true"#,
+                        r#"$if self.open { <Hint /> } else { <Panel /> }"#)
+        self.assertions("inside a $for body", r#"pub rows: List<int> = []"#,
+                        r#"$for row in self.rows { <Hint /> }"#)
+        self.assertions("inside a $match arm", r#"pub n: int = 0"#,
+                        r#"$match self.n { 0 => { <Hint /> } _ => { <Panel /> } }"#)
+        self.assertions("nested inside another component's children", "",
+                        r#"<Hint><Panel><Card /></Panel></Hint>"#)
+        self.assertions("inside a named slot's body", "",
+                        r#"<Hint>$slot:extra as n: int { <Panel /> }</Hint>"#)
+        self.assertions("no component tag at all", "", r#"<p>plain</p>"#)
+    }
 }
 
 fn main() {
@@ -809,6 +879,7 @@ fn main() {
     suite.import_collisions()
     suite.beans_block()
     suite.bindings_and_live()
+    suite.component_assertions()
 
     io.println("")
     io.println("{suite.refusals} refusal(s) fired, {suite.controls} control(s) compiled")

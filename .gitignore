@@ -3,3 +3,5 @@ build/
 *.ll
 *_ffi.c
 .DS_Store
+tests/_w2_component_ok.b
+tests/_w2_component_bad.b
