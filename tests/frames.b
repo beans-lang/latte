@@ -2573,6 +2573,7 @@ fn fault_sites(r: Report) {
         }
     }
 
+    slots_that_write_no_html(r)
     wrong_class_at_one_slot(r)
     reached[SITE_WRONG_CLASS] = 1
 
@@ -2589,6 +2590,59 @@ fn fault_sites(r: Report) {
         }
     }
     r.eqi("every fault site in builder.b has a case", names.len(), 24)
+}
+
+/// Three controls in the table render no html of their own, because a handler,
+/// a `ref` and a `preserve` all serialize to nothing (D7). `<div></div>` would
+/// look exactly the same if the slot had been silently dropped, so those three
+/// are not carried by their html: their acceptance is asserted here, on the
+/// frames and on the registry.
+///
+/// This is the same trap the whole section is about, one level down — a
+/// control that cannot tell "accepted" from "quietly discarded" is not a
+/// control.
+fn slots_that_write_no_html(r: Report) {
+    io.println("-- controls whose acceptance is invisible in html")
+
+    let one: Builder = new Builder()
+    render_body(one, fn(b: Builder) {
+        b.open(0, "div")
+        b.on_click(1, fn(e: MouseEvent) {})
+        b.close()
+    })
+    io.println(one.dump())
+    r.eqi("a handler inside the run writes one frame", handler_ids(one).len(), 1)
+    r.eqi("and raises nothing", one.all_faults().len(), 0)
+    r.yes("and the registry can dispatch the id it wrote",
+        one.registry.fire_mouse(handler_ids(one)[0], new MouseEvent()))
+
+    let two: Builder = new Builder()
+    render_body(two, fn(b: Builder) {
+        b.open(0, "div")
+        b.on_click(1, fn(e: MouseEvent) {})
+        b.attr(1, "class", "x")
+        b.on_dblclick(2, fn(e: MouseEvent) {})
+        b.close()
+    })
+    io.println(two.dump())
+    r.eqi("a handler and a named attribute at one seq are two distinct keys",
+        handler_ids(two).len(), 2)
+    r.eqi("with distinct ids", count_distinct(handler_ids(two)), 2)
+    r.eqi("and nothing was refused", two.all_faults().len(), 0)
+
+    let three: Builder = new Builder()
+    let sink: Ledger = new Ledger()
+    render_body(three, fn(b: Builder) {
+        b.open(0, "div")
+        b.reference(1, fn(handle: Reference) { sink.record("ref->{handle.node}") })
+        b.preserve(2)
+        b.close()
+    })
+    io.println(three.dump())
+    r.eqi("a ref and a preserve at their own seqs both land",
+        three.frames.len(), 4)
+    r.eqi("the ref sink was called", sink.disposed.len(), 1)
+    r.eqi("and nothing was refused", three.all_faults().len(), 0)
 }
 
 /// `fill_slot / slot N holds a X, not a Y` — the one site that needs two

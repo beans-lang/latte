@@ -979,6 +979,31 @@ ok two-boundaries-left-open: what the refusal left
 ok two-boundaries-left-open: the pass is still balanced
 ok two-boundaries-left-open: the control raises nothing
 ok two-boundaries-left-open: and the control renders
+-- controls whose acceptance is invisible in html
+0 open div
+  1 on:click -> 1
+/close
+
+ok a handler inside the run writes one frame
+ok and raises nothing
+ok and the registry can dispatch the id it wrote
+0 open div
+  1 on:click -> 1
+  1 attr class=x
+  2 on:dblclick -> 2
+/close
+
+ok a handler and a named attribute at one seq are two distinct keys
+ok with distinct ids
+ok and nothing was refused
+0 open div
+  1 ref
+  2 preserve
+/close
+
+ok a ref and a preserve at their own seqs both land
+ok the ref sink was called
+ok and nothing was refused
 -- a-slot-that-holds-another-class
    site:    fill_slot / slot N holds a X, not a Y
 ok a-slot-that-holds-another-class: the first pass is clean
@@ -1017,4 +1042,4 @@ ok a-slot-that-holds-another-class: and the instance survived all three passes
    3x unwind_to / an element was left open
 ok every fault site in builder.b has a case
 == summary
-checks: 443, failed: 0
+checks: 452, failed: 0
