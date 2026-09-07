@@ -1,0 +1,2 @@
+module p6_cycle
+kind application
