@@ -1,0 +1,2 @@
+module p5_partial_bad
+kind application

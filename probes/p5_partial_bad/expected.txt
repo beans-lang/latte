@@ -1,0 +1,5 @@
+probes/p5_partial_bad/pages/grid_gen_repeats.b:4:9: error: 'Grid' declares a class header in two places — only one part of a partial class may carry modifiers, generic parameters, extends or implements
+probes/p5_partial_bad/pages/grid_gen_names_t.b:7:19: error: unknown type 'T'
+probes/p5_partial_bad/pages/grid_gen_names_t.b:9:31: error: unknown type 'T'
+probes/p5_partial_bad/pages/grid_gen_names_t.b:9:37: error: unknown type 'T'
+probes/p5_partial_bad/main.b: 4 error(s)
