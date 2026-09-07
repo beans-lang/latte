@@ -131,7 +131,28 @@ pub class Registry {
     pub keyboard: Map<int, fn(KeyboardEvent)> = {}
     pub submit: Map<int, fn(SubmitEvent)> = {}
     pub focus: Map<int, fn(FocusEvent)> = {}
+
+    /// Component ids the sweep dropped since the last batch. The applier holds
+    /// one root node per mounted component and would otherwise keep the entry
+    /// for a component that has left the page — and a later update addressed to
+    /// a stale id would land on a node nothing renders.
+    ///
+    /// It lives on the Registry rather than on a Builder because a torn-down
+    /// buffer takes its own record with it: `tear_down` drops a whole subtree,
+    /// and by the time the differ runs, those buffers are unreachable.
+    pub disposed: List<int> = []
     pub fn init() {}
+
+    fn note_disposed(id: int) { self.disposed.push(id) }
+
+    /// Read the disposals and forget them. The differ calls this once per
+    /// batch, so a disposal is reported exactly once.
+    pub fn drain_disposed() -> List<int> {
+        var out: List<int> = []
+        for id: int in self.disposed { out.push(id) }
+        self.disposed.clear()
+        return move out
+    }
 
     /// Slot ids are page-unique, which is what lets one of them be a mount
     /// key, a component id and a wire handler id at once.
@@ -258,6 +279,17 @@ pub class Builder {
     /// nothing to keep.
     pub rendered: bool = false
 
+    /// Whether the differ has already turned this buffer's frames into edits.
+    ///
+    /// This is what stops a component that answered `should_render() == false`
+    /// from being diffed twice. Such a component is never `reset`, so its
+    /// `previous` and `frames` still hold the pair the LAST batch was built
+    /// from — diffing them again would re-send that batch's inserts, removes
+    /// and moves, and those are not idempotent. `reset` clears it; the differ
+    /// sets it. A buffer that has never rendered starts settled, because an
+    /// empty buffer has nothing anybody is waiting for.
+    pub diffed: bool = true
+
     slots: Map<string, int> = {}
     live: Map<int, bool> = {}
     path: List<string> = [""]
@@ -267,6 +299,7 @@ pub class Builder {
     regions: int = 0
     in_attributes: bool = false
     last_attribute_seq: int = -1
+    last_attribute_name: string = ""
     pass_open: bool = false
 
     pub fn init() {
@@ -336,16 +369,39 @@ pub class Builder {
         self.in_attributes = false
     }
 
-    fn note_attribute(seq: int) {
+    /// Take the next slot in this element's attribute run, or refuse it.
+    ///
+    /// Within one element, `(seq, name)` must STRICTLY increase — and that is
+    /// a stronger rule than "seq must not go backwards", which is all this
+    /// checked before the differ existed. The differ merges the old and new
+    /// attribute runs on exactly this key, and the applier keeps its slots in
+    /// exactly this order, so a run that is not ordered is a run the applier
+    /// cannot reproduce, and a key that repeats is a merge with no answer.
+    ///
+    /// A frame that fails is DROPPED rather than written, the same way an
+    /// unsafe attribute name is. A malformed frame list is a list the
+    /// serializer, the differ and the applier each have to guess at, and the
+    /// guessing is worth doing once, here, loudly.
+    ///
+    /// Slots with no name — a handler, a `ref`, a `preserve`, and the marker
+    /// frame of an `attrs` splat — take the key `(seq, "")`, which sorts
+    /// before every real name at that seq. That is what makes an attribute and
+    /// an event handler unable to share a sequence number, which they never
+    /// should: they are two source positions.
+    fn take_attribute_slot(seq: int, name: string, what: string) -> bool {
         if !self.in_attributes {
-            self.faults.push("attribute {seq} is outside an element's attribute run")
-            return
+            self.faults.push("{what} {seq}:\"{name}\" is outside an element's attribute run")
+            return false
         }
-        if seq < self.last_attribute_seq {
+        if seq < self.last_attribute_seq ||
+           (seq == self.last_attribute_seq && name <= self.last_attribute_name) {
             self.faults.push(
-                "attribute {seq} is before {self.last_attribute_seq} on one element")
+                "{what} {seq}:\"{name}\" does not follow {self.last_attribute_seq}:\"{self.last_attribute_name}\" in this element's attribute run")
+            return false
         }
         self.last_attribute_seq = seq
+        self.last_attribute_name = name
+        return true
     }
 
     // ---- elements ---------------------------------------------------------
@@ -361,6 +417,7 @@ pub class Builder {
         self.depth += 1
         self.in_attributes = true
         self.last_attribute_seq = -1
+        self.last_attribute_name = ""
         self.enter_scope(SCOPE_ELEMENT)
     }
 
@@ -382,19 +439,8 @@ pub class Builder {
     // forgets it cannot exist.
 
     pub fn attr(seq: int, name: string, value: string) {
-        self.note_attribute(seq)
-        self.write_attribute(seq, name, value)
-    }
-
-    fn write_attribute(seq: int, name: string, value: string) {
-        if !attribute_name_is_safe(name) {
-            self.faults.push("refused attribute name \"{name}\"")
-            return
-        }
-        if attribute_is_inline_handler(name) {
-            self.faults.push("refused inline handler attribute \"{name}\"")
-            return
-        }
+        if !self.name_is_writable(name) { return }
+        if !self.take_attribute_slot(seq, name, "attribute") { return }
         var safe: string = value
         if is_url_attribute(name) && !scheme_is_allowed(value) {
             safe = INERT_URL
@@ -403,17 +449,27 @@ pub class Builder {
         self.frames.push(Frame.attribute(seq, name, safe))
     }
 
-    /// A boolean attribute: present or absent, never `="false"`.
-    pub fn flag(seq: int, name: string, present: bool) {
-        self.note_attribute(seq)
+    /// Name safety, applied before the slot is taken so a refused name does not
+    /// consume this element's ordering state.
+    fn name_is_writable(name: string) -> bool {
         if !attribute_name_is_safe(name) {
             self.faults.push("refused attribute name \"{name}\"")
-            return
+            return false
         }
         if attribute_is_inline_handler(name) {
             self.faults.push("refused inline handler attribute \"{name}\"")
-            return
+            return false
         }
+        return true
+    }
+
+    /// A boolean attribute: present or absent, never `="false"`. An absent flag
+    /// is not nothing — it is a slot that shadows an earlier attribute of the
+    /// same name, which is what `emit_attributes` implements and what the
+    /// differ has to be able to say.
+    pub fn flag(seq: int, name: string, present: bool) {
+        if !self.name_is_writable(name) { return }
+        if !self.take_attribute_slot(seq, name, "flag") { return }
         self.frames.push(Frame.flag(seq, name, present))
     }
 
@@ -421,7 +477,9 @@ pub class Builder {
     /// order, so an unsorted splat would let one render's HTML differ from the
     /// next's for no reason a person could see.
     pub fn attrs(seq: int, extra: Map<string, string>) {
-        self.note_attribute(seq)
+        // The marker takes `(seq, "")`, so it sorts before every name it
+        // introduces at the same seq and after everything before it.
+        if !self.take_attribute_slot(seq, "", "attrs") { return }
         var names: List<string> = extra.keys()
         names.sort()
         var kept: List<string> = []
@@ -430,7 +488,7 @@ pub class Builder {
                 self.faults.push("refused splatted attribute name \"{name}\"")
             } else if attribute_is_inline_handler(name) {
                 self.faults.push("refused splatted inline handler \"{name}\"")
-            } else {
+            } else if self.take_attribute_slot(seq, name, "attrs entry") {
                 kept.push(name)
             }
         }
@@ -702,35 +760,50 @@ pub class Builder {
     // from the threat table by construction.
 
     fn bind_mouse(seq: int, event: string, handler: fn(MouseEvent)) {
-        self.note_attribute(seq)
+        // A refused slot binds nothing: an id registered for a frame that was
+        // never written is a live handler the page has no way to reach, and the
+        // sweep would keep it alive because slot_for marked it reached.
+        if !self.take_attribute_slot(seq, "", "on:{event}") { return }
         let id: int = self.slot_for(seq)
         self.registry.mouse[id] = handler
         self.frames.push(Frame.handler(seq, event, id))
     }
 
     fn bind_input(seq: int, event: string, handler: fn(InputEvent)) {
-        self.note_attribute(seq)
+        // A refused slot binds nothing: an id registered for a frame that was
+        // never written is a live handler the page has no way to reach, and the
+        // sweep would keep it alive because slot_for marked it reached.
+        if !self.take_attribute_slot(seq, "", "on:{event}") { return }
         let id: int = self.slot_for(seq)
         self.registry.input[id] = handler
         self.frames.push(Frame.handler(seq, event, id))
     }
 
     fn bind_keyboard(seq: int, event: string, handler: fn(KeyboardEvent)) {
-        self.note_attribute(seq)
+        // A refused slot binds nothing: an id registered for a frame that was
+        // never written is a live handler the page has no way to reach, and the
+        // sweep would keep it alive because slot_for marked it reached.
+        if !self.take_attribute_slot(seq, "", "on:{event}") { return }
         let id: int = self.slot_for(seq)
         self.registry.keyboard[id] = handler
         self.frames.push(Frame.handler(seq, event, id))
     }
 
     fn bind_submit(seq: int, event: string, handler: fn(SubmitEvent)) {
-        self.note_attribute(seq)
+        // A refused slot binds nothing: an id registered for a frame that was
+        // never written is a live handler the page has no way to reach, and the
+        // sweep would keep it alive because slot_for marked it reached.
+        if !self.take_attribute_slot(seq, "", "on:{event}") { return }
         let id: int = self.slot_for(seq)
         self.registry.submit[id] = handler
         self.frames.push(Frame.handler(seq, event, id))
     }
 
     fn bind_focus(seq: int, event: string, handler: fn(FocusEvent)) {
-        self.note_attribute(seq)
+        // A refused slot binds nothing: an id registered for a frame that was
+        // never written is a live handler the page has no way to reach, and the
+        // sweep would keep it alive because slot_for marked it reached.
+        if !self.take_attribute_slot(seq, "", "on:{event}") { return }
         let id: int = self.slot_for(seq)
         self.registry.focus[id] = handler
         self.frames.push(Frame.handler(seq, event, id))
@@ -766,7 +839,7 @@ pub class Builder {
 
     /// `ref={self.input}`.
     pub fn reference(seq: int, sink: fn(Reference)) {
-        self.note_attribute(seq)
+        if !self.take_attribute_slot(seq, "", "ref") { return }
         let id: int = self.slot_for(seq)
         self.frames.push(Frame.reference(seq))
         let handle: Reference = new Reference()
@@ -783,7 +856,7 @@ pub class Builder {
     /// not its children — because the point is that a third-party library owns
     /// what is under there now.
     pub fn preserve(seq: int) {
-        self.note_attribute(seq)
+        if !self.take_attribute_slot(seq, "", "preserve") { return }
         self.frames.push(Frame.preserve(seq))
     }
 
@@ -801,6 +874,7 @@ pub class Builder {
         if self.pass_open { self.settle() }
         self.previous = self.frames
         self.frames = new Frames()
+        self.diffed = false
         self.faults.clear()
         self.failures.clear()
         self.live.clear()
@@ -808,6 +882,7 @@ pub class Builder {
         self.regions = 0
         self.in_attributes = false
         self.last_attribute_seq = -1
+        self.last_attribute_name = ""
         self.boundaries.clear()
         self.scopes.clear()
         self.scopes.push(new Scope(SCOPE_ROOT))
@@ -862,6 +937,10 @@ pub class Builder {
     }
 
     fn drop_slot(slot: int) {
+        // Only a slot that actually held a component is a disposal the applier
+        // has to hear about. A handler slot leaves with the frame that named
+        // it, carried out by the parent's `remove` edit.
+        if self.children.contains_key(slot) { self.registry.note_disposed(slot) }
         match self.nested.get(slot) {
             some(buffer) => { buffer.tear_down() }
             none => {}

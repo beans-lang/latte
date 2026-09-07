@@ -597,6 +597,71 @@ fn refusals() -> List<Refusal> {
         b.close()
     }))
 
+    cases.push(new Refusal("attribute-name-out-of-order", fn(b: Builder) {
+        // The half of the rule that only the differ needs: within one seq,
+        // NAMES must increase too, because the differ merges the two attribute
+        // runs on `(seq, name)` and the applier keeps its slots in that order.
+        // A run the applier cannot reproduce is a gate-3 divergence, so it is
+        // refused here instead.
+        b.open(0, "div")
+        b.attr(1, "z", "1")
+        b.attr(1, "a", "2")
+        b.close()
+    }))
+
+    cases.push(new Refusal("attribute-slot-repeats", fn(b: Builder) {
+        // Two slots with one merge key is a merge with no answer.
+        b.open(0, "div")
+        b.attr(1, "same", "first")
+        b.attr(1, "same", "second")
+        b.close()
+    }))
+
+    cases.push(new Refusal("two-handlers-at-one-seq", fn(b: Builder) {
+        // Both would call `slot_for(1)` and get the SAME id, so the wire could
+        // only ever reach one of them — `registry.mouse[id]` holds whichever
+        // bound last, while the frames claim two live handlers. Two handlers
+        // are two source positions; sharing a seq is a markup-compiler bug and
+        // the second is refused.
+        b.open(0, "div")
+        b.on_click(1, fn(e: MouseEvent) {})
+        b.on_dblclick(1, fn(e: MouseEvent) {})
+        b.close()
+    }))
+
+    cases.push(new Refusal("handler-then-attribute-at-one-seq", fn(b: Builder) {
+        // NOT a refusal, and worth saying so: a handler takes `(seq, "")` and
+        // a named attribute takes `(seq, name)`, so they are distinct keys in
+        // distinct tables and nothing collides. Only two UNNAMED slots at one
+        // seq collide, which is the case above.
+        b.open(0, "div")
+        b.on_click(1, fn(e: MouseEvent) {})
+        b.attr(1, "class", "x")
+        b.close()
+    }))
+
+    cases.push(new Refusal("splat-under-an-earlier-name", fn(b: Builder) {
+        var extra: Map<string, string> = {}
+        extra["a"] = "from splat"
+        b.open(0, "div")
+        b.attr(1, "z", "explicit")
+        b.attrs(1, extra)
+        b.close()
+    }))
+
+    cases.push(new Refusal("splat-then-name-at-one-seq", fn(b: Builder) {
+        // Legal: the splat marker takes (2, ""), its entries take (2, "a") and
+        // (2, "b"), and an explicit attribute at a later seq follows them all.
+        var extra: Map<string, string> = {}
+        extra["b"] = "two"
+        extra["a"] = "one"
+        b.open(0, "div")
+        b.attr(1, "class", "first")
+        b.attrs(2, extra)
+        b.attr(3, "id", "last")
+        b.close()
+    }))
+
     cases.push(new Refusal("sibling-seq-goes-backwards", fn(b: Builder) {
         b.open(5, "p")
         b.close()
