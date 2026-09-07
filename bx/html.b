@@ -78,6 +78,28 @@ pub fn names_a_component(tag: string) -> bool {
     return first >= 65 && first <= 90
 }
 
+/// Whether `prefix:` is an XML namespace HTML and SVG actually have, and so
+/// names an ordinary attribute rather than one of latte's two.
+///
+/// latte claims `on:` for a DOM event and `bind:` for a two-way binding.
+/// Everything else carrying a colon used to be refused outright — which made
+/// `xlink:href` **unwritable**, while `frames.b` and this file both list it as
+/// a URL attribute with a comment saying why: an SVG
+/// `<a xlink:href="javascript:…">` runs script in every browser that renders
+/// SVG. The runtime accepts it through `attrs={ }` and applies the scheme check
+/// to it; markup could not spell it at all. The two halves of one project
+/// disagreed, and this list is what settles it.
+///
+/// It is an allowlist rather than "any prefix that is not ours", so a mistyped
+/// `bnd:value={self.note}` stays an error instead of quietly becoming an
+/// attribute literally named `bnd:value` in the page. These three are the only
+/// namespaces HTML and SVG have.
+pub fn is_xml_namespace(prefix: string) -> bool {
+    if prefix == "xlink" { return true }
+    if prefix == "xml" { return true }
+    return prefix == "xmlns"
+}
+
 /// Whether an attribute is boolean: present or absent, never a string.
 ///
 /// The HTML5 list of boolean content attributes. A boolean attribute becomes
@@ -145,23 +167,26 @@ pub fn is_inline_handler_attribute(name: string) -> bool {
     return name.to_lower().starts_with("on")
 }
 
-/// Whether `name` reads as an HTML event handler with an event after it —
-/// `onclick` yes, `on-foo` no.
+/// Whether `name` reads as an inline handler for an event latte can name a
+/// replacement for — `onclick` yes, `on-foo` no, `once` no.
 ///
-/// Not a second refusal: `is_inline_handler_attribute` refuses both. This only
-/// decides whether the diagnostic can name the `on:<event>` spelling to use
-/// instead, because `on:-foo` is not advice.
+/// Not a second refusal: `is_inline_handler_attribute` refuses all three. This
+/// only decides whether the diagnostic may name the `on:<event>` spelling to
+/// use instead — and that spelling has to be one that would then be accepted.
+///
+/// So the suffix is looked up in latte's own event table rather than merely
+/// checked for being letters. "Letters" said yes to `once` and `only`, and the
+/// message answered them with "write on:ce={...}" and "write on:ly={...}",
+/// advice that walks straight into a second refusal — "on:ce is not an event
+/// latte has" — and that reads as if `once` were a handler at all. It is not;
+/// it is an ordinary word that happens to begin with those two bytes, and the
+/// general message ("rename it, or write on:<event>={...} if you meant a
+/// handler") is the true thing to say about it.
 pub fn names_an_event_handler(name: string) -> bool {
     let lower: string = name.to_lower()
     if lower.len() < 3 { return false }
     if !lower.starts_with("on") { return false }
-    var i: int = 2
-    for i < lower.len() {
-        let b: int = lower.byte_at(i) as int
-        if b < 97 || b > 122 { return false }
-        i = i + 1
-    }
-    return true
+    return event_method(lower.slice(2, lower.len())) != ""
 }
 
 // ------------------------------------------------- the runtime's own tables
