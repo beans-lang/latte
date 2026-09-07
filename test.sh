@@ -226,7 +226,31 @@ else
     skipped=$((skipped + 1))
 fi
 
+# The build-time compiler must CHECK too. `examples/latte_bx.b` is latte-bx's
+# entry — a `kind library` module may only hold a program entry under
+# examples/ or tests/ — and nothing else in this gate reaches it: the suites
+# import the `latte.bx` package, not the binary's main. Without this block a
+# broken CLI is green.
 shopt -s nullglob
+example_sources=("$ROOT"/examples/*.b)
+if [[ ${#example_sources[@]} -gt 0 ]]; then
+    example_bad=0
+    for source in "${example_sources[@]}"; do
+        (cd "$ROOT" && "$BEANSC" check "$source") >"$tmp/example.log" 2>&1 && continue
+        echo "--- examples FAILED: $(basename "$source") does not check ---" >&2
+        cat "$tmp/example.log" >&2
+        example_bad=1
+    done
+    if [[ $example_bad -eq 0 ]]; then
+        echo "ok examples — all ${#example_sources[@]} .b file(s) under examples/ check"
+    else
+        failed=1
+    fi
+else
+    echo "SKIP examples: no .b files under examples/ yet"
+    skipped=$((skipped + 1))
+fi
+
 for case in "$ROOT"/tests/*.b; do
     name=$(basename "$case" .b)
     # Scratch drivers are allowed in tests/ and are not gated: a name starting
