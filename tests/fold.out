@@ -1,0 +1,86 @@
+== 1 the switch
+folded:
+0 open div
+  1 attr class=panel
+  2 const <span class="icon"><svg width="12"><path d="M0 0"></path></svg></span>
+  10 text hello
+/close
+unfolded:
+0 open div
+  1 attr class=panel
+  2 open span
+    3 attr class=icon
+    4 open svg
+      5 attr width=12
+      6 open path
+        7 attr d=M0 0
+      /close
+    /close
+  /close
+  10 text hello
+/close
+ok folded html == unfolded html
+html: <div class="panel"><span class="icon"><svg width="12"><path d="M0 0"></path></svg></span>hello</div>
+ok folded is five frames
+ok unfolded is thirteen
+ok folding collapses frames
+ok no faults folded
+ok no faults unfolded
+ok folded html == unfolded html through a mounted child
+host html: <div><hr><i class="star"></i>hello</div>
+ok the child inherited fold=true
+ok and fold=false when the parent was unfolded
+== 2 an unchanged constant is free
+ok the first render applies
+component 0
+  in 0
+    text 1 = goodbye
+  out
+ok changing the label costs one step pair and one set_text
+ok and stages no frames at all
+ok the applier agrees
+ok the icon is still there
+ok an identical render is an empty batch
+ok with no updates
+== 3 a changed constant is one set_markup
+ok arm A rendered
+arm A: <div><em>arm A</em></div>
+component 0
+  in 0
+    markup 0 = <em>arm B</em>
+  out
+ok flipping to arm B costs exactly one set_markup plus its step pair
+ok and the applier lands on arm B
+ok which is arm B
+ok and no longer arm A
+arm B: <div><em>arm B</em></div>
+ok and back again
+ok the applier follows
+ok no differ faults
+ok no applier faults
+ok no builder faults — the frame list was never malformed
+== 4 the same page, folded and unfolded, end to end
+ok folded: first render applies
+ok folded: the child's text changed
+ok folded: one component spoke
+ok folded: one edit
+folded: <div><hr><i class="star"></i>second</div>
+ok unfolded: first render applies
+ok unfolded: the child's text changed
+ok unfolded: one component spoke
+ok unfolded: one edit
+unfolded: <div><hr><i class="star"></i>second</div>
+ok both arms of the switch reach the same page
+== 5 flipping the switch under a live builder
+ok folded first
+component 0
+  in 0
+    remove 0
+    insert 0 <- ref@0
+  out
+ok unfolded after
+ok a kind change at one seq is a replacement
+ok and back
+ok no faults anywhere
+== summary
+checks: 40, failed: 0
