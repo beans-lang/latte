@@ -406,10 +406,27 @@ pub class Emitter {
 
     // ------------------------------------------------------------- content
 
-    /// One run of siblings, folding every maximal run of constant nodes.
+    /// One run of siblings: merged text runs first, then folded constant runs,
+    /// then everything else one at a time.
+    ///
+    /// **Adjacent text and expressions are one frame, not several.**
+    /// `<h2>Count: $self.count</h2>` is `b.text(3, "Count: {self.count}")`, and
+    /// that is not a size optimisation — it is what the wire protocol names:
+    /// PLAN.md's own batch example is `["ut",3,"Count: 4"]`, one text edit
+    /// carrying the whole string. Emitting the literal and the value as two
+    /// frames would put a text node boundary in the DOM that the markup does
+    /// not have, and would send two edits where the protocol describes one.
     fn nodes(list: List<Node>, indent: int) {
         var i: int = 0
         for i < list.len() {
+            if is_text_or_expression(list[i]) {
+                let stop: int = text_run_end(list, i)
+                if run_has_expression(list, i, stop) {
+                    self.text_run(list, i, stop, indent)
+                    i = stop
+                    continue
+                }
+            }
             if !node_is_constant(list[i]) {
                 self.node(list[i], indent)
                 i = i + 1
@@ -418,11 +435,42 @@ pub class Emitter {
             var j: int = i
             for j < list.len() {
                 if !node_is_constant(list[j]) { break }
+                // A constant text node that an expression follows belongs to
+                // that expression's frame, not to this constant run.
+                if is_text_or_expression(list[j]) {
+                    let stop: int = text_run_end(list, j)
+                    if run_has_expression(list, j, stop) { break }
+                }
                 j = j + 1
             }
             self.constant_run(list, i, j, indent)
             i = j
         }
+    }
+
+    /// `list[from .. to)` — text and expressions, at least one of them an
+    /// expression — as one interpolated `text` frame.
+    fn text_run(list: List<Node>, from: int, to: int, indent: int) {
+        let seq: int = self.counters.next()
+        let parts: List<string> = []
+        var k: int = from
+        for k < to {
+            match list[k] as? TextNode {
+                some(text) => { parts.push(escape_beans_string(text.text)) }
+                none => {}
+            }
+            match list[k] as? ExprNode {
+                some(expr) => {
+                    self.check_code(expr.code, expr.span, "an interpolated expression")
+                    let _: bool = self.check_interpolated(expr.code, expr.span,
+                                                          "an interpolated expression")
+                    parts.push("\{{expr.code}\}")
+                }
+                none => {}
+            }
+            k = k + 1
+        }
+        self.write(indent, "{self.builder_name()}.text({seq}, \"{parts.join("")}\"){self.trace(list[from].span)}")
     }
 
     /// `list[from .. to)` — every node in it constant — as the two arms of the
@@ -1284,4 +1332,42 @@ pub fn uses_reserved_name(code: string) -> string {
         return name
     }
     return ""
+}
+
+/// Whether a node is literal text or an interpolated expression — the two
+/// kinds that merge into one `text` frame.
+pub fn is_text_or_expression(node: Node) -> bool {
+    match node as? TextNode {
+        some(_) => { return true }
+        none => {}
+    }
+    match node as? ExprNode {
+        some(_) => { return true }
+        none => {}
+    }
+    return false
+}
+
+/// The exclusive end of the maximal text-and-expression run starting at `from`.
+pub fn text_run_end(list: List<Node>, from: int) -> int {
+    var i: int = from
+    for i < list.len() {
+        if !is_text_or_expression(list[i]) { break }
+        i = i + 1
+    }
+    return i
+}
+
+/// Whether `list[from .. to)` holds an expression, and so has to become one
+/// interpolated frame rather than a constant.
+pub fn run_has_expression(list: List<Node>, from: int, to: int) -> bool {
+    var i: int = from
+    for i < to {
+        match list[i] as? ExprNode {
+            some(_) => { return true }
+            none => {}
+        }
+        i = i + 1
+    }
+    return false
 }

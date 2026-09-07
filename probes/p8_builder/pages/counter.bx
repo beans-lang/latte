@@ -1,0 +1,70 @@
+<section class="counter">
+  <h2>Count: $self.count</h2>
+  <p class="muted">as of $self.clock.now()</p>
+
+  <button class="primary" on:click={fn(e: MouseEvent) {
+      self.count += 1
+  }}>Add one</button>
+
+  <input bind:value={self.note} placeholder="A note" />
+
+  $if self.count > 10 {
+    <p class="warn">That is a lot, $self.note</p>
+  } else {
+    <Hint label="Keep going" body={self.hint_body} on_dismiss={some(new Callback<int>(self, fn(id: int) {
+        self.hide()
+    }))} />
+  }
+
+  <ul>
+  $for row: Row in self.rows {
+    <li key={row.id}>$row.title</li>
+  }
+  </ul>
+
+  <form on:submit={fn(e: SubmitEvent) { self.count = e.fields.len() }}>
+    <input disabled={self.count > 3} attrs={self.extra} on:change={fn(e: InputEvent) { self.note = e.value }} on:keydown={fn(e: KeyboardEvent) { self.note = e.key }} on:focus={fn(e: FocusEvent) { self.count += 0 }} on:dblclick={fn(e: MouseEvent) { self.count += 2 }} ref={self.input_ref} />
+  </form>
+
+  <a href="/safe/path">ok</a>
+  <a href={self.bad_url}>bad</a>
+
+  <div preserve>$html(self.rendered)</div>
+
+  <footer class="c"><small>fixed</small></footer>
+</section>
+<beans>
+package pages
+
+pub class Clock {
+    pub fn init() {}
+    pub fn now() -> string { return "12:00" }
+}
+
+pub class Row {
+    pub id: int = 0
+    pub title: string = ""
+    pub fn init(id: int, title: string) { self.id = id; self.title = title }
+}
+
+pub partial class Counter extends Component {
+    pub start: int = 0
+    pub count: int = 0
+    pub note: string = ""
+    pub rows: List<Row> = []
+    pub extra: Map<string, string> = {}
+    pub rendered: string = ""
+    // A refused URL is a value now, not a literal: latte-bx refuses a literal
+    // `javascript:` href at compile time, because latte.Builder replaces one
+    // with about:blank at RUN time and a folded constant subtree never passes
+    // through a Builder. The runtime control is what this field exercises.
+    pub bad_url: string = "javascript:alert(1)"
+    pub input_ref: Reference = new Reference()
+    pub hint_body: fn(Builder) = fn(target: Builder) {}
+    clock: Clock
+
+    pub fn init() { self.clock = new Clock() }
+    pub fn on_init() { self.count = self.start }
+    pub fn hide() { self.rows.clear() }
+}
+</beans>

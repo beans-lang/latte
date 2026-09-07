@@ -95,42 +95,43 @@ pub class EquivHand extends Component {
         b.open(0, "section")
         b.attr(1, "class", "counter")
 
+        // Literal text and the expression beside it are ONE frame: PLAN.md's
+        // wire example is `["ut",3,"Count: 4"]`, one text edit for the whole
+        // string.
         b.open(2, "h2")
-        b.text(3, "Count: ")
-        b.text(4, "{self.state.count}")
+        b.text(3, "Count: {self.state.count}")
         b.close()
 
         // One constant subtree: three numbered calls folded into one frame,
         // and the numbering after it is the same either way.
-        if b.fold { b.constant(5, "<p class=\"muted\">a fixed line</p>") }
+        if b.fold { b.constant(4, "<p class=\"muted\">a fixed line</p>") }
         else {
-            b.open(5, "p")
-            b.attr(6, "class", "muted")
-            b.text(7, "a fixed line")
+            b.open(4, "p")
+            b.attr(5, "class", "muted")
+            b.text(6, "a fixed line")
             b.close()
         }
 
-        b.open(8, "button")
-        b.on_click(9, fn(e: MouseEvent) { self.state.count += 1 })
-        b.text(10, "Add one")
+        b.open(7, "button")
+        b.on_click(8, fn(e: MouseEvent) { self.state.count += 1 })
+        b.text(9, "Add one")
         b.close()
 
         // `bind:value` is two frames: the value out, and the write-back.
-        b.open(11, "input")
-        b.attr(12, "value", "{self.state.note}")
-        b.on_input(13, fn(e: InputEvent) { self.state.note = e.value })
-        b.attr(14, "placeholder", "A note")
+        b.open(10, "input")
+        b.attr(11, "value", "{self.state.note}")
+        b.on_input(12, fn(e: InputEvent) { self.state.note = e.value })
+        b.attr(13, "placeholder", "A note")
         b.close()
 
         // The arms hold disjoint ranges, so a number never means two things.
         if self.state.count > 2 {
-            b.open(15, "p")
-            b.attr(16, "class", "warn")
-            b.text(17, "That is a lot, ")
-            b.text(18, "{self.state.note}")
+            b.open(14, "p")
+            b.attr(15, "class", "warn")
+            b.text(16, "That is a lot, {self.state.note}")
             b.close()
         } else {
-            b.component<Hint>(19, fn(child: Hint) {
+            b.component<Hint>(17, fn(child: Hint) {
                 child.label = "Keep going"
                 child.body = fn(nested: Builder) {
                     // A fragment body restarts at 0.
@@ -143,16 +144,15 @@ pub class EquivHand extends Component {
                 }
                 child.extra = fn(nested: Builder, n: int) {
                     nested.open(0, "b")
-                    nested.text(1, "extra ")
-                    nested.text(2, "{n}")
+                    nested.text(1, "extra {n}")
                     nested.close()
                 }
             })
         }
 
-        b.open(20, "ul")
+        b.open(18, "ul")
         for row: Row in self.state.rows {
-            b.region(21, "{row.id}")
+            b.region(19, "{row.id}")
             b.open(0, "li")
             b.text(1, "{row.title}")
             b.close()
@@ -160,10 +160,10 @@ pub class EquivHand extends Component {
         }
         b.close()
 
-        b.open(22, "ol")
+        b.open(20, "ol")
         var index: int = 0
         for tag: string in self.state.tags {
-            b.region(23, "{index}")
+            b.region(21, "{index}")
             b.open(0, "li")
             b.text(1, "{tag}")
             b.close()
@@ -172,32 +172,32 @@ pub class EquivHand extends Component {
         }
         b.close()
 
-        b.open(24, "div")
-        b.attrs(25, self.state.extra)
-        b.attr(26, "class", "base")
-        b.text(27, "splat")
+        b.open(22, "div")
+        b.attrs(23, self.state.extra)
+        b.attr(24, "class", "base")
+        b.text(25, "splat")
         b.close()
 
-        b.open(28, "div")
-        b.preserve(29)
-        if b.fold { b.constant(30, "<span>owned</span>") }
+        b.open(26, "div")
+        b.preserve(27)
+        if b.fold { b.constant(28, "<span>owned</span>") }
         else {
-            b.open(30, "span")
-            b.text(31, "owned")
+            b.open(28, "span")
+            b.text(29, "owned")
             b.close()
         }
         b.close()
 
-        b.open(32, "div")
-        b.raw(33, self.state.rendered)
+        b.open(30, "div")
+        b.raw(31, self.state.rendered)
         b.close()
 
-        if b.fold { b.constant(34, "<footer class=\"c\"><small>fixed</small></footer>") }
+        if b.fold { b.constant(32, "<footer class=\"c\"><small>fixed</small></footer>") }
         else {
-            b.open(34, "footer")
-            b.attr(35, "class", "c")
-            b.open(36, "small")
-            b.text(37, "fixed")
+            b.open(32, "footer")
+            b.attr(33, "class", "c")
+            b.open(34, "small")
+            b.text(35, "fixed")
             b.close()
             b.close()
         }
@@ -292,33 +292,31 @@ partial class Equiv {
         b.open(0, "section")  // equiv.bx:272
         b.attr(1, "class", "counter")
         b.open(2, "h2")  // equiv.bx:273
-        b.text(3, "Count: ")
-        b.text(4, "{self.state.count}")
+        b.text(3, "Count: {self.state.count}")
         b.close()
-        if b.fold { b.constant(5, "<p class=\"muted\">a fixed line</p>") }  // equiv.bx:274
+        if b.fold { b.constant(4, "<p class=\"muted\">a fixed line</p>") }  // equiv.bx:274
         else {
-            b.open(5, "p")  // equiv.bx:274
-            b.attr(6, "class", "muted")
-            b.text(7, "a fixed line")
+            b.open(4, "p")  // equiv.bx:274
+            b.attr(5, "class", "muted")
+            b.text(6, "a fixed line")
             b.close()
         }
-        b.open(8, "button")  // equiv.bx:275
-        b.on_click(9, fn(e: MouseEvent) { self.state.count += 1 })
-        b.text(10, "Add one")
+        b.open(7, "button")  // equiv.bx:275
+        b.on_click(8, fn(e: MouseEvent) { self.state.count += 1 })
+        b.text(9, "Add one")
         b.close()
-        b.open(11, "input")  // equiv.bx:276
-        b.attr(12, "value", "{self.state.note}")
-        b.on_input(13, fn(e: InputEvent) { self.state.note = e.value })
-        b.attr(14, "placeholder", "A note")
+        b.open(10, "input")  // equiv.bx:276
+        b.attr(11, "value", "{self.state.note}")
+        b.on_input(12, fn(e: InputEvent) { self.state.note = e.value })
+        b.attr(13, "placeholder", "A note")
         b.close()
         if self.state.count > 2 {  // equiv.bx:277
-            b.open(15, "p")  // equiv.bx:278
-            b.attr(16, "class", "warn")
-            b.text(17, "That is a lot, ")
-            b.text(18, "{self.state.note}")
+            b.open(14, "p")  // equiv.bx:278
+            b.attr(15, "class", "warn")
+            b.text(16, "That is a lot, {self.state.note}")
             b.close()
         } else {  // equiv.bx:279
-            b.component<Hint>(19, fn(_latte_c: Hint) {  // equiv.bx:280
+            b.component<Hint>(17, fn(_latte_c: Hint) {  // equiv.bx:280
                 _latte_c.label = "Keep going"
                 _latte_c.body = fn(_latte_inner: Builder) {
                     if _latte_inner.fold { _latte_inner.constant(0, "<em>child content</em>") }  // equiv.bx:281
@@ -330,25 +328,24 @@ partial class Equiv {
                 }
                 _latte_c.extra = fn(_latte_inner: Builder, n: int) {
                     _latte_inner.open(0, "b")  // equiv.bx:282
-                    _latte_inner.text(1, "extra ")
-                    _latte_inner.text(2, "{n}")
+                    _latte_inner.text(1, "extra {n}")
                     _latte_inner.close()
                 }
             })
         }
-        b.open(20, "ul")  // equiv.bx:285
+        b.open(18, "ul")  // equiv.bx:285
         for row: Row in self.state.rows {  // equiv.bx:286
-            b.region(21, "{row.id}")
+            b.region(19, "{row.id}")
             b.open(0, "li")  // equiv.bx:287
             b.text(1, "{row.title}")
             b.close()
             b.end_region()
         }
         b.close()
-        b.open(22, "ol")  // equiv.bx:290
+        b.open(20, "ol")  // equiv.bx:290
         var _latte_row_0: int = 0
         for tag: string in self.state.tags {  // equiv.bx:291
-            b.region(23, "{_latte_row_0}")
+            b.region(21, "{_latte_row_0}")
             b.open(0, "li")  // equiv.bx:292
             b.text(1, "{tag}")
             b.close()
@@ -356,29 +353,29 @@ partial class Equiv {
             _latte_row_0 += 1
         }
         b.close()
-        b.open(24, "div")  // equiv.bx:295
-        b.attrs(25, self.state.extra)
-        b.attr(26, "class", "base")
-        b.text(27, "splat")
+        b.open(22, "div")  // equiv.bx:295
+        b.attrs(23, self.state.extra)
+        b.attr(24, "class", "base")
+        b.text(25, "splat")
         b.close()
-        b.open(28, "div")  // equiv.bx:296
-        b.preserve(29)
-        if b.fold { b.constant(30, "<span>owned</span>") }
+        b.open(26, "div")  // equiv.bx:296
+        b.preserve(27)
+        if b.fold { b.constant(28, "<span>owned</span>") }
         else {
-            b.open(30, "span")
-            b.text(31, "owned")
+            b.open(28, "span")
+            b.text(29, "owned")
             b.close()
         }
         b.close()
-        b.open(32, "div")  // equiv.bx:297
-        b.raw(33, self.state.rendered)
+        b.open(30, "div")  // equiv.bx:297
+        b.raw(31, self.state.rendered)
         b.close()
-        if b.fold { b.constant(34, "<footer class=\"c\"><small>fixed</small></footer>") }  // equiv.bx:298
+        if b.fold { b.constant(32, "<footer class=\"c\"><small>fixed</small></footer>") }  // equiv.bx:298
         else {
-            b.open(34, "footer")  // equiv.bx:298
-            b.attr(35, "class", "c")
-            b.open(36, "small")
-            b.text(37, "fixed")
+            b.open(32, "footer")  // equiv.bx:298
+            b.attr(33, "class", "c")
+            b.open(34, "small")
+            b.text(35, "fixed")
             b.close()
             b.close()
         }
