@@ -981,15 +981,15 @@ ok two-boundaries-left-open: the control raises nothing
 ok two-boundaries-left-open: and the control renders
 -- a-slot-that-holds-another-class
    site:    fill_slot / slot N holds a X, not a Y
-ok wrong-class: the first pass is clean
-ok wrong-class: and it rendered
+ok a-slot-that-holds-another-class: the first pass is clean
+ok a-slot-that-holds-another-class: and it rendered
    faults:  0: slot 1 holds a Plain, not a Other
    left:    <p>one/2</p>
-ok wrong-class: the exact fault
-ok wrong-class: the pass is still balanced
+ok a-slot-that-holds-another-class: the exact fault
+ok a-slot-that-holds-another-class: the pass is still balanced
    control: <p>one/3</p>
-ok wrong-class: the same class at the same seq raises nothing
-ok wrong-class: and the instance survived all three passes
+ok a-slot-that-holds-another-class: the same class at the same seq raises nothing
+ok a-slot-that-holds-another-class: and the instance survived all three passes
 -- the sites, and how many shapes reach each
    5x attr / attribute N carried a refused scheme
    3x attrs / attribute N carried a refused scheme

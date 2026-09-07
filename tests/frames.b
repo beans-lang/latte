@@ -325,6 +325,17 @@ fn show_faults(b: Builder) {
     for fault: string in b.all_faults() { io.println("   fault: {fault}") }
 }
 
+/// The first fault, or a sentinel. `all_faults()[0]` on a builder that raised
+/// none is a panic, and a panic ends the whole suite at that line — so a
+/// refusal that stops working takes every later check down with it and names
+/// nothing. This turns the same mistake into one FAIL that says which rule
+/// went missing. `probes/delete_faults.sh` found all three of these by
+/// deleting the report sites they guard.
+fn first_fault(b: Builder) -> string {
+    if b.all_faults().len() == 0 { return "<no fault was raised>" }
+    return b.all_faults()[0]
+}
+
 fn html_of(b: Builder) -> string {
     let writer: Serializer = new Serializer()
     return writer.page(b)
@@ -1229,7 +1240,7 @@ fn factory_mount(r: Report) {
     show_faults(rb)
     r.eqi("reflection cannot build a closed generic", rb.all_faults().len(), 1)
     r.yes("and says which type",
-        rb.all_faults()[0].contains("has no zero-argument initializer"))
+        first_fault(rb).contains("has no zero-argument initializer"))
     r.eq("so nothing renders", html_of(rb), "")
 
     // The factory route's own refusal, and it must be the same message the
@@ -1246,7 +1257,7 @@ fn factory_mount(r: Report) {
     r.eqi("a factory that does not build a Component is refused",
         bad.all_faults().len(), 1)
     r.eq("with the same message the reflective route gives",
-        bad.all_faults()[0], "0: NotAComponent is not a Component")
+        first_fault(bad), "0: NotAComponent is not a Component")
 
     // The two routes share one slot table, so a slot filled by one is reused
     // by the other. If they did not, a markup compiler that switched routes
@@ -1275,7 +1286,7 @@ fn factory_mount(r: Report) {
     io.println("-- a slot asked for a different class")
     show_faults(fb)
     r.eqi("a slot that holds another class is refused", fb.all_faults().len(), 1)
-    r.eq("and names both", fb.all_faults()[0],
+    r.eq("and names both", first_fault(fb),
         "0: slot 1 holds a Plain, not a Other")
     // The control beside it: the SAME class at the same seq is not a fault.
     flip.route = 1
@@ -2595,22 +2606,22 @@ fn wrong_class_at_one_slot(r: Report) {
     b.render_root(host)
     io.println("-- a-slot-that-holds-another-class")
     io.println("   site:    {SITE_WRONG_CLASS}")
-    r.eq("wrong-class: the first pass is clean", joined(b), "")
-    r.eq("wrong-class: and it rendered", html_of(b), "<p>one/1</p>")
+    r.eq("a-slot-that-holds-another-class: the first pass is clean", joined(b), "")
+    r.eq("a-slot-that-holds-another-class: and it rendered", html_of(b), "<p>one/1</p>")
 
     host.route = 3                          // component_made<Other>, same seq
     b.render_root(host)
     io.println("   faults:  {joined(b)}")
     io.println("   left:    {html_of(b)}")
-    r.eq("wrong-class: the exact fault", joined(b),
+    r.eq("a-slot-that-holds-another-class: the exact fault", joined(b),
         "0: slot 1 holds a Plain, not a Other")
-    r.yes("wrong-class: the pass is still balanced", b.balanced())
+    r.yes("a-slot-that-holds-another-class: the pass is still balanced", b.balanced())
 
     host.route = 2                          // the same class again
     b.render_root(host)
     io.println("   control: {html_of(b)}")
-    r.eq("wrong-class: the same class at the same seq raises nothing", joined(b), "")
-    r.eq("wrong-class: and the instance survived all three passes",
+    r.eq("a-slot-that-holds-another-class: the same class at the same seq raises nothing", joined(b), "")
+    r.eq("a-slot-that-holds-another-class: and the instance survived all three passes",
         html_of(b), "<p>one/3</p>")
 }
 
