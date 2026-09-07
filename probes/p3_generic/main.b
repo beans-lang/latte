@@ -331,4 +331,23 @@ fn main() {
     // read them as an upper bound on the edit loop, not as latte's cost.
     io.println("ns/op  reflective mount {reflect_mount}  type_of(T) identify {reflect_identify}  reuse a mounted child {reflect_reuse}  new+set {factory_mount}  a mounted child's render {direct_render}")
     io.println("200 children: {reflect_mount * 200 / 1000} us to mount reflectively, {factory_mount * 200 / 1000} us with new; {(reflect_identify + reflect_reuse) * 200 / 1000} us to reach and reuse them on a later render")
+
+    // The recorded answer includes the three refusals, so a run where the
+    // generic component suddenly activated fails here — which is what must
+    // happen, because BLOCKERS.md B1 and probes/BUILDER.md would be stale.
+    let all_ok: bool =
+        first == "ok" && second == "ok" && third == "ok" &&
+        distinct(r, b) &&
+        sixth == "no zero-argument initializer on Grid" &&
+        fourth == "activate failed: wrong reflected argument count" &&
+        fifth == "NotAComponent is not a Component" &&
+        reflect_mount > 0 && reflect_identify > 0 && reflect_reuse > 0 &&
+        factory_mount > 0 && direct_render > 0 &&
+        warm_mount > 0 && warm_identify > 0 && warm_reuse > 0 &&
+        warm_factory > 0 && warm_render > 0 &&
+        // the shape of the answer, not only the numbers: reaching a mounted
+        // child must stay far cheaper than activating one
+        reflect_reuse < reflect_mount && reflect_identify < reflect_reuse
+    if all_ok { io.println("probe p3_generic: ok") }
+    else { io.println("probe p3_generic: FAILED") }
 }
