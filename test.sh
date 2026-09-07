@@ -199,6 +199,33 @@ if [[ $wasm_only -eq 1 ]]; then
     exit 0
 fi
 
+# The module root must CHECK, always, suites or no suites.
+#
+# This is here because the first latte.b shipped with `pub let version` at
+# module scope — `error: expected a declaration`, it is `pub const` — and the
+# gate printed "no suites yet" and exited 0 for hours. Two lanes tripped over
+# it independently and each fixed it in passing. A suite-only gate says nothing
+# about a package nothing imports yet, which is exactly the state a new package
+# is in for its whole first day.
+root_sources=("$ROOT"/*.b)
+if [[ ${#root_sources[@]} -gt 0 ]]; then
+    root_bad=0
+    for source in "${root_sources[@]}"; do
+        (cd "$ROOT" && "$BEANSC" check "$source") >"$tmp/root.log" 2>&1 && continue
+        echo "--- module-root FAILED: $(basename "$source") does not check ---" >&2
+        cat "$tmp/root.log" >&2
+        root_bad=1
+    done
+    if [[ $root_bad -eq 0 ]]; then
+        echo "ok module-root — all ${#root_sources[@]} .b file(s) at the module root check"
+    else
+        failed=1
+    fi
+else
+    echo "SKIP module-root: no .b files at the module root yet"
+    skipped=$((skipped + 1))
+fi
+
 shopt -s nullglob
 for case in "$ROOT"/tests/*.b; do
     name=$(basename "$case" .b)
