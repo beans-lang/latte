@@ -1,0 +1,25 @@
+<beans>
+package pages
+
+pub partial class Raw extends Component {
+    pub title: string = ""
+    pub fn init() {}
+}
+</beans>
+<!DOCTYPE html>
+<title>A &amp; B</title>
+<style>
+  .card > p { color: #333; }
+</style>
+<script>
+  const total = 1 < 2 ? "a" : "b";
+</script>
+<pre>
+  two   spaces   kept
+  and a second line
+</pre>
+<textarea rows="3">
+kept   exactly
+</textarea>
+<script src="/app.js"></script>
+<h1>$self.title</h1>

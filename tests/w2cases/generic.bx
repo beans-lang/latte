@@ -1,0 +1,15 @@
+<beans>
+package pages
+
+pub partial class Generic<T> extends Component {
+    pub rows: List<T> = []
+    pub heading: string = ""
+    pub fn init() {}
+}
+</beans>
+<table>
+  <caption>$self.heading</caption>
+  $for row in self.rows {
+    <tr><td>a row</td></tr>
+  }
+</table>

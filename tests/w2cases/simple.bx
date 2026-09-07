@@ -1,1 +1,20 @@
-<div class="a">hi</div>
+<beans>
+package pages
+
+pub partial class Simple extends Component {
+    pub fn init() {}
+}
+</beans>
+<!DOCTYPE html>
+<section class="card" data-kind="a &amp; b">
+  <h2>Fixed &lt;title&gt; &#65;&#x42;</h2>
+  <p>
+    two   lines   squeezed
+    into one
+  </p>
+  <img src="/logo.png" alt="a logo" />
+  <br />
+  <div />
+  <span>a</span> <span>b</span>
+  <input type="text" disabled>
+</section>
