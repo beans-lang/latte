@@ -1,5 +1,18 @@
-<p>x</p>
+<p>markup before the block</p>
 <beans>
 package pages
-pub partial class Counter extends Component { }
+
+import std.fmt
+
+pub partial class Beans extends Component {
+    pub label: string = ""
+    pub fn init() {}
+    pub fn shout() -> string {
+        // A `<` and a `$` and a `{` in here are just Beans.
+        let builder: fmt.StringBuilder = new fmt.StringBuilder()
+        builder.push("{self.label}!")
+        return builder.to_string()
+    }
+}
 </beans>
+<p>markup after the block: $self.shout()</p>

@@ -51,6 +51,7 @@ pub fn event_family(event: string) -> string {
     if event == "keypress" { return "KeyboardEvent" }
     // Submit.
     if event == "submit" { return "SubmitEvent" }
+    if event == "reset" { return "SubmitEvent" }
     // Focus.
     if event == "focus" { return "FocusEvent" }
     if event == "blur" { return "FocusEvent" }
@@ -71,7 +72,7 @@ pub fn event_names() -> List<string> {
             "mouseleave", "mouseover", "mouseout", "mousemove", "contextmenu",
             "input", "change",
             "keydown", "keyup", "keypress",
-            "submit",
+            "submit", "reset",
             "focus", "blur", "focusin", "focusout"]
 }
 

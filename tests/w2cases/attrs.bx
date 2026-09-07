@@ -1,0 +1,41 @@
+<beans>
+package pages
+
+pub partial class Attrs extends Component {
+    pub url: string = "/safe"
+    pub note: string = ""
+    pub count: int = 0
+    pub ratio: float = 0.0
+    pub agreed: bool = false
+    pub flagged: bool = false
+    pub extra: Map<string, string> = {}
+    pub box: Reference = new Reference()
+    pub fn init() {}
+    pub fn bump() { self.count += 1 }
+}
+</beans>
+<a href={self.url} class="link" title="a &quot;quoted&quot; title">go</a>
+<a href="/relative/path">relative</a>
+<a href="mailto:a@b.c">mail</a>
+<button class={if self.agreed { "on" } else { "off" }} disabled={self.count > 3}>
+  press
+</button>
+<button on:click={fn(e: MouseEvent) {
+    self.bump()
+}} on:dblclick={fn(e: MouseEvent) { self.count += 2 }}>twice</button>
+<input bind:value={self.note} placeholder="a note" />
+<input bind:value.int={self.count} />
+<input bind:value.float={self.ratio} />
+<input bind:value.bool={self.flagged} />
+<input type="checkbox" bind:checked={self.agreed} />
+<textarea bind:value={self.note} rows="4"></textarea>
+<div attrs={self.extra} class="base">splatted</div>
+<input ref={self.box} name="boxed" />
+<div preserve class="owned"><span>third party</span></div>
+<form on:submit={fn(e: SubmitEvent) { self.count = e.fields.len() }}>
+  <input on:keydown={fn(e: KeyboardEvent) { self.note = e.key }}
+         on:focus={fn(e: FocusEvent) { self.count += 0 }}
+         on:blur={fn(e: FocusEvent) { self.count += 0 }}
+         on:change={fn(e: InputEvent) { self.note = e.value }} />
+  <button on:reset={fn(e: SubmitEvent) { self.count = 0 }}>reset</button>
+</form>
