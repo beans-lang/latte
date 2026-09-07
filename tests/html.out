@@ -1,0 +1,122 @@
+== nesting
+<div id="root"><p>one</p><p>two</p></div>
+   balanced: true
+== text-escaping
+<p>5 &lt; 6 &amp;&amp; 7 &gt; 6, "quoted" and 'single' and &amp; alone</p>
+   balanced: true
+== text-already-entity
+<p>&amp;amp; &amp;#39; &amp;lt;script&amp;gt;</p>
+   balanced: true
+== attribute-escaping
+<div title="a &quot;quoted&quot; &amp; &#39;single&#39; &lt;tag&gt;" data-json="{&quot;k&quot;:&quot;v&quot;}"></div>
+   balanced: true
+== attribute-breakout
+<div class="x&quot; onclick=&quot;steal()"></div>
+   balanced: true
+== flags
+<input disabled="">
+   balanced: true
+== flag-shadows-attribute
+<input>
+   balanced: true
+== splat
+<button type="button" aria-label="first" data-m="middle" data-z="last"></button>
+   balanced: true
+== splat-overrides
+<div class="from-splat"></div>
+   balanced: true
+== splat-refused-names
+<div ok-name="y"></div>
+   balanced: true
+   builder: 0: refused splatted attribute name "bad name"
+   builder: 0: refused splatted inline handler "onclick"
+== void-elements
+<div><br><img src="/logo.png" alt="a &amp; b"><hr></div>
+   balanced: true
+== script-is-raw-text
+<script>if (a < b && c > d) { x("&") }</script>
+   balanced: true
+== script-cannot-be-closed
+<script></script>
+   balanced: true
+   serializer: text inside <script> could close it
+== style-is-raw-text
+<style>a > b { content: "&" }</style>
+   balanced: true
+== rcdata
+<textarea>a &lt; b &amp; c</textarea><title>Title &amp; &lt;b&gt;</title>
+   balanced: true
+== leading-newline
+<pre>
+
+kept</pre><textarea>
+
+also kept</textarea><div>
+not special</div>
+   balanced: true
+== urls-allowed
+<div><a href="/relative/path">relative</a><a href="https://example.com/x?a=1&amp;b=2">https</a><a href="mailto:someone@example.com">mail</a><a href="#anchor">fragment</a><a href="?query=1">query</a></div>
+   balanced: true
+== urls-refused
+<div><a href="about:blank">plain</a><a href="about:blank">case</a><a href="about:blank">tab</a><a href="about:blank">newline</a><img src="about:blank"><a xlink:href="about:blank">svg link</a></div>
+   balanced: true
+   builder: 0: attribute href carried a refused scheme
+   builder: 0: attribute href carried a refused scheme
+   builder: 0: attribute href carried a refused scheme
+   builder: 0: attribute href carried a refused scheme
+   builder: 0: attribute src carried a refused scheme
+   builder: 0: attribute xlink:href carried a refused scheme
+== raw-html
+<div><em>trusted by the author</em>&lt;em&gt;not trusted&lt;/em&gt;</div>
+   balanced: true
+== constant-simple
+<div><span class="icon"><svg width="12"></svg></span></div>
+   balanced: true
+== constant-with-entities
+<footer><p title="a &amp; b &quot;c&quot;">5 &lt; 6 &amp; 7 &gt; 6</p></footer>
+   balanced: true
+== constant-deep
+<nav class="bar"><ul><li><a href="/a">A</a></li><li><a href="/b">B</a></li></ul></nav>
+   balanced: true
+== constant-void-inside
+<div><img src="/a.png" alt="a"><br></div>
+   balanced: true
+== constant-beside-dynamic
+<section><h2>Fixed heading</h2><p>changes &amp; moves</p><hr></section>
+   balanced: true
+== keyed-rows
+<ul><li data-key="alpha">alpha</li><li data-key="beta">beta</li><li data-key="gamma">gamma</li><li data-key="delta">delta</li><li data-key="epsilon">epsilon</li></ul>
+   balanced: true
+== keyed-multi-root-rows
+<dl><dt>a</dt><dd>value of a</dd><dt>b</dt><dd>value of b</dd><dt>c</dt><dd>value of c</dd><dt>d</dt><dd>value of d</dd><dt>e</dt><dd>value of e</dd></dl>
+   balanced: true
+== nested-regions
+<div><ul><li>x1</li><li>x2</li><li>x3</li></ul><ul><li>y1</li><li>y2</li><li>y3</li></ul><ul><li>z1</li><li>z2</li><li>z3</li></ul></div>
+   balanced: true
+== fragment
+<div><em>slotted</em>after</div>
+   balanced: true
+== child-component
+<div><span class="badge">new &amp; shiny</span>beside it</div>
+   balanced: true
+== refused-names
+<div ok="kept"></div><span>inside a substituted tag</span>
+   balanced: true
+   builder: 0: refused attribute name "on click"
+   builder: 0: refused inline handler attribute "onclick"
+   builder: 0: refused tag name "not a tag"
+== unicode
+<p title="café 東京 🍜">café 東京 🍜 &amp; more</p>
+   balanced: true
+== empty-and-deep
+<div><span></span><div><div><div><div>bottom</div></div></div></div></div>
+   balanced: true
+== boundary-ok
+<main><p>the body rendered</p></main>
+   balanced: true
+== boundary-failed
+<main><p class="error">Something went wrong.</p></main>
+   balanced: true
+== summary
+cases: 34, folded == unfolded: 34
+cases where folding collapsed frames: 5

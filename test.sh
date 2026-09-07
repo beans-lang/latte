@@ -99,18 +99,96 @@ skipped=0
 # It is stated here rather than reviewed, because a review does not run.
 run_wasm_leg() {
     local probe="$ROOT/tests/_wasm_core.b"
+    local negative="$ROOT/tests/_wasm_negative.b"
     if [[ ! -f "$probe" ]]; then
         echo "SKIP wasm-core: tests/_wasm_core.b does not exist yet (W1 writes it)"
         skipped=$((skipped + 1))
         return 0
     fi
-    if (cd "$ROOT" && "$BEANSC" build --target wasm32-unknown-unknown "$probe" \
-            -o "$tmp/wasm_core.wasm") >"$tmp/wasm.log" 2>&1; then
-        echo "ok wasm-core — the core builds for wasm32-unknown-unknown, so it imports no I/O"
+
+    # `wasm32-unknown-unknown` has no operating system, so it needs the
+    # freestanding runtime, and THAT is what refuses an OS-bound import — by
+    # name, at check time: "'std.net' needs sockets, which the freestanding
+    # runtime does not have". Printing is not one of the refused capabilities:
+    # freestanding routes output through the embedder's `beans_host_write`
+    # hook, so std.io is legal there and this leg has never been able to say
+    # anything about it. What it does say is that the core imports no
+    # filesystem, sockets, poller, processes or threads.
+    if (cd "$ROOT" && "$BEANSC" check --target wasm32-unknown-unknown \
+            --runtime freestanding "$probe") >"$tmp/wasm.log" 2>&1; then
+        echo "ok wasm-core/check — the core needs no OS capability"
     else
-        echo "--- wasm-core FAILED: the core no longer builds without an OS ---" >&2
-        echo "    something under the module root grew an I/O import. See PLAN.md, D4." >&2
+        echo "--- wasm-core FAILED: the core no longer checks without an OS ---" >&2
+        echo "    something under the module root grew an OS-bound import. See PLAN.md, D4." >&2
         cat "$tmp/wasm.log" >&2
+        failed=1
+        return 0
+    fi
+
+    # The negative control. Without it this leg goes green the day the refusal
+    # stops working, and then it is green forever (RULES.md 5).
+    if [[ ! -f "$negative" ]]; then
+        echo "--- wasm-core FAILED: tests/_wasm_negative.b is missing ---" >&2
+        echo "    the leg cannot tell a working refusal from a broken one without it." >&2
+        failed=1
+        return 0
+    fi
+    if (cd "$ROOT" && "$BEANSC" check --target wasm32-unknown-unknown \
+            --runtime freestanding "$negative") >"$tmp/wasm_neg.log" 2>&1; then
+        echo "--- wasm-core FAILED: the negative control was ACCEPTED ---" >&2
+        echo "    tests/_wasm_negative.b imports std.net and std.fs and must be refused." >&2
+        echo "    The whole leg proves nothing while that is true." >&2
+        failed=1
+        return 0
+    fi
+    echo "ok wasm-core/control — std.net and std.fs are still refused for wasm"
+
+    # Real code generation for a 32-bit-pointer target with no OS, when a Clang
+    # with the wasm32 backend is around. BEANS_WASM_CC names one; this is the
+    # same knob beans/test/wasm.sh uses.
+    local wasm_cc=${BEANS_WASM_CC:-}
+    if [[ -z "$wasm_cc" ]]; then
+        for candidate in /opt/homebrew/opt/llvm/bin/clang /usr/local/opt/llvm/bin/clang clang; do
+            if command -v "$candidate" >/dev/null 2>&1 && \
+               "$candidate" --print-targets 2>/dev/null | grep -q 'wasm32'; then
+                wasm_cc="$candidate"
+                break
+            fi
+        done
+    fi
+    if [[ -z "$wasm_cc" ]]; then
+        echo "SKIP wasm-core/codegen: no Clang with a wasm32 backend (set BEANS_WASM_CC)"
+        skipped=$((skipped + 1))
+        return 0
+    fi
+    if (cd "$ROOT" && "$BEANSC" build --target wasm32-unknown-unknown \
+            --runtime freestanding --emit obj --cc "$wasm_cc" \
+            "$probe" -o "$tmp/wasm_core.o") >"$tmp/wasm_obj.log" 2>&1; then
+        echo "ok wasm-core/codegen — the core emits a wasm32 object ($wasm_cc)"
+    else
+        echo "--- wasm-core FAILED: the core does not emit wasm32 code ---" >&2
+        cat "$tmp/wasm_obj.log" >&2
+        failed=1
+        return 0
+    fi
+
+    # A full link additionally needs wasm-ld, which Homebrew's llvm does not
+    # ship unless the `lld` formula is installed. Say so rather than passing
+    # quietly: --emit obj proves codegen, not that the module links with no
+    # host symbols beyond the five `beans_host_*` hooks.
+    if ! command -v "$(dirname "$wasm_cc")/wasm-ld" >/dev/null 2>&1 && \
+       ! command -v wasm-ld >/dev/null 2>&1; then
+        echo "SKIP wasm-core/link: no wasm-ld beside $wasm_cc (brew install lld)"
+        skipped=$((skipped + 1))
+        return 0
+    fi
+    if (cd "$ROOT" && "$BEANSC" build --target wasm32-unknown-unknown \
+            --runtime freestanding --emit shared --cc "$wasm_cc" \
+            "$probe" -o "$tmp/wasm_core.wasm") >"$tmp/wasm_link.log" 2>&1; then
+        echo "ok wasm-core/link — the core links as a browser module"
+    else
+        echo "--- wasm-core FAILED: the core does not link without an OS ---" >&2
+        cat "$tmp/wasm_link.log" >&2
         failed=1
     fi
 }
