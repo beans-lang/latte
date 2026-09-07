@@ -1,0 +1,58 @@
+<beans>
+package main
+
+// The NEGATIVE half of test.sh's component-type leg.
+//
+// `component_ok.bx` is this file WITH `extends Component` on `Card` and
+// `Widget`, and nothing else changed. That pairing is the whole point: if
+// this file's `beansc check` fails for any reason other than the upcast —
+// a syntax slip in the generated file, an import latte-bx forgot, a renamed
+// Builder call — `component_ok.bx` fails too and the leg goes red, instead of
+// going quietly green on the wrong error.
+//
+// Three tags, not one, so a leg that catches only the first name proves less
+// than it looks. `Card` and `Widget` extend nothing; `Panel` extends `Widget`,
+// which is not a `Component` either, so it fails through its base. `Panel`'s
+// own declaration is byte-identical in the two files.
+//
+// None of them overrides `render`. `Component.render` is concrete and empty,
+// so a subclass need not, and leaving it out keeps `override` — which is an
+// error with no base method — out of the difference between the two files.
+
+import std.io
+
+pub class Card {
+    pub title: string = ""
+    pub fn init() {}
+}
+
+pub class Widget {
+    /// `<Widget>…</Widget>` places its children here; a component tag with
+    /// children needs the field or the generated setter has nothing to write.
+    pub body: fn(Builder) = fn(target: Builder) {}
+    pub fn init() {}
+}
+
+pub class Panel extends Widget {
+    pub fn init() { super.init() }
+}
+
+pub partial class ComponentBad extends Component {
+    pub open: bool = true
+    pub fn init() {}
+}
+
+fn main() {
+    io.println("a fixture for test.sh's component-type leg; it is checked, never run")
+}
+</beans>
+<div class="page">
+  <Card title="first" />
+  <Widget>
+    <p>a child of a component tag</p>
+  </Widget>
+  $if self.open {
+    <Panel />
+  }
+  <Card title="second" />
+</div>

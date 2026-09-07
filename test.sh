@@ -84,7 +84,13 @@ for arg in "$@"; do
 done
 
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+# The component-type leg stages two generated files inside tests/, because a
+# generated file has to sit in the latte module for `import … from latte` to
+# resolve. It removes them on every path it returns on; the trap is for the run
+# that is interrupted between the two, so a Ctrl-C never leaves a .b file in
+# tests/ that nobody wrote. .gitignore lists them as well.
+W2_COMPONENT_STAGED=("$ROOT/tests/_w2_component_ok.b" "$ROOT/tests/_w2_component_bad.b")
+trap 'rm -rf "$tmp"; rm -f "${W2_COMPONENT_STAGED[@]}"' EXIT
 
 failed=0
 suites=0
@@ -193,6 +199,165 @@ run_wasm_leg() {
     fi
 }
 
+# --- the component-type leg ----------------------------------------------
+#
+# latte-bx cannot type-check. So a `<Tag>` whose type is not a `Component` is
+# refused by **beansc**, against a free function latte-bx emits once per
+# distinct component tag:
+#
+#     fn _latte_component_<stem>_<Tag>(value: Tag) -> Component { return value }
+#
+# `Builder.component<T>` puts no bound on `T` — it activates through reflection
+# and pushes "X is not a Component" onto `faults` at run time — so that free
+# function is the only place the mistake is caught before the page ships. It is
+# also the one refusal in bx/'s list that no Beans suite can run: the answer is
+# the real compiler's, and nothing in the stdlib reads an environment variable,
+# so tests/markup_refusals.b cannot find beansc. It runs here, where $BEANSC is
+# already resolved.
+#
+# **Both halves or nothing.** `component_ok.bx` and `component_bad.bx` are one
+# file with `extends Component` struck off two classes and nothing else changed.
+# The good one must check CLEAN; the bad one must fail with the upcast error and
+# with no other error. A leg holding only the bad half goes green the day
+# `latte-bx build` breaks for an unrelated reason — a generator that refuses
+# everything makes "it did not check" read as success. RULES.md, "The refusal
+# that never runs".
+#
+# Nothing here SKIPs. A missing fixture is a failure, not a shrug: a leg that
+# skips on a missing input dies silently the day the layout moves (RULES.md 5).
+run_component_type_leg() {
+    local missing=0
+    local half
+    for half in ok bad; do
+        [[ -f "$ROOT/tests/w2cases/component_$half.bx" ]] && continue
+        echo "--- component-type FAILED: tests/w2cases/component_$half.bx is missing ---" >&2
+        missing=1
+    done
+    if [[ $missing -ne 0 ]]; then
+        echo "    the leg needs both halves; with one it proves nothing. See RULES.md," >&2
+        echo "    \"The refusal that never runs\"." >&2
+        failed=1
+        return 0
+    fi
+
+    # The tree interpreter always generates. The native binary generates too
+    # unless --interp, and then the two outputs must be byte-identical: without
+    # that, the check below is reading whichever backend this run happened to
+    # use, and RULES.md 3 is the rule most bugs in this workspace have broken.
+    local how="the tree interpreter"
+    if [[ $native -eq 1 ]]; then
+        # The real binary, built and run. The `examples` block above only
+        # *checks* latte_bx.b, and a CLI that checks but does not link is
+        # still broken.
+        if ! (cd "$ROOT" && "$BEANSC" build examples/latte_bx.b -o "$tmp/latte-bx") >"$tmp/latte_bx.build" 2>&1; then
+            echo "--- component-type FAILED: latte-bx does not build ---" >&2
+            cat "$tmp/latte_bx.build" >&2
+            failed=1
+            return 0
+        fi
+        how="both backends, byte-identical"
+    fi
+
+    # The generated file has to sit inside the latte module or `import … from
+    # latte` is "unknown package 'latte' — local packages need a beans.pot".
+    # tests/ is an entry directory and the suite loop skips a name starting
+    # with "_", so these two are scratch that beansc can still resolve. They
+    # are removed on the way out and are in .gitignore for the runs that die
+    # before they get there.
+    rm -f "${W2_COMPONENT_STAGED[@]}"
+    for half in ok bad; do
+        if ! (cd "$ROOT" && "$BEANSC" run examples/latte_bx.b -- build \
+                "tests/w2cases/component_$half.bx" -o "$tmp/component_$half.interp.b") \
+                >"$tmp/gen_$half.log" 2>&1; then
+            echo "--- component-type FAILED: latte-bx refused component_$half.bx ---" >&2
+            echo "    both fixtures must COMPILE. The difference between them is beansc's" >&2
+            echo "    to find, not latte-bx's." >&2
+            cat "$tmp/gen_$half.log" >&2
+            failed=1
+            rm -f "${W2_COMPONENT_STAGED[@]}"
+            return 0
+        fi
+        if [[ $native -eq 1 ]]; then
+            if ! (cd "$ROOT" && "$tmp/latte-bx" build "tests/w2cases/component_$half.bx" \
+                    -o "$tmp/component_$half.native.b") >"$tmp/gen_${half}_native.log" 2>&1; then
+                echo "--- component-type FAILED: the native latte-bx refused component_$half.bx ---" >&2
+                cat "$tmp/gen_${half}_native.log" >&2
+                failed=1
+                rm -f "${W2_COMPONENT_STAGED[@]}"
+                return 0
+            fi
+            if ! cmp -s "$tmp/component_$half.interp.b" "$tmp/component_$half.native.b"; then
+                echo "--- component-type FAILED: the backends generate different Beans for component_$half.bx ---" >&2
+                echo "    that is a compiler fault until proven otherwise. See RULES.md 3." >&2
+                diff -u "$tmp/component_$half.interp.b" "$tmp/component_$half.native.b" >&2 || true
+                failed=1
+                rm -f "${W2_COMPONENT_STAGED[@]}"
+                return 0
+            fi
+        fi
+        cp "$tmp/component_$half.interp.b" "$ROOT/tests/_w2_component_$half.b"
+
+        # One assertion per DISTINCT tag. Each fixture names Card twice and
+        # Card, Widget and Panel once each, so three is the answer that says
+        # `note_component` deduplicates AND that every tag reaches it —
+        # including the one inside a `$if` arm. Nought would leave beansc
+        # nothing to refuse and the halves below nothing to prove.
+        local asserts
+        asserts=$(grep -c '^fn _latte_component_' "$ROOT/tests/_w2_component_$half.b" || true)
+        if [[ "$asserts" != "3" ]]; then
+            echo "--- component-type FAILED: component_$half.bx generated $asserts upcast assertions, wanted 3 ---" >&2
+            echo "    one per distinct component tag: Card, Widget, Panel." >&2
+            grep -n '_latte_component_' "$ROOT/tests/_w2_component_$half.b" >&2 || true
+            failed=1
+            rm -f "${W2_COMPONENT_STAGED[@]}"
+            return 0
+        fi
+    done
+
+    # The positive control. Every tag IS a Component, so the file checks clean.
+    if ! (cd "$ROOT" && "$BEANSC" check tests/_w2_component_ok.b) >"$tmp/component_ok.check" 2>&1; then
+        echo "--- component-type FAILED: the POSITIVE control does not check ---" >&2
+        echo "    component_ok.bx names three real Components. Generated Beans that beansc" >&2
+        echo "    refuses here means the other half is being refused for the wrong reason," >&2
+        echo "    and the leg is decoration." >&2
+        cat "$tmp/component_ok.check" >&2
+        failed=1
+        rm -f "${W2_COMPONENT_STAGED[@]}"
+        return 0
+    fi
+
+    # The refusal. Three tags, none of them a Component; beansc must say so
+    # about each one, and about nothing else.
+    if (cd "$ROOT" && "$BEANSC" check tests/_w2_component_bad.b) >"$tmp/component_bad.check" 2>&1; then
+        echo "--- component-type FAILED: a <Tag> that is not a Component was ACCEPTED ---" >&2
+        echo "    tests/_w2_component_bad.b names Card, Widget and Panel and none of them" >&2
+        echo "    extends Component. beansc checked it clean, so the upcast assertion in" >&2
+        echo "    bx/compile.b is no longer doing anything and a page with a mistyped tag" >&2
+        echo "    ships as a blank subtree and a runtime fault." >&2
+        cat "$tmp/component_bad.check" >&2
+        failed=1
+        rm -f "${W2_COMPONENT_STAGED[@]}"
+        return 0
+    fi
+    local errors upcasts
+    errors=$(grep -c 'error:' "$tmp/component_bad.check" || true)
+    upcasts=$(grep -cE 'error: expected latte\.Component, got [^ ]*\.(Card|Widget|Panel)$' "$tmp/component_bad.check" || true)
+    if [[ "$upcasts" != "3" || "$errors" != "3" ]]; then
+        echo "--- component-type FAILED: the bad file was refused for the wrong reason ---" >&2
+        echo "    wanted exactly three 'expected latte.Component, got …' errors — one each" >&2
+        echo "    for Card, Widget and Panel — and no others; got $errors error(s), of" >&2
+        echo "    which $upcasts were upcasts. A refusal that fires on a different fault" >&2
+        echo "    is not the one this leg is for." >&2
+        cat "$tmp/component_bad.check" >&2
+        failed=1
+        rm -f "${W2_COMPONENT_STAGED[@]}"
+        return 0
+    fi
+
+    rm -f "${W2_COMPONENT_STAGED[@]}"
+    echo "ok component-type — a <Tag> that is not a Component is refused by beansc, 3 tags each; one that is checks clean ($how)"
+}
+
 if [[ $wasm_only -eq 1 ]]; then
     run_wasm_leg
     [[ $failed -eq 0 ]] || { echo "latte: FAILED" >&2; exit 1; }
@@ -250,6 +415,11 @@ else
     echo "SKIP examples: no .b files under examples/ yet"
     skipped=$((skipped + 1))
 fi
+
+# latte-bx generates, beansc refuses. Run before the suite loop, because the leg
+# stages two scratch files in tests/ and removes them again, and the loop globs
+# that directory. Skipped only when a single suite was named, like the wasm leg.
+[[ -n "$only" ]] || run_component_type_leg
 
 for case in "$ROOT"/tests/*.b; do
     name=$(basename "$case" .b)
