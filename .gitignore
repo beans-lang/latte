@@ -1,0 +1,5 @@
+build/
+*.bin
+*.ll
+*_ffi.c
+.DS_Store
