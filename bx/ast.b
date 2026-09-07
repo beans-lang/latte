@@ -694,6 +694,13 @@ pub class SlotNode extends Node {
 pub class BeansNode extends Node {
     /// Everything between `<beans>` and `</beans>`, verbatim.
     pub code: string = ""
+    /// Where `code` starts in the whole file, in bytes.
+    ///
+    /// The span says where the `<beans>` tag is; this says where its content
+    /// is, and the difference matters because every diagnostic about the
+    /// author's own Beans is found at an offset inside `code` and has to be
+    /// reported at a line number in the file they are looking at.
+    pub start: int = 0
 
     pub fn init(code: string, span: Span) {
         self.code = code

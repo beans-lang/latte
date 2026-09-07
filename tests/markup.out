@@ -1,0 +1,506 @@
+======== the contract between bx/html.b and frames.b ========
+both copies of the escaping and refusal rules agree over the corpus
+======== parse tree: price.bx ========
+<p> element @9:1
+  text "It costs $5.00, US$ and $ 20 and $word." @9:4
+<p> element @10:1
+  text "ten$ and 100$ us and {braced} and } alone" @10:4
+<p> element @11:1
+  text "an escaped dollar in front of a word: $total, and a real one: " @11:4
+  implicit {self.owed} @11:67
+<p> element @12:1
+  text "a dollar at the very end of the file follows" @12:4
+text " $" @12:52
+beans 109 bytes @1:1
+======== parse tree: blocks.bx ========
+if @21:1
+  when {self.count > 10} @21:1
+    <p> element @22:3
+      . lit class="warn" @22:6
+      text "big" @22:19
+  when {self.count > 5} @23:3
+    <p> element @24:3
+      text "middling" @24:6
+  else @25:3
+    <p> element @26:3
+      text "small" @26:6
+if @28:1
+  when {self.rows.filter(fn(r: Row) -> bool { return r.on }).len() > 0} @28:1
+    <p> element @29:3
+      text "some are on" @29:6
+if @31:1
+  when {self.note == "a } b"} @31:1
+    <p> element @32:3
+      text "brace in a string" @32:6
+if @34:1
+  when {self.path == r"/users/{id}"} @34:1
+    <p> element @35:3
+      text "brace in a raw string" @35:6
+if @37:1
+  when {self.count > 0 /* a { comment } */} @37:1
+    <p> element @38:3
+      text "brace in a comment" @38:6
+if @40:1
+  when {(self.count + 1) > 2} @40:1
+    <p> element @41:3
+      text "a header that starts with a parenthesis" @41:6
+<ul> element @43:1
+  for {row: Row in self.rows} @44:1
+    <li> element @45:3
+      . key={row.id} @45:7
+      . lit class="row" @45:20
+      implicit {row.title} @45:32
+<ol> element @48:1
+  for {value: int in self.grid[0]} @49:1
+    <li> element @50:3
+      implicit {value} @50:7
+<table> element @53:1
+  for {outer: List<int> in self.grid} @54:1
+    <tr> element @55:3
+      for {cell: int in outer} @56:3
+        <td> element @57:5
+          implicit {cell} @57:9
+match {self.state} @62:1
+  arm {some(value)} @63:3
+    <p> element @64:5
+      text "state is " @64:8
+      implicit {value} @64:17
+  arm {none} @66:3
+    <p> element @67:5
+      text "no state" @67:8
+<p> element @70:1
+  text "a literal closing brace in text: } and an opening one: {" @70:4
+beans 372 bytes @1:1
+======== the whole generated file: simple.bx ========
+// Generated from tests/w2cases/simple.bx by latte-bx. Do not edit.
+//
+// The <beans> block below is simple.bx's, copied through byte for byte; its
+// own package line is blanked so every line after it keeps its number. The
+// render method under it is the markup, as Builder calls with fixed
+// sequence numbers. Change simple.bx and regenerate:
+//
+//     latte-bx build tests/w2cases/simple.bx
+package pages
+
+import {Builder, Callback, Component, FocusEvent, InputEvent, KeyboardEvent, MouseEvent, Reference, SubmitEvent} from latte
+
+
+//           
+
+pub partial class Simple extends Component {
+    pub fn init() {}
+}
+
+partial class Simple {
+    pub override fn render(b: Builder) {
+        if b.fold { b.constant(0, "<!DOCTYPE html><section class=\"card\" data-kind=\"a &amp; b\"><h2>Fixed &lt;title&gt; AB</h2><p>two lines squeezed into one</p><img src=\"/logo.png\" alt=\"a logo\"><br><div></div><span>a</span> <span>b</span><input type=\"text\" disabled=\"\"></section>") }  // simple.bx:8
+        else {
+            b.constant(0, "<!DOCTYPE html>")
+            b.open(1, "section")  // simple.bx:9
+            b.attr(2, "class", "card")
+            b.attr(3, "data-kind", "a & b")
+            b.open(4, "h2")  // simple.bx:10
+            b.text(5, "Fixed <title> AB")
+            b.close()
+            b.open(6, "p")  // simple.bx:11
+            b.text(7, "two lines squeezed into one")
+            b.close()
+            b.open(8, "img")  // simple.bx:15
+            b.attr(9, "src", "/logo.png")
+            b.attr(10, "alt", "a logo")
+            b.close()
+            b.open(11, "br")  // simple.bx:16
+            b.close()
+            b.open(12, "div")  // simple.bx:17
+            b.close()
+            b.open(13, "span")  // simple.bx:18
+            b.text(14, "a")
+            b.close()
+            b.text(15, " ")
+            b.open(16, "span")
+            b.text(17, "b")
+            b.close()
+            b.open(18, "input")  // simple.bx:19
+            b.attr(19, "type", "text")
+            b.flag(20, "disabled", true)
+            b.close()
+            b.close()
+        }
+    }
+}
+======== render: price.bx ========
+partial class Price {
+    pub override fn render(b: Builder) {
+        if b.fold { b.constant(0, "<p>It costs $5.00, US$ and $ 20 and $word.</p><p>ten$ and 100$ us and \{braced\} and \} alone</p>") }  // price.bx:9
+        else {
+            b.open(0, "p")  // price.bx:9
+            b.text(1, "It costs $5.00, US$ and $ 20 and $word.")
+            b.close()
+            b.open(2, "p")  // price.bx:10
+            b.text(3, "ten$ and 100$ us and \{braced\} and \} alone")
+            b.close()
+        }
+        b.open(4, "p")  // price.bx:11
+        b.text(5, "an escaped dollar in front of a word: $total, and a real one: {self.owed}")
+        b.close()
+        if b.fold { b.constant(6, "<p>a dollar at the very end of the file follows</p> $") }  // price.bx:12
+        else {
+            b.open(6, "p")  // price.bx:12
+            b.text(7, "a dollar at the very end of the file follows")
+            b.close()
+            b.text(8, " $")
+        }
+    }
+}
+
+======== render: expr.bx ========
+partial class Expr {
+    pub override fn render(b: Builder) {
+        b.open(0, "h2")  // expr.bx:25
+        b.text(1, "Count: {self.count}")
+        b.close()
+        b.open(2, "p")  // expr.bx:26
+        b.text(3, "as of {self.clock.now()}")
+        b.close()
+        b.open(4, "p")  // expr.bx:27
+        b.text(5, "{self.people[0].name} (active)")
+        b.close()
+        b.open(6, "p")  // expr.bx:28
+        b.text(7, "{self.label(3)}, then a full stop: {self.note}.")
+        b.close()
+        b.open(8, "p")  // expr.bx:29
+        b.text(9, "{self.count + 1} and {self.note}")
+        b.close()
+        let doubled: int = self.count * 2
+        b.open(10, "p")  // expr.bx:31
+        b.text(11, "doubled is {doubled}")
+        b.close()
+        b.open(12, "div")  // expr.bx:32
+        b.raw(13, self.rendered)
+        b.close()
+    }
+}
+
+======== render: blocks.bx ========
+partial class Blocks {
+    pub override fn render(b: Builder) {
+        if self.count > 10 {  // blocks.bx:21
+            if b.fold { b.constant(0, "<p class=\"warn\">big</p>") }  // blocks.bx:22
+            else {
+                b.open(0, "p")  // blocks.bx:22
+                b.attr(1, "class", "warn")
+                b.text(2, "big")
+                b.close()
+            }
+        } else if self.count > 5 {  // blocks.bx:23
+            if b.fold { b.constant(3, "<p>middling</p>") }  // blocks.bx:24
+            else {
+                b.open(3, "p")  // blocks.bx:24
+                b.text(4, "middling")
+                b.close()
+            }
+        } else {  // blocks.bx:25
+            if b.fold { b.constant(5, "<p>small</p>") }  // blocks.bx:26
+            else {
+                b.open(5, "p")  // blocks.bx:26
+                b.text(6, "small")
+                b.close()
+            }
+        }
+        if self.rows.filter(fn(r: Row) -> bool { return r.on }).len() > 0 {  // blocks.bx:28
+            if b.fold { b.constant(7, "<p>some are on</p>") }  // blocks.bx:29
+            else {
+                b.open(7, "p")  // blocks.bx:29
+                b.text(8, "some are on")
+                b.close()
+            }
+        }
+        if self.note == "a } b" {  // blocks.bx:31
+            if b.fold { b.constant(9, "<p>brace in a string</p>") }  // blocks.bx:32
+            else {
+                b.open(9, "p")  // blocks.bx:32
+                b.text(10, "brace in a string")
+                b.close()
+            }
+        }
+        if self.path == r"/users/{id}" {  // blocks.bx:34
+            if b.fold { b.constant(11, "<p>brace in a raw string</p>") }  // blocks.bx:35
+            else {
+                b.open(11, "p")  // blocks.bx:35
+                b.text(12, "brace in a raw string")
+                b.close()
+            }
+        }
+        if self.count > 0 /* a { comment } */ {  // blocks.bx:37
+            if b.fold { b.constant(13, "<p>brace in a comment</p>") }  // blocks.bx:38
+            else {
+                b.open(13, "p")  // blocks.bx:38
+                b.text(14, "brace in a comment")
+                b.close()
+            }
+        }
+        if (self.count + 1) > 2 {  // blocks.bx:40
+            if b.fold { b.constant(15, "<p>a header that starts with a parenthesis</p>") }  // blocks.bx:41
+            else {
+                b.open(15, "p")  // blocks.bx:41
+                b.text(16, "a header that starts with a parenthesis")
+                b.close()
+            }
+        }
+        b.open(17, "ul")  // blocks.bx:43
+        for row: Row in self.rows {  // blocks.bx:44
+            b.region(18, "{row.id}")
+            b.open(0, "li")  // blocks.bx:45
+            b.attr(1, "class", "row")
+            b.text(2, "{row.title}")
+            b.close()
+            b.end_region()
+        }
+        b.close()
+        b.open(19, "ol")  // blocks.bx:48
+        var _latte_row_0: int = 0
+        for value: int in self.grid[0] {  // blocks.bx:49
+            b.region(20, "{_latte_row_0}")
+            b.open(0, "li")  // blocks.bx:50
+            b.text(1, "{value}")
+            b.close()
+            b.end_region()
+            _latte_row_0 += 1
+        }
+        b.close()
+        b.open(21, "table")  // blocks.bx:53
+        var _latte_row_1: int = 0
+        for outer: List<int> in self.grid {  // blocks.bx:54
+            b.region(22, "{_latte_row_1}")
+            b.open(0, "tr")  // blocks.bx:55
+            var _latte_row_2: int = 0
+            for cell: int in outer {  // blocks.bx:56
+                b.region(1, "{_latte_row_2}")
+                b.open(0, "td")  // blocks.bx:57
+                b.text(1, "{cell}")
+                b.close()
+                b.end_region()
+                _latte_row_2 += 1
+            }
+            b.close()
+            b.end_region()
+            _latte_row_1 += 1
+        }
+        b.close()
+        match self.state {  // blocks.bx:62
+            some(value) => {
+                b.open(23, "p")  // blocks.bx:64
+                b.text(24, "state is {value}")
+                b.close()
+            }
+            none => {
+                if b.fold { b.constant(25, "<p>no state</p>") }  // blocks.bx:67
+                else {
+                    b.open(25, "p")  // blocks.bx:67
+                    b.text(26, "no state")
+                    b.close()
+                }
+            }
+        }
+        if b.fold { b.constant(27, "<p>a literal closing brace in text: \} and an opening one: \{</p>") }  // blocks.bx:70
+        else {
+            b.open(27, "p")  // blocks.bx:70
+            b.text(28, "a literal closing brace in text: \} and an opening one: \{")
+            b.close()
+        }
+    }
+}
+
+======== render: attrs.bx ========
+partial class Attrs {
+    pub override fn render(b: Builder) {
+        b.open(0, "a")  // attrs.bx:17
+        b.attr(1, "href", "{self.url}")
+        b.attr(2, "class", "link")
+        b.attr(3, "title", "a \"quoted\" title")
+        b.text(4, "go")
+        b.close()
+        if b.fold { b.constant(5, "<a href=\"/relative/path\">relative</a><a href=\"mailto:a@b.c\">mail</a>") }  // attrs.bx:18
+        else {
+            b.open(5, "a")  // attrs.bx:18
+            b.attr(6, "href", "/relative/path")
+            b.text(7, "relative")
+            b.close()
+            b.open(8, "a")  // attrs.bx:19
+            b.attr(9, "href", "mailto:a@b.c")
+            b.text(10, "mail")
+            b.close()
+        }
+        b.open(11, "button")  // attrs.bx:20
+        b.attr(12, "class", "{if self.agreed { "on" } else { "off" }}")
+        b.flag(13, "disabled", self.count > 3)
+        b.text(14, "press")
+        b.close()
+        b.open(15, "button")  // attrs.bx:23
+        b.on_click(16, fn(e: MouseEvent) {
+            self.bump()
+        })
+        b.on_dblclick(17, fn(e: MouseEvent) { self.count += 2 })
+        b.text(18, "twice")
+        b.close()
+        b.open(19, "input")  // attrs.bx:26
+        b.attr(20, "value", "{self.note}")
+        b.on_input(21, fn(e: InputEvent) { self.note = e.value })
+        b.attr(22, "placeholder", "a note")
+        b.close()
+        b.open(23, "input")  // attrs.bx:27
+        b.attr(24, "value", "{self.count}")
+        b.on_input(25, fn(e: InputEvent) {
+            match e.value.to_int() {
+                ok(_latte_value) => { self.count = _latte_value }
+                err(_) => {}
+            }
+        })
+        b.close()
+        b.open(26, "input")  // attrs.bx:28
+        b.attr(27, "value", "{self.ratio}")
+        b.on_input(28, fn(e: InputEvent) {
+            match e.value.to_float() {
+                ok(_latte_value) => { self.ratio = _latte_value }
+                err(_) => {}
+            }
+        })
+        b.close()
+        b.open(29, "input")  // attrs.bx:29
+        b.attr(30, "value", "{self.flagged}")
+        b.on_input(31, fn(e: InputEvent) { self.flagged = e.value == "true" })
+        b.close()
+        b.open(32, "input")  // attrs.bx:30
+        b.attr(33, "type", "checkbox")
+        b.flag(34, "checked", self.agreed)
+        b.on_change(35, fn(e: InputEvent) { self.agreed = e.checked })
+        b.close()
+        b.open(36, "textarea")  // attrs.bx:31
+        b.on_input(37, fn(e: InputEvent) { self.note = e.value })
+        b.attr(38, "rows", "4")
+        b.text(39, "{self.note}")
+        b.close()
+        b.open(40, "div")  // attrs.bx:32
+        b.attrs(41, self.extra)
+        b.attr(42, "class", "base")
+        b.text(43, "splatted")
+        b.close()
+        b.open(44, "input")  // attrs.bx:33
+        b.reference(45, fn(_latte_handle: Reference) { self.box = _latte_handle })
+        b.attr(46, "name", "boxed")
+        b.close()
+        b.open(47, "div")  // attrs.bx:34
+        b.preserve(48)
+        b.attr(49, "class", "owned")
+        if b.fold { b.constant(50, "<span>third party</span>") }
+        else {
+            b.open(50, "span")
+            b.text(51, "third party")
+            b.close()
+        }
+        b.close()
+        b.open(52, "form")  // attrs.bx:35
+        b.on_submit(53, fn(e: SubmitEvent) { self.count = e.fields.len() })
+        b.open(54, "input")  // attrs.bx:36
+        b.on_keydown(55, fn(e: KeyboardEvent) { self.note = e.key })
+        b.on_focus(56, fn(e: FocusEvent) { self.count += 0 })
+        b.on_blur(57, fn(e: FocusEvent) { self.count += 0 })
+        b.on_change(58, fn(e: InputEvent) { self.note = e.value })
+        b.close()
+        b.open(59, "button")  // attrs.bx:40
+        b.on_reset(60, fn(e: SubmitEvent) { self.count = 0 })
+        b.text(61, "reset")
+        b.close()
+        b.close()
+    }
+}
+
+======== render: raw.bx ========
+partial class Raw {
+    pub override fn render(b: Builder) {
+        if b.fold { b.constant(0, "<!DOCTYPE html><title>A &amp; B</title><style>\n  .card > p \{ color: #333; \}\n</style><script>\n  const total = 1 < 2 ? \"a\" : \"b\";\n</script><pre>\n\n  two   spaces   kept\n  and a second line\n</pre><textarea rows=\"3\">\n\nkept   exactly\n</textarea><script src=\"/app.js\"></script>") }  // raw.bx:9
+        else {
+            b.constant(0, "<!DOCTYPE html>")
+            b.open(1, "title")  // raw.bx:10
+            b.text(2, "A & B")
+            b.close()
+            b.open(3, "style")  // raw.bx:11
+            b.constant(4, "\n  .card > p \{ color: #333; \}\n")
+            b.close()
+            b.open(5, "script")  // raw.bx:14
+            b.constant(6, "\n  const total = 1 < 2 ? \"a\" : \"b\";\n")
+            b.close()
+            b.open(7, "pre")  // raw.bx:17
+            b.text(8, "\n  two   spaces   kept\n  and a second line\n")
+            b.close()
+            b.open(9, "textarea")  // raw.bx:21
+            b.attr(10, "rows", "3")
+            b.text(11, "\nkept   exactly\n")
+            b.close()
+            b.open(12, "script")  // raw.bx:24
+            b.attr(13, "src", "/app.js")
+            b.close()
+        }
+        b.open(14, "h1")  // raw.bx:25
+        b.text(15, "{self.title}")
+        b.close()
+    }
+}
+
+======== render: beans.bx ========
+partial class Beans {
+    pub override fn render(b: Builder) {
+        if b.fold { b.constant(0, "<p>markup before the block</p>") }  // beans.bx:1
+        else {
+            b.open(0, "p")  // beans.bx:1
+            b.text(1, "markup before the block")
+            b.close()
+        }
+        b.open(2, "p")  // beans.bx:18
+        b.text(3, "markup after the block: {self.shout()}")
+        b.close()
+    }
+}
+
+======== render: generic.bx ========
+partial class Generic {
+    pub override fn render(b: Builder) {
+        b.open(0, "table")  // generic.bx:10
+        b.open(1, "caption")  // generic.bx:11
+        b.text(2, "{self.heading}")
+        b.close()
+        var _latte_row_0: int = 0
+        for row in self.rows {  // generic.bx:12
+            b.region(3, "{_latte_row_0}")
+            if b.fold { b.constant(0, "<tr><td>a row</td></tr>") }  // generic.bx:13
+            else {
+                b.open(0, "tr")  // generic.bx:13
+                b.open(1, "td")
+                b.text(2, "a row")
+                b.close()
+                b.close()
+            }
+            b.end_region()
+            _latte_row_0 += 1
+        }
+        b.close()
+    }
+}
+
+======== the drift gate ========
+ok tests/w2_equiv.b is what tests/w2cases/equiv.bx generates
+======== gate 4, the text half ========
+probes/p8_builder/pages/counter_gen.b was hand-written by W0 from
+PLAN.md's worked example, before the emitter existed.
+counter: 43 of the hand-written file's numbered calls mean the same thing in latte-bx's output
+  every sequence number agrees
+  numbers latte-bx uses that the hand-written file does not: 41: attr class, 42: open small, 43: text fixed
+hint: 2 of the hand-written file's numbered calls mean the same thing in latte-bx's output
+  these do not:
+  2: hand-written `text {self.label}`, latte-bx `attr class`
+  3: hand-written `fragment`, latte-bx `open svg`
+  4: hand-written `open button`, latte-bx `attr width`
+  5: hand-written `on_click`, latte-bx `text {self.label}`
+  6: hand-written `text dismiss`, latte-bx `fragment`
+  numbers latte-bx uses that the hand-written file does not: 7: open button, 8: on_click, 9: text dismiss
+======== markup: every check passed ========

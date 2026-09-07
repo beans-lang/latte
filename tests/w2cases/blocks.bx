@@ -1,10 +1,70 @@
+<beans>
+package pages
+
+pub class Row {
+    pub id: int = 0
+    pub title: string = ""
+    pub on: bool = false
+    pub fn init() {}
+}
+
+pub partial class Blocks extends Component {
+    pub count: int = 0
+    pub note: string = ""
+    pub path: string = ""
+    pub rows: List<Row> = []
+    pub grid: List<List<int>> = []
+    pub state: Option<string> = none
+    pub fn init() {}
+}
+</beans>
 $if self.count > 10 {
   <p class="warn">big</p>
+} else if self.count > 5 {
+  <p>middling</p>
 } else {
   <p>small</p>
 }
+$if self.rows.filter(fn(r: Row) -> bool { return r.on }).len() > 0 {
+  <p>some are on</p>
+}
+$if self.note == "a } b" {
+  <p>brace in a string</p>
+}
+$if self.path == r"/users/{id}" {
+  <p>brace in a raw string</p>
+}
+$if self.count > 0 /* a { comment } */ {
+  <p>brace in a comment</p>
+}
+$if (self.count + 1) > 2 {
+  <p>a header that starts with a parenthesis</p>
+}
 <ul>
 $for row: Row in self.rows {
-  <li key={row.id}>$row.title</li>
+  <li key={row.id} class="row">$row.title</li>
 }
 </ul>
+<ol>
+$for value: int in self.grid[0] {
+  <li>$value</li>
+}
+</ol>
+<table>
+$for outer: List<int> in self.grid {
+  <tr>
+  $for cell: int in outer {
+    <td>$cell</td>
+  }
+  </tr>
+}
+</table>
+$match self.state {
+  some(value) => {
+    <p>state is $value</p>
+  }
+  none => {
+    <p>no state</p>
+  }
+}
+<p>a literal closing brace in text: \} and an opening one: \{</p>

@@ -1,2 +1,32 @@
+<beans>
+package pages
+
+pub class Clock {
+    pub fn init() {}
+    pub fn now() -> string { return "12:00" }
+}
+
+pub class Person {
+    pub name: string = ""
+    pub fn init() {}
+}
+
+pub partial class Expr extends Component {
+    pub count: int = 0
+    pub note: string = ""
+    pub rendered: string = ""
+    pub people: List<Person> = []
+    clock: Clock
+
+    pub fn init() { self.clock = new Clock() }
+    pub fn label(n: int) -> string { return "n={n}" }
+}
+</beans>
 <h2>Count: $self.count</h2>
-<p>$user.name (active)</p>
+<p>as of $self.clock.now()</p>
+<p>$self.people[0].name (active)</p>
+<p>$self.label(3), then a full stop: $self.note.</p>
+<p>$(self.count + 1) and $( self.note )</p>
+${ let doubled: int = self.count * 2 }
+<p>doubled is $doubled</p>
+<div>$html(self.rendered)</div>

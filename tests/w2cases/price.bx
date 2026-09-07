@@ -1,1 +1,13 @@
-<p>It costs $5.00, US$ and $ 20 and $$word</p>
+<beans>
+package pages
+
+pub partial class Price extends Component {
+    pub owed: string = ""
+    pub fn init() {}
+}
+</beans>
+<p>It costs $5.00, US$ and $ 20 and $$word.</p>
+<p>ten$ and 100$ us and \{braced\} and \} alone</p>
+<p>an escaped dollar in front of a word: $$total, and a real one: $self.owed</p>
+<p>a dollar at the very end of the file follows</p>
+$

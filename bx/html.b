@@ -127,17 +127,34 @@ pub fn is_reserved_attribute(name: string) -> bool {
 
 /// Whether an attribute name is an inline script handler.
 ///
-/// Every HTML event handler content attribute is `on` followed by the event
-/// name, so the prefix is the whole test. latte refuses all of them: a handler
-/// exists only as an id, and the client never evaluates a string. `on:click`
-/// is not caught by this because the parser has already split it on the colon
-/// before asking.
+/// **Three bytes and a prefix — deliberately blunter than "on plus letters".**
+/// It has to be, because `latte.Builder.write_attribute` applies exactly this
+/// test at run time (`attribute_is_inline_handler` in `frames.b`) and drops
+/// the attribute when it fires. A compiler that accepted `on-foo` would emit
+/// `b.attr(n, "on-foo", "x")`, which the Builder throws away with a fault —
+/// and a folded constant subtree, serialized here at build time, would keep
+/// it. The same markup would then say two different things depending on
+/// `b.fold`. That is the silent failure this project exists to avoid, so the
+/// two predicates are one contract and `tests/markup.b` asserts they agree
+/// name for name.
+///
+/// `on:click` is not caught by this, because the parser splits the namespace
+/// off before it asks.
 pub fn is_inline_handler_attribute(name: string) -> bool {
+    if name.len() < 3 { return false }
+    return name.to_lower().starts_with("on")
+}
+
+/// Whether `name` reads as an HTML event handler with an event after it —
+/// `onclick` yes, `on-foo` no.
+///
+/// Not a second refusal: `is_inline_handler_attribute` refuses both. This only
+/// decides whether the diagnostic can name the `on:<event>` spelling to use
+/// instead, because `on:-foo` is not advice.
+pub fn names_an_event_handler(name: string) -> bool {
     let lower: string = name.to_lower()
     if lower.len() < 3 { return false }
     if !lower.starts_with("on") { return false }
-    // `on` followed by ASCII letters and nothing else: `onclick`, `onload`.
-    // `on-foo` and `on_foo` are not HTML handler attributes.
     var i: int = 2
     for i < lower.len() {
         let b: int = lower.byte_at(i) as int
@@ -145,6 +162,137 @@ pub fn is_inline_handler_attribute(name: string) -> bool {
         i = i + 1
     }
     return true
+}
+
+// ------------------------------------------------- the runtime's own tables
+//
+// Everything from here to the escapers is a **mirror of `frames.b`**, which is
+// W1's and lives in the module root that a package under `latte/` cannot
+// import ("a package cannot import its own module root"). So the rules are
+// written twice, and the only defence against them drifting is a gate: the
+// contract section of `tests/markup.b` runs both copies over a corpus of names
+// and values and fails on the first disagreement. Do not edit one of these
+// without the other.
+//
+// They matter because of constant folding. A folded subtree is serialized
+// HERE, at build time; the same subtree unfolded is serialized THERE, at run
+// time. Anything the Builder refuses and this file does not — an unsafe tag
+// name, a `javascript:` URL, an `on*` attribute — would survive into the
+// folded string and vanish from the unfolded walk. So latte-bx refuses at
+// compile time everything the Builder would refuse at run time, and the
+// question never arises.
+
+/// RCDATA elements decode character references but do not parse tags, so they
+/// take ordinary text escaping.
+pub fn is_rcdata_element(tag: string) -> bool {
+    let name: string = tag.to_lower()
+    if name == "textarea" { return true }
+    return name == "title"
+}
+
+/// The HTML parser eats one newline straight after these start tags, so a
+/// serializer that means to keep it has to write two.
+pub fn eats_leading_newline(tag: string) -> bool {
+    let name: string = tag.to_lower()
+    if name == "pre" { return true }
+    if name == "textarea" { return true }
+    return name == "listing"
+}
+
+/// `[a-zA-Z][a-zA-Z0-9-]*`. A tag the Builder would refuse is substituted with
+/// `span` at run time and written as itself in a folded constant, so latte-bx
+/// refuses it instead.
+pub fn tag_name_is_safe(tag: string) -> bool {
+    if tag.len() == 0 { return false }
+    let first: int = tag.byte_at(0) as int
+    if !(first >= 97 && first <= 122) && !(first >= 65 && first <= 90) { return false }
+    var index: int = 1
+    for index < tag.len() {
+        let b: int = tag.byte_at(index) as int
+        let letter: bool = (b >= 97 && b <= 122) || (b >= 65 && b <= 90)
+        let digit: bool = b >= 48 && b <= 57
+        if !letter && !digit && b != 45 { return false }
+        index = index + 1
+    }
+    return true
+}
+
+/// `[a-zA-Z_:.-][a-zA-Z0-9_:.-]*` — a name whose first byte is not a digit and
+/// whose bytes are all letters, digits, `_`, `:`, `.` or `-`.
+pub fn attribute_name_is_safe(name: string) -> bool {
+    if name.len() == 0 { return false }
+    var index: int = 0
+    for index < name.len() {
+        let b: int = name.byte_at(index) as int
+        let letter: bool = (b >= 97 && b <= 122) || (b >= 65 && b <= 90)
+        let digit: bool = b >= 48 && b <= 57
+        let punct: bool = b == 95 || b == 58 || b == 46 || b == 45
+        if index == 0 && digit { return false }
+        if !letter && !digit && !punct { return false }
+        index = index + 1
+    }
+    return true
+}
+
+/// Content that would close a raw-text element out from under us.
+///
+/// `</script` inside a JavaScript string ends the element in every browser,
+/// and `<!--` starts a comment-like state that moves where it ends. The
+/// serializer drops such a body with a fault; latte-bx refuses it, because a
+/// dropped `<script>` body is a page that silently lost its behaviour.
+pub fn raw_text_is_safe(body: string, tag: string) -> bool {
+    let lowered: string = body.to_lower()
+    if lowered.contains("</{tag.to_lower()}") { return false }
+    if lowered.contains("<!--") { return false }
+    return true
+}
+
+/// The attribute names whose value is a URL, and therefore passes a scheme
+/// allowlist. `xlink:href` is here because an SVG `<a xlink:href="javascript:">`
+/// runs script in every browser that renders SVG.
+pub fn is_url_attribute(name: string) -> bool {
+    if name == "href" { return true }
+    if name == "src" { return true }
+    if name == "action" { return true }
+    if name == "formaction" { return true }
+    if name == "poster" { return true }
+    if name == "data" { return true }
+    return name == "xlink:href"
+}
+
+/// What a browser sees after it strips the bytes it ignores: every byte at or
+/// below 0x20 and 0x7F is dropped, so `java&#9;script:` reaches the scheme
+/// parser as `javascript:`.
+fn url_probe(value: string) -> string {
+    let parts: List<string> = []
+    var i: int = 0
+    for i < value.len() {
+        let b: int = value.byte_at(i) as int
+        if b > 32 && b != 127 { parts.push(value.slice(i, i + 1)) }
+        i = i + 1
+    }
+    return parts.join("").to_lower()
+}
+
+/// Whether a URL attribute's value carries an allowed scheme, or none at all.
+pub fn scheme_is_allowed(value: string) -> bool {
+    let probe: string = url_probe(value)
+    if probe.len() == 0 { return true }
+    let colon: int = probe.find_byte(58, 0)
+    if colon < 0 { return true }
+    // A `/`, `?` or `#` before the first colon means the colon is inside a
+    // path, a query or a fragment, so there is no scheme at all.
+    let slash: int = probe.find_byte(47, 0)
+    if slash >= 0 && slash < colon { return true }
+    let question: int = probe.find_byte(63, 0)
+    if question >= 0 && question < colon { return true }
+    let hash: int = probe.find_byte(35, 0)
+    if hash >= 0 && hash < colon { return true }
+    let scheme: string = probe.slice(0, colon)
+    if scheme == "http" { return true }
+    if scheme == "https" { return true }
+    if scheme == "mailto" { return true }
+    return scheme == "tel"
 }
 
 // ------------------------------------------------------------------ escaping
