@@ -1,0 +1,2 @@
+module scratch
+kind application
