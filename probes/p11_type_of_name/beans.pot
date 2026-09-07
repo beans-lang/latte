@@ -1,0 +1,2 @@
+module p11_type_of_name
+kind application
