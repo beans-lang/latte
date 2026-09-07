@@ -1,0 +1,2 @@
+module p2_channel
+kind application

@@ -1,0 +1,4 @@
+probes/p2_channel_bad/main.b:27:29: error: thread closure cannot capture 'owner' of non-Send type p2_channel_bad.Component
+probes/p2_channel_bad/main.b:32:29: error: Channel<send fn(Ctx) -> unit> has no method 'try_send'
+probes/p2_channel_bad/main.b:36:40: error: sendable closure must own mutable or non-Sync capture 'tally' with move(tally)
+probes/p2_channel_bad/main.b: 3 error(s)
