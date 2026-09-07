@@ -27,6 +27,14 @@ pub class Attr {
     pub name: string = ""
     pub value: string = ""
     pub present: bool = true
+
+    /// Whether this slot came from a `flag` frame rather than an `attribute`
+    /// one. It changes no HTML — `flag(name, true)` and `attr(name, "")` both
+    /// write `name=""` — but the differ has to be able to say which one a slot
+    /// is, because an ABSENT flag is not nothing: it is a tombstone that
+    /// shadows an earlier slot of the same name, and "remove the slot" and
+    /// "set the slot to an absent flag" mean different HTML.
+    pub flag: bool = false
     pub fn init() {}
 }
 

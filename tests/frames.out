@@ -1,0 +1,332 @@
+== 1 five keyed rows
+child ids:   2,4,6,8,10
+handler ids: 1,3,5,7,9
+region keys: [a, b, c, d, e]
+ok five rows mount five children
+ok five rows get five buffers
+ok five rows bind five handlers
+ok five child frames
+ok five DISTINCT child ids
+ok five handler frames
+ok five DISTINCT handler ids
+ok no id is both a mount and a handler
+ok no builder faults
+ok five DISTINCT child buffers
+slot 2: a inits=1 sets=1 params=1 renders=1 clicks=0
+slot 4: b inits=1 sets=1 params=1 renders=1 clicks=0
+slot 6: c inits=1 sets=1 params=1 renders=1 clicks=0
+slot 8: d inits=1 sets=1 params=1 renders=1 clicks=0
+slot 10: e inits=1 sets=1 params=1 renders=1 clicks=0
+html: <ul><li data-key="a"><span>a/1/0</span></li><li data-key="b"><span>b/1/0</span></li><li data-key="c"><span>c/1/0</span></li><li data-key="d"><span>d/1/0</span></li><li data-key="e"><span>e/1/0</span></li></ul>
+ok pass 2 reuses the same child ids
+ok pass 2 reuses the same handler ids
+ok pass 2 mounts nothing new
+slot 2: a inits=1 sets=2 params=2 renders=2 clicks=0
+slot 4: b inits=1 sets=2 params=2 renders=2 clicks=0
+slot 6: c inits=1 sets=2 params=2 renders=2 clicks=0
+slot 8: d inits=1 sets=2 params=2 renders=2 clicks=0
+slot 10: e inits=1 sets=2 params=2 renders=2 clicks=0
+ok row c was activated once
+ok row c ran its setter twice
+ok row c saw on_params_set twice
+ok row c rendered twice
+== 2 reorder
+child ids after reorder: 10,8,6,4,2
+region keys: [e, d, c, b, a]
+ok a reorder permutes the ids
+ok a reorder is not a no-op
+ok nothing was mounted or dropped
+ok no handler was rebound
+slot 10: e inits=1 sets=3 params=3 renders=3 clicks=0
+slot 8: d inits=1 sets=3 params=3 renders=3 clicks=0
+slot 6: c inits=1 sets=3 params=3 renders=3 clicks=0
+slot 4: b inits=1 sets=3 params=3 renders=3 clicks=0
+slot 2: a inits=1 sets=3 params=3 renders=3 clicks=0
+ok the row that moved to the front is still 'e'
+ok and it was never re-activated
+ok and its counter kept climbing
+html: <ul><li data-key="e"><span>e/3/0</span></li><li data-key="d"><span>d/3/0</span></li><li data-key="c"><span>c/3/0</span></li><li data-key="b"><span>b/3/0</span></li><li data-key="a"><span>a/3/0</span></li></ul>
+== 3 dispatch
+firing handler 5 (the third row rendered, key 'c')
+ok the id dispatched
+ok row c was hit once
+ok row a was not hit
+ok row b was not hit
+ok row d was not hit
+ok row e was not hit
+ok one row in five was touched
+ok a mouse id is not an input id
+ok an unknown id finds nothing
+== 4 the sweep
+dropping key 'c' — slot 6, handler 5
+ok four rows mount four children
+ok four rows keep four buffers
+ok four rows keep four handlers
+ok four child frames
+ok the dropped slot is gone
+ok its buffer is gone
+ok its handler is forgotten
+ok a stale wire id finds nothing
+ok row c was not hit again by the stale id
+disposed: [c]
+ok exactly one component was disposed
+ok and it was row c
+child ids: 10,8,4,2
+slot 10: e inits=1 sets=4 params=4 renders=4 clicks=0
+slot 8: d inits=1 sets=4 params=4 renders=4 clicks=0
+slot 4: b inits=1 sets=4 params=4 renders=4 clicks=0
+slot 2: a inits=1 sets=4 params=4 renders=4 clicks=0
+ok row e survived with its counter
+child ids after 'c' returns: 10,8,12,4,2
+ok five rows again
+ok the returning row did NOT get the dead slot back
+ok the returning row is 'c'
+ok and it is a fresh component
+ok activated once
+== 5 lifecycle
+ok a quiet child keeps its frames
+ok but its setter ran
+ok and on_params_set ran
+ok and render did NOT
+loud child: 0 open span
+  1 text a/2/0
+/close
+
+quiet child: 0 open span
+  1 text b/1/0
+/close
+
+ok and it renders again when it stops being quiet
+disposed on teardown: [a, b, c, d, e]
+ok every child was disposed
+ok nothing is mounted
+ok no buffers are left
+ok no handlers are left
+== 6 refusals
+-- unsafe-tag
+   html: <span>inside</span>
+   balanced: true
+   fault: 0: refused tag name "sc ript>"
+-- empty-tag
+   html: <span></span>
+   balanced: true
+   fault: 0: refused tag name ""
+-- unsafe-attribute-name
+   html: <div ok="kept"></div>
+   balanced: true
+   fault: 0: refused attribute name "class" onload="x"
+-- inline-handler-attribute
+   html: <div></div>
+   balanced: true
+   fault: 0: refused inline handler attribute "onclick"
+   fault: 0: refused inline handler attribute "onerror"
+-- splatted-refusals
+   html: <div fine="kept"></div>
+   balanced: true
+   fault: 0: refused splatted attribute name "bad name"
+   fault: 0: refused splatted inline handler "onmouseover"
+-- url-scheme
+   html: <a href="about:blank"></a>
+   balanced: true
+   fault: 0: attribute href carried a refused scheme
+-- url-scheme-obfuscated
+   html: <a href="about:blank"></a>
+   balanced: true
+   fault: 0: attribute href carried a refused scheme
+-- url-scheme-xlink
+   html: <a xlink:href="about:blank"></a>
+   balanced: true
+   fault: 0: attribute xlink:href carried a refused scheme
+-- url-scheme-allowed
+   html: <a href="https://example.com/a:b" download="javascript:not-a-url"></a><a href="/local/path:with-colon"></a>
+   balanced: true
+-- attribute-outside-its-run
+   html: <div>content first</div>
+   balanced: true
+   fault: 0: attribute 2:"class" is outside an element's attribute run
+-- attribute-out-of-order
+   html: <div a="1"></div>
+   balanced: true
+   fault: 0: attribute 1:"b" does not follow 3:"a" in this element's attribute run
+-- attribute-name-out-of-order
+   html: <div z="1"></div>
+   balanced: true
+   fault: 0: attribute 1:"a" does not follow 1:"z" in this element's attribute run
+-- attribute-slot-repeats
+   html: <div same="first"></div>
+   balanced: true
+   fault: 0: attribute 1:"same" does not follow 1:"same" in this element's attribute run
+-- two-handlers-at-one-seq
+   html: <div></div>
+   balanced: true
+   fault: 0: on:dblclick 1:"" does not follow 1:"" in this element's attribute run
+-- handler-then-attribute-at-one-seq
+   html: <div class="x"></div>
+   balanced: true
+-- splat-under-an-earlier-name
+   html: <div z="explicit"></div>
+   balanced: true
+   fault: 0: attrs 1:"" does not follow 1:"z" in this element's attribute run
+-- splat-then-name-at-one-seq
+   html: <div class="first" a="one" b="two" id="last"></div>
+   balanced: true
+-- sibling-seq-goes-backwards
+   html: <p></p><p></p>
+   balanced: true
+   fault: 0: sequence 2 does not follow 5 in this scope
+-- sibling-seq-repeats
+   html: onetwo
+   balanced: true
+   fault: 0: sequence 1 does not follow 1 in this scope
+-- duplicate-key
+   html: <ul>firstsecondthird</ul>
+   balanced: true
+   fault: 0: duplicate key "same" in the loop at 1
+   fault: 0: duplicate key "same" in the loop at 1
+-- close-with-nothing-open
+   html: 
+   balanced: true
+   fault: 0: close with no open element
+-- end-region-with-nothing-open
+   html: 
+   balanced: true
+   fault: 0: end_region with no open region
+-- end-boundary-with-nothing-open
+   html: 
+   balanced: true
+   fault: 0: end_boundary with no open boundary
+-- fail-boundary-with-nothing-open
+   html: 
+   balanced: true
+   fault: 0: fail_boundary with no open boundary
+-- mount-a-non-component
+   html: 
+   balanced: true
+   fault: 0: NotAComponent is not a Component
+-- region-left-open
+   html: <ul>no end_region</ul>
+   balanced: true
+   fault: 0: close with no open element
+   fault: 0: a region was left open
+   fault: 0: an element was left open
+-- element-left-open-at-pass-end
+   html: <div><p>neither is closed</p></div>
+   balanced: true
+   fault: 0: an element was left open
+   fault: 0: an element was left open
+ok the refusal corpus raised faults
+faults raised across the corpus: 30
+ok an allowed URL raises nothing
+ok and it is still balanced
+== 7 unbalanced bodies
+html: <section><div>the fragment never closes this</div>after the fragment</section>
+0 open section
+  1 fragment
+    0 open div
+      1 text the fragment never closes this
+    /close
+  /fragment
+  2 text after the fragment
+/close
+
+   fault: 0: an element was left open
+ok the pass is balanced anyway
+ok and it said so once
+ok the text after the fragment is a sibling, not a child
+0 fragment
+  0 region k
+    0 open li
+    /close
+  /region
+/fragment
+1 text after
+
+   fault: 0: an element was left open
+   fault: 0: a region was left open
+ok two unbalanced scopes, still balanced at the end
+ok two faults
+== 8 boundaries
+-- ok
+0 open main
+  1 boundary failed=false
+    0 open p
+      1 text the body rendered
+    /close
+  /boundary
+/close
+
+   html: <main><p>the body rendered</p></main>
+ok an ok boundary raises nothing
+ok and records no failure
+-- failed
+0 open main
+  1 boundary failed=true
+    0 open p
+      1 attr class=error
+      2 text something went wrong
+    /close
+  /boundary
+/close
+
+   html: <main><p class="error">something went wrong</p></main>
+ok a failed boundary raises no fault
+ok and records the message
+ok the message
+ok the thrown-away content is gone
+ok the fallback is what is left
+ok the frame says failed
+-- failed mid-element
+0 open main
+  1 boundary failed=true
+    0 text fallback
+  /boundary
+/close
+
+   html: <main>fallback</main>
+ok the pass is balanced after unwinding three levels
+ok and no fault was needed to get there
+ok the html is the fallback inside main
+-- nested, inner failed
+0 boundary failed=false
+  0 open section
+    1 text outer before 
+    2 boundary failed=true
+      0 text inner fallback
+    /boundary
+    3 text  outer after
+  /close
+/boundary
+
+   html: <section>outer before inner fallback outer after</section>
+ok no faults
+ok one failure, the inner one
+ok the outer boundary survived
+ok the outer frame is still ok
+ok the inner frame is failed
+-- never ended
+0 boundary failed=false
+  0 text no end_boundary
+/boundary
+
+   fault: 0: a boundary was left open
+ok closed by the sweep
+ok with one fault
+== 9 handles
+0 open div
+  1 ref
+  2 preserve
+  3 text kept
+/close
+
+html: <div>kept</div>
+sink saw: [ref->1]
+ok the sink was called once
+ok neither handle writes html
+ok the html
+ok no faults
+ok three passes, three sink calls
+ok a reference keeps its node id across passes
+ok four sink calls
+ok a reference that left the tree does not come back with its old id
+== summary
+checks: 93, failed: 0
