@@ -187,6 +187,21 @@ pub class Renderer implements DirtySink {
     ///    leave the page.
     /// 3. **A dirty id that is no longer mounted is dropped**, silently. That
     ///    is what a stale wire id looks like after a keyed row went away.
+    /// 4. **A marked component renders whatever `should_render` says.**
+    ///    `should_render` answers one question — "your parent re-rendered and
+    ///    re-supplied your parameters; do you need to render again?" — and a
+    ///    component that marked *itself* has already answered a different one.
+    ///    Consulting it here is how a framework quietly breaks its own
+    ///    `notify`: a component that compares its parameters, which is what
+    ///    `should_render` is for, would answer "nothing changed" and never
+    ///    re-render for its own state at all. `tests/renders.b` § 2 caught
+    ///    exactly that, reporting zero renders for a row whose own counter had
+    ///    just gone up.
+    ///
+    ///    That is also why a marked component under a dirty ancestor gets a
+    ///    second look: the ancestor renders it through `Builder.render_child`,
+    ///    which *does* consult `should_render`, so a row whose own state
+    ///    changed while its parameters did not would be skipped there.
     pub fn flush() -> int {
         self.flushes += 1
         if self.dirty.len() == 0 { return 0 }
@@ -204,28 +219,37 @@ pub class Renderer implements DirtySink {
         self.sort_by_depth(roots)          // depth is what rule 2 needs
 
         self.begin()
-        for id: int in roots {
-            match self.component(id) {
-                some(component) => {
-                    match self.buffer(id) {
-                        some(buffer) => {
-                            component.on_params_set()
-                            if buffer.rendered && !component.should_render() {
-                                // A component that answers no keeps the frames
-                                // it already has, and its buffer stays settled.
-                            } else {
-                                buffer.render_root(component)
-                            }
-                        }
-                        none => {}
-                    }
-                }
-                none => {
-                    self.faults.push("dirty component {id} has no instance")
+        for id: int in roots { self.render_now(id) }
+
+        // The second look. A marked component that a dirty ancestor's pass
+        // skipped is rendered on its own — see rule 4.
+        for id: int in wanted {
+            if self.mounts.contains_key(id) && self.covered(id, roots) {
+                match self.buffer(id) {
+                    some(buffer) => { if buffer.diffed { self.render_now(id) } }
+                    none => {}
                 }
             }
         }
         return self.finish()
+    }
+
+    /// Render one component now, without consulting `should_render` — rule 4.
+    /// `on_params_set` still runs, because a component's own record of what its
+    /// parameters were should not depend on who asked for the render.
+    fn render_now(id: int) {
+        match self.component(id) {
+            some(component) => {
+                match self.buffer(id) {
+                    some(buffer) => {
+                        component.on_params_set()
+                        buffer.render_root(component)
+                    }
+                    none => { self.faults.push("dirty component {id} has no buffer") }
+                }
+            }
+            none => { self.faults.push("dirty component {id} has no instance") }
+        }
     }
 
     /// Whether some other member of the dirty set is an ancestor of `id`.
