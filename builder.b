@@ -60,7 +60,76 @@ pub class Reference {
 }
 
 // ---------------------------------------------------------------- component
+/// What the framework writes into a component when it mounts it: which slot
+/// the component lives at, and where to send "I changed".
+///
+/// It exists as ONE object rather than two fields on `Component` because of a
+/// rule about inheritance, not about taste:
+///
+/// > `error: field 'id' redeclares a field 'Child' inherits from 'Base' — an
+/// > inherited field name is a slot the base already owns, so a subclass
+/// > cannot declare it again`
+///
+/// Every field name this base class takes is a name **no component an author
+/// writes may ever use**, and making the base field non-`pub` does not help —
+/// the error is about the slot, not the visibility. `id` is the most likely
+/// field name in a page there is (`@param id`, a row's id, a record's id), so
+/// the framework does not take it. A subclass field MAY share a name with a
+/// base **method**, which is why `Component.id()` is a method and costs an
+/// author nothing.
+pub class MountHandle {
+    /// The component's slot id: its mount key, its handler-id space and its
+    /// wire id, all one int.
+    ///
+    /// `-1` until something mounts it, and deliberately **not** 0: 0 is the
+    /// page root, so a component nothing has mounted would otherwise mark the
+    /// whole page dirty the first time it called `notify()`.
+    pub id: int = -1
+
+    /// Where `notify()` goes. Weak for the same reason `Callback.owner` is:
+    /// not to break a cycle — the renderer owns the component tree, so the
+    /// back edge is the only one in the design with no reason to exist — but
+    /// so that a `notify()` raised after the page has closed reads `none` and
+    /// does nothing, instead of marking a renderer that is gone.
+    pub weak sink: Option<DirtySink> = none
+
+    pub fn init() {}
+}
+
 pub class Component {
+    /// The framework's own hook into this component, written at mount. An
+    /// author reads `id()` and calls `notify()`; nothing else in here is
+    /// theirs to touch.
+    pub mount: MountHandle = new MountHandle()
+
+    /// This component's slot id, or `-1` before anything has mounted it.
+    ///
+    /// A METHOD and not a field, so `id` stays a name a component may declare.
+    /// It is needed at all because Beans has no reference equality: nothing
+    /// outside can ask "which component is this `Component`", so a `Callback`
+    /// could not name the component it has to mark without it.
+    pub fn id() -> int { return self.mount.id }
+
+    /// "My own state changed; render me."
+    ///
+    /// The ordinary event path does not need this — `Registry.fire_*` tells
+    /// the renderer which component bound the id it just dispatched, so an
+    /// author who forgets still gets the render they meant. This is for state
+    /// that changes outside an event: a timer, a channel, a parent's
+    /// `Callback`.
+    ///
+    /// It does nothing for a component nothing has mounted. Marking an id the
+    /// renderer no longer holds is dropped there, and slot ids are never
+    /// reused (`Registry.fresh` only counts up), so a stale id can never name
+    /// a different live component.
+    pub fn notify() {
+        if self.mount.id < 0 { return }
+        match self.mount.sink {
+            some(sink) => { sink.mark(self.mount.id) }
+            none => {}
+        }
+    }
+
     /// The one method the markup compiler writes. It takes the builder rather
     /// than returning a fragment, so a markup block is a plain statement.
     pub fn render(b: Builder) {}
@@ -109,9 +178,20 @@ pub class Callback<T> {
         self.handler = handler
     }
 
+    /// Run the handler, then mark the owner dirty.
+    ///
+    /// The `notify()` is what makes a callback worth having: a child hands its
+    /// parent a `Callback`, the child fires it, and the code that runs is the
+    /// PARENT's — so the component the renderer would otherwise mark (the one
+    /// that bound the DOM handler, which is the child) is the wrong one.
+    ///
+    /// A disposed owner that something still holds a reference to does reach
+    /// the renderer through here, and that is safe rather than accidental:
+    /// `Renderer.mark` drops an id it no longer holds, and ids are never
+    /// reused, so a stale id cannot name a different live component.
     pub fn call(value: T) {
         match self.owner {
-            some(_) => { self.handler(value) }
+            some(owner) => { self.handler(value); owner.notify() }
             none => {}
         }
     }
@@ -149,9 +229,24 @@ pub class Registry {
     /// buffer takes its own record with it: `tear_down` drops a whole subtree,
     /// and by the time the differ runs, those buffers are unreachable.
     pub disposed: List<int> = []
+
+    /// The page's dirty sink, kept once here rather than copied into every
+    /// Builder, so a component mounted anywhere in the tree can be handed it
+    /// at mount. Weak: the renderer owns the root Builder, which owns this, so
+    /// a strong edge back would be a cycle that lives for the whole page.
+    weak sink: Option<DirtySink> = none
+
     pub fn init() {}
 
     fn note_disposed(id: int) { self.disposed.push(id) }
+
+    /// Called once, by the renderer, through `Builder.attach_sink`.
+    fn attach(sink: DirtySink) { self.sink = some(sink) }
+
+    /// The page's sink, or `none` for a Builder tree nothing is rendering —
+    /// which is what a test that drives a Builder by hand looks like, and what
+    /// makes `notify()` a no-op there rather than a crash.
+    fn dirty_sink() -> Option<DirtySink> { return self.sink }
 
     /// Read the disposals and forget them. The differ calls this once per
     /// batch, so a disposal is reported exactly once.
@@ -552,10 +647,49 @@ pub class Builder {
     // built natively — BLOCKERS.md B3.
 
     pub fn component<T>(seq: int, setup: fn(T)) {
+        let slot: int = self.open_slot(seq)
+        if !self.children.contains_key(slot) { self.mount<T>(slot, type_of(T)) }
+        self.fill_slot<T>(seq, slot, setup)
+    }
+
+    /// The same mount, from a factory closure the markup compiler emits
+    /// instead of a reflective activation.
+    ///
+    /// It exists because reflection cannot construct every component and the
+    /// way it fails is silent. A **closed generic** has no initializer
+    /// descriptor at all (B1); a **non-generic subclass of a closed generic**
+    /// has one that constructs under `beansc run` and answers `unsupported`
+    /// natively (B7) — a page that works all through the edit loop and breaks
+    /// when someone ships it. `make` is `fn() -> Grid<Order> { return new
+    /// Grid<Order>() }` in the generated file, where the type is written out
+    /// and no reflection is involved in building it.
+    ///
+    /// An INSTANCE method, like `component<T>`: a free generic function or a
+    /// `static fn` taking a `fn(T)` type-checks, runs under `beansc run`, and
+    /// cannot be built natively (B3). `probes/p10_factory_mount` runs this
+    /// whole shape — including `as? T` back to a closed generic — on both
+    /// backends, with a control that reproduces B7's split so a green run
+    /// cannot be one that never reached the hazard.
+    pub fn component_made<T>(seq: int, make: fn() -> T, setup: fn(T)) {
+        let slot: int = self.open_slot(seq)
+        if !self.children.contains_key(slot) { self.mount_made<T>(slot, make) }
+        self.fill_slot<T>(seq, slot, setup)
+    }
+
+    /// A component tag's position in the frame list, resolved to its slot id.
+    fn open_slot(seq: int) -> int {
         self.note_sibling(seq, false)
+        return self.slot_for(seq)
+    }
+
+    /// Everything the two mount routes share: run the setter against the
+    /// child's own type, write the leaf frame, render the child.
+    ///
+    /// One implementation and not two, because two would drift and only one of
+    /// them would be the one the tests run — and the half that would drift is
+    /// the half that decides what a re-render does.
+    fn fill_slot<T>(seq: int, slot: int, setup: fn(T)) {
         let described: reflect.Type = type_of(T)
-        let slot: int = self.slot_for(seq)
-        if !self.children.contains_key(slot) { self.mount<T>(slot, described) }
         match self.children.get(slot) {
             some(stored) => {
                 // Two views of one mounted child: `T` for the setter the markup
@@ -607,6 +741,7 @@ pub class Builder {
                         match made.copy() as? Component {
                             some(component) => {
                                 self.children[slot] = made.copy()
+                                self.wire(component, slot)
                                 component.on_init()
                             }
                             none => {
@@ -624,6 +759,46 @@ pub class Builder {
                 self.faults.push("{described.name()} has no zero-argument initializer")
             }
         }
+    }
+
+    // First render at this slot, from a factory. Nothing reflective builds the
+    // object; `reflect.value` still boxes it, and it boxes the STATIC type `T`
+    // (B6) — which here IS the concrete one, because the caller wrote it out.
+    fn mount_made<T>(slot: int, make: fn() -> T) {
+        let fresh: T = make()
+        let boxed: reflect.Value = reflect.value(fresh)
+        match boxed.copy() as? Component {
+            some(component) => {
+                self.children[slot] = boxed.copy()
+                self.wire(component, slot)
+                component.on_init()
+            }
+            none => { self.faults.push("{type_of(T).name()} is not a Component") }
+        }
+    }
+
+    /// Hand a freshly mounted component its identity: the slot it lives at,
+    /// and the page's dirty sink.
+    ///
+    /// Before `on_init`, because a component that subscribes to something in
+    /// `on_init` may call `notify()` from the callback that subscription
+    /// installs, and a component whose handle is still empty would mark
+    /// nothing.
+    fn wire(component: Component, slot: int) {
+        component.mount.id = slot
+        component.mount.sink = self.registry.dirty_sink()
+    }
+
+    /// Wire this page to its dirty sink.
+    ///
+    /// The Registry keeps it, so every component mounted from here on is handed
+    /// it at mount without any Builder carrying a copy. `page` is the root
+    /// component, which nothing mounts, so it is wired here — with this
+    /// buffer's own id, which for the root buffer is 0.
+    pub fn attach_sink(sink: DirtySink, page: Component) {
+        self.registry.attach(sink)
+        page.mount.id = self.id
+        page.mount.sink = some(sink)
     }
 
     /// `$slot` and `$slot(expr)`: child content, or any `fn(Builder)`. The body
