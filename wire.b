@@ -196,6 +196,11 @@ pub fn write_json_string(out: fmt.StringBuilder, value: string) {
 
 const HEX: string = "0123456789abcdef"
 
+/// i64's floor. Spelled as arithmetic rather than as the literal
+/// `-9223372036854775808`, because a source literal is lexed as a positive
+/// 9223372036854775808 and then negated, and that positive does not exist.
+const INT_MIN: int = (0 - 9223372036854775807) - 1
+
 fn hex_pair(byte: int) -> string {
     let high: int = (byte / 16) % 16
     let low: int = byte % 16
@@ -302,19 +307,33 @@ class Reader {
         var negative: bool = false
         if self.peek() == 45 { negative = true; self.at += 1 }
         var digits: int = 0
-        var value: int = 0
         var overflow: bool = false
+
+        // Accumulated as a NEGATIVE magnitude, and that is not a stylistic
+        // choice. i64's negative side reaches one further than its positive
+        // side, so `-9223372036854775808` is a number a client may legally
+        // send — and building it positively to negate at the end cannot
+        // represent it at all: the intermediate overflows by exactly one and
+        // the reader refuses a value that fits. Held negative, every i64 is
+        // reachable and the two sides get the bound each actually has.
+        //
+        // `to_int` saturates rather than reporting, so both guards are written
+        // out here: the multiply is checked before it happens and the subtract
+        // before it happens, because a check afterwards is reading a value the
+        // overflow already destroyed.
+        let limit: int = if negative { INT_MIN } else { INT_MIN + 1 }
+        var value: int = 0
         for !self.done() {
             let byte: int = self.text.byte_at(self.at)
             if byte < 48 || byte > 57 { break }
-            // 9223372036854775807 / 10 is 922337203685477580; anything at or
-            // above that before the multiply cannot survive it. `to_int`
-            // saturates instead of reporting, so the guard is written here.
-            if value > 922337203685477580 { overflow = true }
-            value = value * 10 + (byte - 48)
-            if value < 0 { overflow = true }
             digits += 1
             self.at += 1
+            if overflow { continue }
+            let digit: int = byte - 48
+            if value < limit / 10 { overflow = true; continue }
+            value = value * 10
+            if value < limit + digit { overflow = true; continue }
+            value = value - digit
         }
         if digits == 0 { self.fail("a number with no digits"); return json_null() }
         if digits > 1 && self.text.byte_at(start + (if negative { 1 } else { 0 })) == 48 {
@@ -330,7 +349,9 @@ class Reader {
             self.fail("a number too large for this protocol")
             return json_null()
         }
-        if negative { value = 0 - value }
+        // Safe in both directions: the positive branch's `limit` stopped one
+        // short of the minimum, so `value` is never i64 min here.
+        if !negative { value = 0 - value }
         return json_int(value)
     }
 
@@ -892,7 +913,7 @@ pub fn decode_client(text: string, limits: WireLimits) -> ClientMessage {
                 if out.batch < 0 { return refuse("resume carries no acknowledged batch") }
                 return out
             }
-            if kind == "ev" { return decode_event(root, limits) }
+            if kind == "ev" { return decode_event(root) }
             if kind == "ack" {
                 let out: ClientMessage = new ClientMessage()
                 out.kind = CLIENT_ACK
@@ -935,7 +956,11 @@ pub fn decode_client(text: string, limits: WireLimits) -> ClientMessage {
     }
 }
 
-fn decode_event(root: Json, limits: WireLimits) -> ClientMessage {
+/// Takes no `WireLimits`: everything a limit bounds — the message size, the
+/// nesting, the member count, the string length — has already been enforced by
+/// the reader that produced `root`. A second bound here would be a refusal no
+/// input can reach.
+fn decode_event(root: Json) -> ClientMessage {
     let out: ClientMessage = new ClientMessage()
     out.kind = CLIENT_EVENT
     out.handler = root.int_field("h", -1)
@@ -970,9 +995,13 @@ fn decode_event(root: Json, limits: WireLimits) -> ClientMessage {
                 if !fields.is_object() {
                     return refuse("a submit payload's fields must be an object")
                 }
-                if fields.keys.len() > limits.max_items {
-                    return refuse("a submit payload with more than {limits.max_items} fields")
-                }
+                // How many fields a form may post is `limits.max_items`, and
+                // the READER is where that is enforced: it refuses any object
+                // with more than max_items members, and this function is
+                // handed the same limits `parse_json` just used. A second cap
+                // here would be a refusal no input can reach — RULES.md, "the
+                // refusal that never runs" — so there is one cap and one
+                // message. tests/wire.b § 2.19-2.21 pin it at both sides.
                 var index: int = 0
                 for index < fields.keys.len() {
                     let name: string = fields.keys[index]
