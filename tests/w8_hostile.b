@@ -154,6 +154,7 @@ pub class Family {
     /// one of them the place a hostile field would actually land — were never
     /// reached by a single one of nine thousand shapes. The corpus was large
     /// and it was testing the decoder twice.
+    pub attached_fed: int = 0
     pub attached_ended: int = 0
     pub attached_survived: int = 0
     /// A live circuit that was still attached after the shape, and one that
@@ -224,10 +225,22 @@ fn feed(c: Corpus, family: Family, text: string, limits: WireLimits) {
     }
     for frame: string in fresh.take_outbox() { c.frames.add(frame_kind(frame)) }
 
+    // The attached leg runs only on a shape the DECODER let through, and that
+    // is a statement about `Circuit.accept` rather than a saving:
+    //
+    //     if message.fault != "" { self.stop("protocol", message.fault); return }
+    //
+    // comes before `dispatch`, so a shape the decoder refused reaches no
+    // handler and the two states cannot tell it apart. Feeding all nine
+    // thousand to a second circuit mounts nine thousand pages to re-prove
+    // that. `section_refusal_comes_first` in `main` asserts the property it
+    // rests on, with named cases and a control, instead.
+    if message.fault != "" { return }
     let live: Circuit = blank_circuit(limits)
     live.open(0)
     live.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
     let _2: List<string> = live.take_outbox()
+    family.attached_fed += 1
     live.accept(text, 2)
     if live.ending() {
         family.attached_ended += 1
@@ -614,35 +627,89 @@ fn audit(r: Report, family: Family) {
     r.eqi("hostile.{family.name}.no-shape-decoded-into-limbo", family.limbo, 0)
     // No fault carried a byte off the wire, or grew past the bound.
     r.eqi("hostile.{family.name}.no-fault-is-loud", family.loud, 0)
-    // Every shape reached a circuit and the circuit answered, in both states.
+    // Every shape reached a fresh circuit and it answered.
     r.eqi("hostile.{family.name}.every-fresh-circuit-answered",
           family.ended + family.survived, family.generated)
+    // And every shape that got past the decoder reached an ATTACHED one — the
+    // state where `on_event`, `on_ack`, `on_nav`, `on_js` and `on_range` are
+    // the code that runs. A family whose accepted count is zero fed the second
+    // leg nothing, and this check says so out loud rather than reading as a
+    // clean run.
+    r.eqi("hostile.{family.name}.every-decoded-shape-reached-an-attached-circuit",
+          family.attached_fed, family.accepted)
     r.eqi("hostile.{family.name}.every-attached-circuit-answered",
-          family.attached_ended + family.attached_survived, family.generated)
+          family.attached_ended + family.attached_survived, family.attached_fed)
     // A live circuit that survived a hostile shape is still attached. Losing
     // the attachment without ending would leave a mounted page nobody can
     // drive and no `bye` on the wire to say why.
     r.eqi("hostile.{family.name}.no-shape-silently-un-attached-a-live-circuit",
           family.attached_lost, 0)
-    // The attached leg is doing real work exactly where it can, and this is an
-    // IF AND ONLY IF rather than "they differ".
-    //
-    // A family every one of whose shapes the decoder refused cannot tell the
-    // two states apart: `accept` stops at `message.fault != ""` and no handler
-    // runs. Those families MUST answer identically, and a difference there
-    // would mean the refusal is not the first thing that happens. A family
-    // with an accepted shape must differ, or the second leg was free.
-    let decoded: bool = family.accepted > 0
-    let differed: bool = family.attached_ended != family.ended ||
-                         family.attached_survived != family.survived
-    r.eq("hostile.{family.name}.the-two-circuit-states-differ-iff-a-shape-decoded",
-         "{differed}", "{decoded}")
+}
+
+/// The property the corpus's second leg rests on, asserted rather than assumed.
+///
+/// `Circuit.accept` refuses a message the decoder faulted BEFORE it dispatches,
+/// so a shape the decoder refused reaches no handler and an attached circuit
+/// answers it exactly as a fresh one does. That is why the corpus feeds the
+/// attached leg only the shapes that decoded — and a claim used to skip nearly
+/// eight thousand runs has to be a case, with the fault text spelled out and a
+/// control that DOES reach a handler beside it.
+fn section_refusal_comes_first(r: Report) {
+    let limits: WireLimits = new WireLimits()
+    var refused: List<string> = []
+    refused.push("")
+    refused.push("\{")
+    refused.push("\{\"t\":\"ev\",\"h\":0,\"k\":\"click\"\}")
+    refused.push("\{\"t\":\"ack\"\}")
+    refused.push("\{\"t\":\"nope\"\}")
+    refused.push("[1,2,3]")
+    refused.push("\{\"t\":\"ack\",\"b\":1,\"n\":-1\}")
+    refused.push("\{\"t\":\"range\",\"h\":1,\"s\":-1,\"c\":1\}")
+
+    var index: int = 0
+    for index < refused.len() {
+        let text: string = refused[index]
+        let fresh: Circuit = blank_circuit(limits)
+        fresh.open(0)
+        let _: List<string> = fresh.take_outbox()
+        fresh.accept(text, 1)
+
+        let live: Circuit = blank_circuit(limits)
+        live.open(0)
+        live.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
+        let _2: List<string> = live.take_outbox()
+        live.accept(text, 2)
+
+        r.eq("hostile.refusal-comes-first.{index}",
+             "{fresh.end_reason()}/{live.end_reason()}", "protocol/protocol")
+        r.eq("hostile.refusal-comes-first.{index}-same-message",
+             fresh.take_outbox().join(" "), live.take_outbox().join(" "))
+        index += 1
+    }
+
+    // The control: a message the decoder ACCEPTS is answered differently by the
+    // two states, so the pairs above are equal because the refusal came first
+    // and not because the two circuits are the same circuit.
+    let click: string = "\{\"t\":\"ack\",\"b\":0\}"
+    let fresh: Circuit = blank_circuit(limits)
+    fresh.open(0)
+    let _3: List<string> = fresh.take_outbox()
+    fresh.accept(click, 1)
+    let live: Circuit = blank_circuit(limits)
+    live.open(0)
+    live.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
+    let _4: List<string> = live.take_outbox()
+    live.accept(click, 2)
+    r.eq("hostile.control-an-accepted-message-is-answered-differently",
+         "{fresh.end_reason()}/{live.end_reason()}", "protocol/")
 }
 
 fn main() {
     var r: Report = new Report()
     var c: Corpus = new Corpus()
     let limits: WireLimits = new WireLimits()
+
+    section_refusal_comes_first(r)
 
     // The size family alone builds several 64 KB strings, so it gets a smaller
     // WireLimits: the caps are what is under test, not the machine.
