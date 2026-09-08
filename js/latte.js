@@ -437,6 +437,9 @@
             (typeof document !== 'undefined' ? document : null);
         // Where component 0's children live. Everything below it is latte's.
         this.host = options.host || null;
+        // Whether the host has been taken over from whatever was in it. See
+        // `claim`, which is the whole of PLAN.md D5 on this side.
+        this.claimed = false;
         this.roots = new Map();
         this.faults = [];
         // element -> logical node, so a delegated listener can walk up from
@@ -451,6 +454,59 @@
     };
 
     // ---- the DOM seam ------------------------------------------------------
+
+    // Take the host over, once, before the first batch is applied.
+    //
+    // PLAN.md D5 is "replace on attach for v1", and this is the whole of it on
+    // this side. `shell.b` SERVER-RENDERS the page into the root element, so a
+    // browser paints it and a reader with no JavaScript still has a page; the
+    // first batch then carries that same page again as frames. Every node in
+    // this batch is a node this applier builds itself and inserts into the
+    // host, and `anchorFor` answers null at the root, so without this the
+    // client's copy is APPENDED and the document ends up holding both.
+    //
+    // Two copies is not a cosmetic fault, and this is the reason the removal
+    // is here rather than anywhere later:
+    //
+    //   * `nodes` is a WeakMap filled as `build` creates elements, and the
+    //     delegated listener in `Circuit.dispatch` walks up from
+    //     `event.target` into it to find the binds. The copy a user sees and
+    //     clicks is the SERVER's, which this applier did not create, so it is
+    //     in no entry, carries no binds, and the click sends nothing. The
+    //     batch is correct, the binds are correct, the page is simply inert —
+    //     and nothing on either end reports a thing.
+    //   * An id in the prerender is an id in the document twice, so
+    //     `getElementById` and every `#id` selector on the page answer the
+    //     dead copy.
+    //
+    // Adopting the prerendered DOM instead of rebuilding it is the other
+    // answer to the same question, and PLAN.md D5 weighs the two and takes
+    // this one: hydration by adoption is listed under "Not in v1". Replacing
+    // is what the batch already supports, with no second code path that has to
+    // agree with the first about what the server rendered.
+    //
+    // NOT in `shell.b`. A shell that served an empty root would make this
+    // impossible to get wrong, and would also throw away first paint, the
+    // no-JavaScript render and everything a crawler sees — the prerender is
+    // the point of a server-rendered framework, not an accident. The client is
+    // the end that is wrong, so the client is where it is fixed.
+    //
+    // EXACTLY ONCE, and before the first batch rather than on every one. A
+    // reconnect replays batches into this same applier (`Circuit.onHello`
+    // sends `resume` whenever `attached`), and by then every node in the host
+    // is one this applier built and still holds in `roots`. Clearing a second
+    // time would throw the live page away and leave `roots` pointing at nodes
+    // that are no longer in the document.
+    Applier.prototype.claim = function () {
+        if (this.claimed) { return; }
+        this.claimed = true;
+        var host = this.host;
+        if (!host) { return; }
+        // `removeChild` in a loop rather than `innerHTML = ''`: it is what the
+        // rest of this file does (`detach`), it needs no HTML parser, and it
+        // works on a host that is a DocumentFragment.
+        while (host.firstChild) { host.removeChild(host.firstChild); }
+    };
 
     // The nearest element at or above `node`, which is where `node`'s DOM
     // contribution lives. Component 0's root has no parent and answers the
@@ -823,6 +879,12 @@
     };
 
     Applier.prototype.apply = function (batch) {
+        // Before the first edit and not at the first insert into the host:
+        // "replace on attach" has to hold for a page whose first batch inserts
+        // nothing at the root as well, and a claim hung off the first
+        // insertion would leave that page showing the server's markup with
+        // nobody owning it. A batch arriving at all is the attach.
+        this.claim();
         var frames = (batch && batch.r) ? batch.r : [];
         var updates = (batch && batch.u) ? batch.u : [];
         var disposed = (batch && batch.d) ? batch.d : [];
