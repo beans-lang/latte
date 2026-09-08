@@ -82,12 +82,42 @@ fi
 asan_detect_leaks=1
 [[ "$(uname -s)" == Darwin ]] && asan_detect_leaks=0
 
-# The suites gate 11 names, plus the two live ones. `circuit_live` and
-# `w7_live` are the only programs in this repo that open a real socket, brew
-# fibers around it, run an OS thread beside it and tear all of it down, and
-# they are the only place the net, websocket and zlib bridges are reached at
-# all — so they are the whole reason this script builds through the driver.
-SUITES=(circuit circuit_live w7_live components w6_upload)
+# The suites gate 11 names, plus the live ones. `circuit_live`, `w7_live` and
+# `w4_upgrade` are the only programs in this repo that open a real socket,
+# brew fibers around it, run an OS thread beside it and tear all of it down,
+# and they are the only place the net, websocket and zlib bridges are reached
+# at all — so they are the whole reason this script builds through the driver.
+# `w4_upgrade` joined them on main: it is the only one that drives handshakes
+# the endpoint REFUSES, which takes a `net.TcpStream`, writes a response by
+# hand and drops it without a framer ever owning it.
+SUITES=(circuit circuit_live w7_live components w6_upload w4_upgrade)
+
+# Everything gated that this sweep does NOT instrument, by test.sh's own rule
+# for what a suite is. Unlike the leaks sweep, this list is deliberately small
+# — an instrumented build and run costs 20-40x a plain one, and while
+# BLOCKERS.md B15 stands the extra suites would only re-exercise `beans_rt.c`,
+# which these six already cover. But "deliberately small" and "silently stale"
+# print the same summary, so the names are listed once at the end of a run and
+# counted in the summary line. A suite added after this list was written then
+# appears there instead of nowhere.
+gated_suites() {
+    local case name
+    for case in "$ROOT"/tests/*.b; do
+        name=$(basename "$case" .b)
+        case "$name" in _*|probe*) continue ;; esac
+        [[ -f "$ROOT/tests/$name.out" ]] || continue
+        printf '%s\n' "$name"
+    done
+}
+
+uninstrumented() {
+    local name done_it
+    while IFS= read -r name; do
+        done_it=0
+        for s in "${SUITES[@]}"; do [[ "$s" == "$name" ]] && done_it=1; done
+        [[ $done_it -eq 0 ]] && printf '%s\n' "$name"
+    done < <(gated_suites)
+}
 
 do_asan=1
 do_tsan=1
@@ -364,4 +394,17 @@ if [[ $failed -ne 0 ]]; then
 fi
 note=""
 [[ $skipped -gt 0 ]] && note=" — $skipped control(s) SKIPPED, read the SKIP lines above"
+if [[ -z "$only" ]]; then
+    outside=$(uninstrumented)
+    outside_count=$(printf '%s' "$outside" | grep -c . || true)
+    if [[ $outside_count -gt 0 ]]; then
+        echo "NOT INSTRUMENTED by w8b-sanitize — $outside_count gated suite(s):"
+        echo "   $(printf '%s ' $outside)"
+        echo "   A chosen subset, not an oversight: an instrumented run costs 20-40x a"
+        echo "   plain one and, while BLOCKERS.md B15 stands, these would only re-cover"
+        echo "   beans_rt.c. Printed so that a suite added later is visible here rather"
+        echo "   than absent from a summary that looks complete."
+        note="$note — $outside_count gated suite(s) NOT instrumented, named above"
+    fi
+fi
 echo "ok w8b-sanitize — $ran instrumented run(s), every one clean and byte-identical to its golden${note}"

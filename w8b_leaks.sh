@@ -83,10 +83,53 @@ SUITES=(
     w6_virtual       # a window scrolled to the end and back, rows in and out
     pages            # the routing and mount path, and every refusal on it
     w4_forms         # binding, validation and the antiforgery refusals
+    # Landed on main after this sweep was first written. Each one is here for
+    # the same reason as the lines above it and not because it is new.
+    w4_upgrade       # handshakes REFUSED on the socket path — a stream taken,
+                     # answered and dropped without ever becoming a circuit,
+                     # which is the one socket path circuit_live never walks
+    w8_threats       # every refusal in the repo, driven at once
+    w8_hostile       # thousands of generated hostile shapes through the
+                     # markup and attribute path
 )
+
+# Every gated suite, by test.sh's own definition: tests/*.b, no leading "_",
+# no leading "probe", and a golden beside it.
+#
+# **This exists because a hand-written list can only fail in one direction.**
+# A renamed or deleted suite is caught below — a missing tests/<name>.b is a
+# hard FAILURE, deliberately, so the layout moving is loud. A suite that is
+# ADDED is the direction the list cannot see: it simply is not swept, nothing
+# says so, and the summary looks exactly like a full sweep. Three suites sat
+# outside this sweep that way between one lane and the next. So the names not
+# in SUITES are printed at the end of every run, with the count in the summary
+# line, and adding one here is then a decision somebody made rather than an
+# omission nobody could see.
+gated_suites() {
+    local case name
+    for case in "$ROOT"/tests/*.b; do
+        name=$(basename "$case" .b)
+        case "$name" in _*|probe*) continue ;; esac
+        [[ -f "$ROOT/tests/$name.out" ]] || continue
+        printf '%s\n' "$name"
+    done
+}
+
+unswept() {
+    local name swept
+    while IFS= read -r name; do
+        swept=0
+        for s in "${SUITES[@]}"; do [[ "$s" == "$name" ]] && swept=1; done
+        [[ $swept -eq 0 ]] && printf '%s\n' "$name"
+    done < <(gated_suites)
+}
 
 if [[ ${1:-} == "--list" ]]; then
     printf '%s\n' "${SUITES[@]}"
+    exit 0
+fi
+if [[ ${1:-} == "--unswept" ]]; then
+    unswept
     exit 0
 fi
 only=${1:-}
@@ -245,4 +288,16 @@ if [[ $failed -ne 0 ]]; then
     echo "w8b-leaks: FAILED" >&2
     exit 1
 fi
-echo "ok w8b-leaks — $ran suite(s), $total_bytes total leaked bytes, every one reported by the tool"
+# The other direction of rule 5, printed whether or not anything failed.
+missing=$(unswept)
+missing_count=$(printf '%s' "$missing" | grep -c . || true)
+note=""
+if [[ $missing_count -gt 0 ]]; then
+    echo "NOT SWEPT by w8b-leaks — $missing_count gated suite(s) run under no leak check at all:"
+    echo "   $(printf '%s ' $missing)"
+    echo "   Nothing is wrong with that by itself; the sweep is a chosen list. It is"
+    echo "   printed because a suite added after this list was written is invisible to"
+    echo "   it, and a summary that did not say so would read like a full sweep."
+    note=" — $missing_count gated suite(s) NOT swept, named above"
+fi
+echo "ok w8b-leaks — $ran suite(s), $total_bytes total leaked bytes, every one reported by the tool${note}"
