@@ -393,4 +393,84 @@ ok and an idle tab that only acks never stalls
 ok a seen ahead of everything retires the lot
 ok and leaves no timer behind
 
-380 checks, 0 bad
+=== 6. streaming: every byte split, through the real HTML parser
+slot ids compared: 20
+ok every slot id gets the same answer from both halves
+ok the longest slot id is the same number on both sides
+documents: 8, splits run: 4397
+ok every split lands on the document assemble_chunks describes
+ok and raises exactly the faults assemble_chunks raises
+ok an unsealed chunk lands nothing
+ok and raises no fault, because more bytes could still be coming
+ok the placeholder is still on the page
+ok and the chunk is still beside it, whole
+ok the same bytes with a seal after them land the chunk
+ok and the placeholder is gone
+ok and the wrapper with it
+ok leaving the content where the hole was
+ok a second sweep lands nothing
+ok and changes nothing
+
+=== 7. virtual lists: the geometry mirror and the scroll reporter
+ok the window cap latte.js holds is the one circuit.b enforces
+ok and the one virtual.b trims to
+scroll positions compared: 785
+ok every one lands on the window VirtualGeometry lays out
+ok by hand: 320px, 100px viewport
+ok by hand: one pixel earlier crosses a row boundary
+ok by hand: the top of the list
+ok by hand: a viewport taller than the cap allows
+ok the box is exactly as tall as it was told to be
+ok and it really scrolled
+ok a scroll sends nothing until the frame comes
+ok and four scrolls schedule one frame, not four
+ok one range goes out, with the count on c and the sequence on n
+ok four scrolls, one message
+ok the same window again sends nothing
+ok a window that moved does send
+ok the second list reports under its own id
+ok and the first, which did not move, says nothing
+ok a viewport that wants thousands of rows asks for the cap
+ok which is not more than circuit.b would accept
+ok an element whose id is not a number reports nothing
+ok and with a number on it, it does
+ok the window at the bottom of a 50-row list
+ok the same scroll position in a 500-row list is a different window
+ok a batch that moved no window sends no range
+
+=== 8. uploads: the POST, and progress clamped as UploadProgress clamps it
+progress pairs compared: 24
+ok every pair clamps to what UploadProgress clamps it to
+ok two files inside the limits post
+ok one request went out
+ok as a POST
+ok to the action the control names
+ok carrying both parts under the input's name
+ok with the submitted filenames on them
+ok and nothing was refused
+ok a control with no action posts to the page itself
+ok the reports that changed something
+ok and the percentage at the end
+ok an unknown length is 0 of 0
+ok which is nought per cent, not a hundred
+ok the request finishing marks it done
+ok and hands the status on
+ok a file over the advertised limit does not post
+ok and no request went out
+ok and it says which file and by how much
+ok more files than the control takes does not post
+ok and says how many were offered and how many came
+ok one bad file refuses the whole set
+ok and nothing was posted
+ok exactly at both limits posts
+ok and the request carries both
+ok a control with no file input posts nothing
+ok and says so
+ok start() attaches an observer
+ok the observer landed the chunk with nobody sweeping
+ok and left the document assemble_chunks describes
+ok with no wrapper and no placeholder left
+ok a stopped observer lands nothing
+ok and the second chunk is still in its wrapper
+
+450 checks, 0 bad
