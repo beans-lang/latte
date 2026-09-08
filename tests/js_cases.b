@@ -29,8 +29,10 @@ package main
 
 import std.io
 import std.fmt
-import {Applier, Batch, Builder, Component, ErrorBoundary, InputEvent,
-        MouseEvent, Renderer, encode_batch, write_json_string} from latte
+import {Applier, Batch, Builder, Component, ComponentUpdate, Edit,
+        ErrorBoundary, Frame, Frames, InputEvent, MouseEvent, Renderer,
+        encode_batch, event_captures, event_names, nav_target_is_local,
+        write_json_string} from latte
 
 // ============================================================== components
 //
@@ -446,6 +448,147 @@ fn case_hollow() -> Case {
     return kase
 }
 
+// ============================================================== malformed
+//
+// The eleven malformed-edit shapes `apply.b` already reports, built by hand in
+// Beans, run through the Beans applier, and emitted with the fault text IT
+// produced. So the browser half is compared against the Beans half rather than
+// against strings someone typed twice — the one way two implementations of one
+// sentence stay in step.
+//
+// The KIND rules are not here. `apply.b` does not implement them yet (the
+// contract is in lanes/W5.md and W1 owns the Beans half), so it has no
+// expectation to emit; those cases live in `tests/js_apply.js` with the
+// contract's text beside them. When the Beans half lands, move them here and
+// the transcription goes away.
+
+/// One child of every kind, laid end to end so a probe can address any of them
+/// by index: 0 element, 1 text, 2 markup, 3 region, 4 fragment, 5 boundary,
+/// 6 mount.
+fn base_frames() -> Frames {
+    let out: Frames = new Frames()
+    out.push(Frame.open(0, "div"))          // 0
+    out.push(Frame.attribute(1, "id", "e")) // 1
+    out.push(Frame.text(2, "inside"))       // 2
+    out.push(Frame.close)                   // 3
+    out.push(Frame.text(3, "plain"))        // 4
+    out.push(Frame.raw(4, "<b>raw</b>"))    // 5
+    out.push(Frame.region_open(5, "k"))     // 6
+    out.push(Frame.text(0, "row"))          // 7
+    out.push(Frame.region_close)            // 8
+    out.push(Frame.fragment_open(6))        // 9
+    out.push(Frame.text(0, "frag"))         // 10
+    out.push(Frame.fragment_close)          // 11
+    out.push(Frame.boundary_open(7, false)) // 12
+    out.push(Frame.text(0, "guard"))        // 13
+    out.push(Frame.boundary_close)          // 14
+    out.push(Frame.child(8, "Kid", 7))      // 15
+    return out
+}
+
+fn hand(component: int) -> Batch {
+    let out: Batch = new Batch()
+    out.reference = base_frames()
+    out.updates.push(new ComponentUpdate(component))
+    return out
+}
+
+fn base_batch() -> Batch {
+    let out: Batch = hand(0)
+    out.updates[0].edits.push(Edit.insert(0, 0))
+    out.updates[0].edits.push(Edit.insert(1, 4))
+    out.updates[0].edits.push(Edit.insert(2, 5))
+    out.updates[0].edits.push(Edit.insert(3, 6))
+    out.updates[0].edits.push(Edit.insert(4, 9))
+    out.updates[0].edits.push(Edit.insert(5, 12))
+    out.updates[0].edits.push(Edit.insert(6, 15))
+    return out
+}
+
+fn record_hand(kase: Case, applier: Applier, batch: Batch, number: int) {
+    let step: Step = new Step()
+    step.batch = encode_batch(number, batch)
+    applier.apply(batch)
+    step.html = applier.html()
+    step.applied = applier.html()
+    step.dump = applier.dump()
+    for fault: string in applier.faults { step.faults.push(fault) }
+    for fault: string in applier.serializer_faults { step.faults.push(fault) }
+    kase.steps.push(step)
+}
+
+/// One probe: the base tree, then whatever `fill` asks for. A fresh applier per
+/// probe, so no probe can pass because of what another left behind.
+fn probe(name: string, fill: fn(Batch)) -> Case {
+    let kase: Case = new Case(name)
+    let applier: Applier = new Applier()
+    record_hand(kase, applier, base_batch(), 1)
+    let batch: Batch = hand(0)
+    fill(batch)
+    record_hand(kase, applier, batch, 2)
+    return kase
+}
+
+fn malformed_cases(cases: List<Case>) {
+    cases.push(probe("bad-step-in", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.step_in(99))
+        b.updates[0].edits.push(Edit.step_out)
+    }))
+    cases.push(probe("bad-insert-index", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.insert(99, 4))
+    }))
+    cases.push(probe("bad-remove-index", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.remove(99))
+    }))
+    cases.push(probe("bad-move-from", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.relocate(99, 0))
+    }))
+    cases.push(probe("bad-move-to", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.relocate(0, 99))
+    }))
+    cases.push(probe("no-attribute-to-remove", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.step_in(0))
+        b.updates[0].edits.push(Edit.remove_attr(77, "nope"))
+        b.updates[0].edits.push(Edit.step_out)
+    }))
+    cases.push(probe("no-handler-to-remove", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.step_in(0))
+        b.updates[0].edits.push(Edit.remove_handler(77, "click"))
+        b.updates[0].edits.push(Edit.step_out)
+    }))
+    cases.push(probe("step-out-at-the-root", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.step_out)
+    }))
+    cases.push(probe("no-staged-subtree", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.insert(0, 999))
+    }))
+    cases.push(probe("update-before-its-mount", fn(b: Batch) {
+        b.updates.push(new ComponentUpdate(42))
+        b.updates[1].edits.push(Edit.set_text(0, "nowhere"))
+    }))
+    cases.push(probe("ended-one-level-deep", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.step_in(0))
+    }))
+    // Two positive controls, so "refused" can be told from "refused earlier,
+    // for a different reason" (RULES.md, "the refusal that never runs").
+    cases.push(probe("control-good-edits", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.step_in(0))
+        b.updates[0].edits.push(Edit.set_attr(5, "class", "on"))
+        b.updates[0].edits.push(Edit.set_handler(6, "click", 11))
+        b.updates[0].edits.push(Edit.step_out)
+        b.updates[0].edits.push(Edit.set_text(1, "changed"))
+        b.updates[0].edits.push(Edit.set_markup(2, "<i>swapped</i>"))
+    }))
+    cases.push(probe("control-list-edits", fn(b: Batch) {
+        b.updates[0].edits.push(Edit.step_in(3))
+        b.updates[0].edits.push(Edit.insert(1, 4))
+        b.updates[0].edits.push(Edit.relocate(1, 0))
+        b.updates[0].edits.push(Edit.step_out)
+        b.updates[0].edits.push(Edit.remove(6))
+        b.updates[0].edits.push(Edit.relocate(0, 5))
+    }))
+}
+
 // ============================================================== emitting
 
 fn emit_faults(out: fmt.StringBuilder, faults: List<string>) {
@@ -496,11 +639,79 @@ fn emit(cases: List<Case>) -> string {
     return out.to_string()
 }
 
+/// The hostile and the ordinary navigation targets, with what `circuit.b`
+/// answers for each. `latte.js` reimplements the rule — a client that trusts a
+/// frame it can check for itself is a client one compromised server turns into
+/// an open redirect — so the two copies are compared rather than assumed.
+fn nav_probes() -> List<string> {
+    var out: List<string> = []
+    out.push("/")
+    out.push("/a/b")
+    out.push("/a?b=c")
+    out.push("/a#frag")
+    out.push("/a b")
+    out.push("/...")
+    out.push("/a/..b")
+    out.push("//evil.example/x")
+    out.push("/\\evil.example/x")
+    out.push("http://evil.example/")
+    out.push("javascript:alert(1)")
+    out.push("")
+    out.push("a/b")
+    out.push("/a/../b")
+    out.push("/a/..")
+    out.push("/..")
+    out.push("/?x=/../y")
+    out.push("/a%2f..%2fb")
+    out.push("/caf\u{e9}/x")
+    return move out
+}
+
+fn emit_tables(out: fmt.StringBuilder) {
+    out.push("var LATTE_EVENTS = \{\"names\":[")
+    var names: List<string> = event_names()
+    var index: int = 0
+    for index < names.len() {
+        if index > 0 { out.push(",") }
+        write_json_string(out, names[index])
+        index += 1
+    }
+    out.push("],\"captures\":[")
+    index = 0
+    var wrote: int = 0
+    for index < names.len() {
+        if event_captures(names[index]) {
+            if wrote > 0 { out.push(",") }
+            write_json_string(out, names[index])
+            wrote += 1
+        }
+        index += 1
+    }
+    out.push("]\};\n")
+
+    out.push("var LATTE_NAV = [")
+    var probes: List<string> = nav_probes()
+    index = 0
+    for index < probes.len() {
+        if index > 0 { out.push(",") }
+        out.push("[")
+        write_json_string(out, probes[index])
+        if nav_target_is_local(probes[index]) { out.push(",true]") }
+        else { out.push(",false]") }
+        index += 1
+    }
+    out.push("];\n")
+}
+
 fn main() {
     var cases: List<Case> = []
     cases.push(case_page())
     cases.push(case_keyed())
     cases.push(case_boundary())
     cases.push(case_hollow())
+    malformed_cases(cases)
+    var out: fmt.StringBuilder = new fmt.StringBuilder()
+    emit_tables(out)
+    io.print(out.to_string())
     io.print(emit(cases))
 }
