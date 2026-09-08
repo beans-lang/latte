@@ -1049,8 +1049,7 @@ fn row8_circuit_id(r: Report) {
 // | first HTTP request. Blazor's best-known pitfall. |
 
 fn row9_authorization(r: Report) {
-    r.uncovered(9, "authorization outliving its token",
-        "PLAN.md says auth is revalidated on an interval; Circuit.tick does not revalidate anything, so the interval clause has no case here")
+    r.row(9, "authorization outliving its token")
 
     let pages: PageMap = scan_pages()
     r.eq("row9.the-page-scan-refused-nothing", pages.report(), "")
@@ -1162,34 +1161,135 @@ fn row9_authorization(r: Report) {
     c2.accept("\{\"t\":\"nav\",\"u\":\"/w8/private\"\}", 2)
     r.no("row9.control-navigation-with-the-role-still-held", c2.ending())
 
-    // The interval clause, which latte does not have. `tick` past the poll
-    // interval must re-check and does not: this check FAILS, and it is meant
-    // to. A row that landed on a missing control and said "not covered" in a
-    // green run would be the hole this file exists to find.
+    // ---- the interval clause ---------------------------------------------
+    //
+    // "Auth is revalidated on an interval." A circuit that is neither mounting
+    // nor navigating can run for as long as its socket lives, so without this
+    // a session that expired an hour ago is still driving a page. Every check
+    // below reads `asked.count`: the page factory is the ONE place latte
+    // spells page authorization, so a re-ask is what "revalidated" means here,
+    // and counting the calls is what tells a re-ask apart from a cached yes.
+
     var ledger3: Ledger = new Ledger()
     ledger3.role = "staff"
     var asked: Ledger = new Ledger()
-    asked.count = 0
-    let c3: Circuit = new Circuit("ffffffffffffffffffff", new CircuitOptions(),
+    let c3: Circuit = watched_circuit(pages2, ledger3, asked, new CircuitOptions())
+    c3.open(0)
+    c3.accept("\{\"t\":\"attach\",\"c\":\"ffffffffffffffffffff\",\"u\":\"/w8/private\"\}", 1)
+    let asked_at_mount: int = asked.count
+    let _5: List<string> = c3.take_outbox()
+
+    // The role is revoked and nothing tells the circuit. Two ticks INSIDE the
+    // interval must not re-ask — an interval that fires on every tick would
+    // be a page rebuild per tick, and this is the check that says it is an
+    // interval and not "always".
+    ledger3.role = "guest"
+    let _6: bool = c3.tick(2)
+    let _7: bool = c3.tick(1000)
+    r.eqi("row9.a-tick-inside-the-interval-does-not-re-ask",
+          asked.count - asked_at_mount, 0)
+    r.no("row9.a-tick-inside-the-interval-does-not-end", c3.ending())
+
+    // One tick past it does, exactly once.
+    let _8: bool = c3.tick(60000)
+    r.eqi("row9.a-tick-revalidates-authorization", asked.count - asked_at_mount, 1)
+    r.yes("row9.a-lapsed-authorization-ends-the-circuit", c3.ending())
+    r.eq("row9.a-lapsed-authorization-sends-a-bye", c3.take_outbox().join(" "),
+         "\{\"t\":\"bye\",\"k\":\"forbidden\",\"m\":\"the authorization this circuit opened with no longer holds\"\}")
+
+    // The control, differing only in whether the role was revoked. Without it,
+    // a `tick` that ended every circuit past 30 s would pass every check above
+    // — and `asked.count` proves the control did not pass by skipping the
+    // check, which is the other way a green control lies.
+    var ledger4: Ledger = new Ledger()
+    ledger4.role = "staff"
+    var asked4: Ledger = new Ledger()
+    let c4: Circuit = watched_circuit(pages2, ledger4, asked4, new CircuitOptions())
+    c4.open(0)
+    c4.accept("\{\"t\":\"attach\",\"c\":\"ffffffffffffffffffff\",\"u\":\"/w8/private\"\}", 1)
+    let asked4_at_mount: int = asked4.count
+    let _9: List<string> = c4.take_outbox()
+    let _10: bool = c4.tick(60000)
+    r.eqi("row9.control-the-held-role-is-re-asked-too",
+          asked4.count - asked4_at_mount, 1)
+    r.no("row9.control-the-held-role-keeps-the-circuit", c4.ending())
+    r.eq("row9.control-the-held-role-sends-nothing", c4.take_outbox().join(" "), "")
+
+    // The interval is the option, not a constant. Same revocation, same tick
+    // times, a shorter `revalidate_ms`: the tick at 1000 now re-asks, which
+    // the identical tick above did not.
+    var ledger5: Ledger = new Ledger()
+    ledger5.role = "staff"
+    var asked5: Ledger = new Ledger()
+    var brisk: CircuitOptions = new CircuitOptions()
+    brisk.revalidate_ms = 500
+    let c5: Circuit = watched_circuit(pages2, ledger5, asked5, brisk)
+    c5.open(0)
+    c5.accept("\{\"t\":\"attach\",\"c\":\"ffffffffffffffffffff\",\"u\":\"/w8/private\"\}", 1)
+    let _11: List<string> = c5.take_outbox()
+    ledger5.role = "guest"
+    let _12: bool = c5.tick(2)
+    r.no("row9.the-interval-is-the-option-not-a-constant", c5.ending())
+    let _13: bool = c5.tick(1000)
+    r.yes("row9.a-shorter-interval-catches-it-sooner", c5.ending())
+
+    // A NAVIGATION re-establishes it. `on_nav` runs the factory, so the clock
+    // must restart there: a page opened at 0 and navigated at 29,900 must not
+    // be revalidated 100 ms later. Without this the interval would be measured
+    // from the attach forever and a busy circuit would re-ask far too often.
+    var ledger6: Ledger = new Ledger()
+    ledger6.role = "staff"
+    var asked6: Ledger = new Ledger()
+    let c6: Circuit = watched_circuit(pages2, ledger6, asked6, new CircuitOptions())
+    c6.open(0)
+    c6.accept("\{\"t\":\"attach\",\"c\":\"ffffffffffffffffffff\",\"u\":\"/w8/private\"\}", 1)
+    c6.accept("\{\"t\":\"nav\",\"u\":\"/w8/private\"\}", 29900)
+    let asked6_after_nav: int = asked6.count
+    let _14: List<string> = c6.take_outbox()
+    let _15: bool = c6.tick(30000)
+    r.eqi("row9.a-navigation-restarts-the-interval",
+          asked6.count - asked6_after_nav, 0)
+    // and the clock runs from the navigation, not from nothing.
+    let _16: bool = c6.tick(59901)
+    r.eqi("row9.control-the-interval-still-fires-after-a-navigation",
+          asked6.count - asked6_after_nav, 1)
+
+    // A circuit that never attached has no page to be authorized for, and
+    // asking would call the factory with the empty url. Ticking one past the
+    // interval must ask nothing and end nothing.
+    var ledger7: Ledger = new Ledger()
+    ledger7.role = "staff"
+    var asked7: Ledger = new Ledger()
+    let c7: Circuit = watched_circuit(pages2, ledger7, asked7, new CircuitOptions())
+    c7.open(0)
+    let _17: bool = c7.tick(60000)
+    r.eqi("row9.an-unattached-circuit-is-not-revalidated", asked7.count, 0)
+    r.no("row9.an-unattached-circuit-is-not-ended-by-it", c7.ending())
+}
+
+/// A circuit whose page factory re-runs `open_page` against whatever role the
+/// ledger holds AT THE MOMENT IT IS CALLED, and counts the calls.
+///
+/// The count is the instrument. "Revalidated" means the factory ran again;
+/// a check that only looked at `ending()` could not tell a revalidation that
+/// refused from a tick that ended the circuit for some other reason, and a
+/// control that only looked at `ending()` could not tell "still authorized"
+/// from "never asked".
+fn watched_circuit(pages: PageMap, ledger: Ledger, asked: Ledger,
+                   options: CircuitOptions) -> Circuit {
+    let map: PageMap = pages
+    return new Circuit("ffffffffffffffffffff", options,
         fn(url: string) -> Option<Component> {
             asked.count += 1
-            match pages2.find("GET", url) {
+            match map.find("GET", url) {
                 none => { return none }
                 some(hit) => {
-                    let made: PageInstance = open_page(hit, new Member(true, ledger3.role), none)
+                    let made: PageInstance = open_page(hit, new Member(true, ledger.role), none)
                     if !made.ok() { return none }
                     return made.root()
                 }
             }
         })
-    c3.open(0)
-    c3.accept("\{\"t\":\"attach\",\"c\":\"ffffffffffffffffffff\",\"u\":\"/w8/private\"\}", 1)
-    let asked_at_mount: int = asked.count
-    ledger3.role = "guest"
-    let _5: bool = c3.tick(2)
-    let _6: bool = c3.tick(1000)
-    let _7: bool = c3.tick(60000)
-    r.eqi("row9.a-tick-revalidates-authorization", asked.count - asked_at_mount, 1)
 }
 
 /// A cell two closures share. A `var` captured by a closure is copied, so the

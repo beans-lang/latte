@@ -130,7 +130,6 @@ ok row8.control-the-same-session-does-adopt
 ok row8.control-the-same-session-raises-no-fault
 
 -- row 9: authorization outliving its token
-   NO CONTROL IN LATTE: PLAN.md says auth is revalidated on an interval; Circuit.tick does not revalidate anything, so the interval clause has no case here
 ok row9.the-page-scan-refused-nothing
 ok row9.the-private-page-is-in-the-map
 ok row9.anonymous-does-not-open
@@ -146,7 +145,20 @@ ok row9.control-the-attach-mounts-while-the-role-holds
 ok row9.control-the-attach-does-not-end
 ok row9.navigation-re-checks-authorization
 ok row9.control-navigation-with-the-role-still-held
+ok row9.a-tick-inside-the-interval-does-not-re-ask
+ok row9.a-tick-inside-the-interval-does-not-end
 ok row9.a-tick-revalidates-authorization
+ok row9.a-lapsed-authorization-ends-the-circuit
+ok row9.a-lapsed-authorization-sends-a-bye
+ok row9.control-the-held-role-is-re-asked-too
+ok row9.control-the-held-role-keeps-the-circuit
+ok row9.control-the-held-role-sends-nothing
+ok row9.the-interval-is-the-option-not-a-constant
+ok row9.a-shorter-interval-catches-it-sooner
+ok row9.a-navigation-restarts-the-interval
+ok row9.control-the-interval-still-fires-after-a-navigation
+ok row9.an-unattached-circuit-is-not-revalidated
+ok row9.an-unattached-circuit-is-not-ended-by-it
 
 -- row 10: mass assignment
 ok row10.the-model-is-in-the-map
@@ -309,7 +321,7 @@ row 4 XSS through a raw-text element: covered (14 checks)
 row 5 XSS through an inline handler: covered (14 checks)
 row 6 CSRF on a form post: covered (26 checks)
 row 8 circuit id theft or fixation: partial — PLAN.md says the id is rotated when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here (15 checks)
-row 9 authorization outliving its token: partial — PLAN.md says auth is revalidated on an interval; Circuit.tick does not revalidate anything, so the interval clause has no case here (16 checks)
+row 9 authorization outliving its token: covered (29 checks)
 row 10 mass assignment: covered (16 checks)
 row 11 virtual range abuse: covered (16 checks)
 row 12 upload abuse: partial — PLAN.md names a disk quota; latte's store keeps no total and std.fs cannot delete a file (BLOCKERS.md B13), so there is no quota to cross (17 checks)
@@ -320,5 +332,5 @@ row 16 open redirect and SSRF through navigation: covered (9 checks)
 row 17 information disclosure: covered (12 checks)
 row 18 clickjacking and script injection: covered (4 checks)
 
-17 rows: 13 covered, 0 covered-but-failing, 4 with a gap
-264 checks, 0 failed
+17 rows: 14 covered, 0 covered-but-failing, 3 with a gap
+277 checks, 0 failed
