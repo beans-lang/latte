@@ -33,7 +33,7 @@ import {Batch, ClientMessage, ComponentUpdate, Edit, FocusEvent, Frame, Frames,
         FAMILY_SUBMIT, JSON_ARRAY, JSON_BOOL, JSON_INT, JSON_NULL, JSON_TEXT,
         WIRE_VERSION,
         decode_client, encode_batch, encode_bye, encode_err, encode_hello,
-        encode_js, encode_nav, event_captures, event_family, event_names,
+        encode_js, encode_nav, encode_seen, event_captures, event_family, event_names,
         focus_event, input_event, json_bool, json_int, json_null, json_text,
         keyboard_event, mouse_event, parse_json, submit_event,
         write_json_string} from latte
@@ -134,13 +134,22 @@ fn family_word(family: int) -> string {
 fn told(text: string, limits: WireLimits) -> string {
     let m: ClientMessage = decode_client(text, limits)
     if m.fault != "" { return "REFUSED {m.fault}" }
+    // The sequence is printed only when the client asked for a fence, so every
+    // row written before `n` existed still reads the same. That is deliberate:
+    // a golden that shifted on every line would have hidden which rows this
+    // change actually touched.
+    if m.sequence > 0 { return "{told_body(m)} seq={m.sequence}" }
+    return told_body(m)
+}
+
+fn told_body(m: ClientMessage) -> string {
     if m.kind == CLIENT_ATTACH { return "attach c={m.circuit} u={m.url}" }
     if m.kind == CLIENT_RESUME { return "resume c={m.circuit} a={m.batch}" }
     if m.kind == CLIENT_ACK { return "ack b={m.batch}" }
     if m.kind == CLIENT_NAV { return "nav u={m.url}" }
     if m.kind == CLIENT_JS { return "js i={m.call} ok={m.ok} v={m.value}" }
     if m.kind == CLIENT_RANGE {
-        return "range h={m.handler} s={m.start} n={m.count}"
+        return "range h={m.handler} s={m.start} c={m.count}"
     }
     if m.kind == CLIENT_EVENT {
         let head: string = "ev h={m.handler} k={m.event} fam={family_word(m.family)}"
@@ -611,17 +620,27 @@ fn main() {
     r.eq("9.18 js with no call id", told(r#"{"t":"js","ok":true}"#, wide),
          "REFUSED a js result carries no call id")
 
-    r.eq("9.19 range", told(r#"{"t":"range","h":4,"s":10,"n":20}"#, wide),
-         "range h=4 s=10 n=20")
-    r.eq("9.20 range from zero", told(r#"{"t":"range","h":0,"s":0,"n":0}"#, wide),
-         "range h=0 s=0 n=0")
-    r.eq("9.21 range with no region", told(r#"{"t":"range","s":0,"n":1}"#, wide),
+    // `c` is the count and `n` is NEVER the count: `n` is the message sequence
+    // on every client message. 9.23a is the positive control for that split —
+    // a range that carries BOTH, where the count and the sequence are
+    // different numbers and each has to land in its own field.
+    r.eq("9.19 range", told(r#"{"t":"range","h":4,"s":10,"c":20}"#, wide),
+         "range h=4 s=10 c=20")
+    r.eq("9.20 range from zero", told(r#"{"t":"range","h":0,"s":0,"c":0}"#, wide),
+         "range h=0 s=0 c=0")
+    r.eq("9.21 range with no region", told(r#"{"t":"range","s":0,"c":1}"#, wide),
          "REFUSED a range carries no region id")
     r.eq("9.22 range with a negative start",
-         told(r#"{"t":"range","h":1,"s":-1,"n":1}"#, wide),
+         told(r#"{"t":"range","h":1,"s":-1,"c":1}"#, wide),
          "REFUSED a range must be two non-negative numbers")
     r.eq("9.23 range with a negative count",
-         told(r#"{"t":"range","h":1,"s":0,"n":-1}"#, wide),
+         told(r#"{"t":"range","h":1,"s":0,"c":-1}"#, wide),
+         "REFUSED a range must be two non-negative numbers")
+    r.eq("9.23a range carrying a count AND a sequence",
+         told(r#"{"t":"range","h":1,"s":0,"c":7,"n":3}"#, wide),
+         "range h=1 s=0 c=7 seq=3")
+    r.eq("9.23b range with no count at all",
+         told(r#"{"t":"range","h":1,"s":0}"#, wide),
          "REFUSED a range must be two non-negative numbers")
 
     r.eq("9.24 a message with no t", told("\{\}", wide),
@@ -779,6 +798,79 @@ fn main() {
     r.yes("12.16 json_bool", json_bool(true).truth)
     r.eqi("12.17 json_int", json_int(-4).number, -4)
     r.eq("12.18 json_text", json_text("z").text, "z")
+
+    // ========================================================== § 13
+    //
+    // The message sequence and the `seen` fence — BLOCKERS.md B11.
+    //
+    // Wire v1.0 had no server frame meaning "I processed your message and it
+    // changed nothing", so a client that sent one sat in `onmessage` until its
+    // read deadline. `n` on a client message asks for a fence; `seen` is it.
+    //
+    // The refusals here need their positive control beside them (RULES.md,
+    // "The refusal that never runs"): a bad `n` is refused BEFORE the kind is
+    // looked at, so without 13.10-13.13 there would be no evidence that a good
+    // `n` still reaches every kind rather than being swallowed on the way.
+    io.println("")
+    io.println("-- 13. the message sequence, and the seen fence")
+
+    r.eq("13.1 seen", encode_seen(1), r#"{"t":"seen","n":1}"#)
+    r.eq("13.2 seen for a large sequence", encode_seen(9223372036854775807),
+         r#"{"t":"seen","n":9223372036854775807}"#)
+
+    r.eq("13.3 a message with no n asks for no fence",
+         told(r#"{"t":"ack","b":4}"#, wide), "ack b=4")
+    r.eq("13.4 n zero asks for no fence — it is the same statement as absent",
+         told(r#"{"t":"ack","b":4,"n":0}"#, wide), "ack b=4")
+
+    r.eq("13.5 a negative sequence", told(r#"{"t":"ack","b":4,"n":-1}"#, wide),
+         "REFUSED a message sequence must not be negative")
+    r.eq("13.6 a sequence that is a string",
+         told(r#"{"t":"ack","b":4,"n":"7"}"#, wide),
+         "REFUSED a message sequence must be a whole number")
+    r.eq("13.7 a sequence that is a bool",
+         told(r#"{"t":"ack","b":4,"n":true}"#, wide),
+         "REFUSED a message sequence must be a whole number")
+    r.eq("13.8 a sequence that is null",
+         told(r#"{"t":"ack","b":4,"n":null}"#, wide),
+         "REFUSED a message sequence must be a whole number")
+    r.eq("13.9 a sequence that is an object",
+         told(r#"{"t":"ack","b":4,"n":{}}"#, wide),
+         "REFUSED a message sequence must be a whole number")
+
+    // Every kind carries it. The fence rule is about MESSAGES, so a kind that
+    // could not carry a sequence would be a hole in exactly the shape B11 is.
+    r.eq("13.10 attach", told(r#"{"t":"attach","c":"abc","u":"/","n":1}"#, wide),
+         "attach c=abc u=/ seq=1")
+    r.eq("13.11 resume", told(r#"{"t":"resume","c":"abc","a":2,"n":2}"#, wide),
+         "resume c=abc a=2 seq=2")
+    r.eq("13.12 nav", told(r#"{"t":"nav","u":"/x","n":3}"#, wide),
+         "nav u=/x seq=3")
+    r.eq("13.13 js", told(r#"{"t":"js","i":1,"ok":true,"v":"","n":4}"#, wide),
+         "js i=1 ok=true v= seq=4")
+    r.eq("13.14 ev", told(r#"{"t":"ev","h":9,"k":"click","p":{"b":0,"x":1,"y":2},"n":5}"#, wide),
+         "ev h=9 k=click fam=mouse b=0 x=1 y=2 seq=5")
+
+    // The sequence is read from the ROOT and never from `p`. A form may post a
+    // field literally called "n" and it must not be mistaken for one — this is
+    // the same collision that made `range`'s count move off `n` to `c`.
+    r.eq("13.15 a form field called n is a form field, not a sequence",
+         told(r#"{"t":"ev","h":2,"k":"submit","p":{"f":{"n":"-3","q":"x"}},"n":6}"#, wide),
+         "ev h=2 k=submit fam=submit f\{n=[-3],q=[x]\} seq=6")
+    r.eq("13.16 the same form with no root sequence",
+         told(r#"{"t":"ev","h":2,"k":"submit","p":{"f":{"n":"-3"}}}"#, wide),
+         "ev h=2 k=submit fam=submit f\{n=[-3]\}")
+
+    // The order between the two refusals, pinned on purpose. The sequence is a
+    // property of every message, including one whose kind this end does not
+    // know, so it is checked first — and 9.26 is the control that proves
+    // "unknown message kind" still fires when `n` is fine.
+    r.eq("13.17 a bad sequence on an unknown kind refuses on the sequence",
+         told(r#"{"t":"whatever","n":-1}"#, wide),
+         "REFUSED a message sequence must not be negative")
+    r.eq("13.18 a good sequence on an unknown kind refuses on the kind",
+         told(r#"{"t":"whatever","n":1}"#, wide),
+         "REFUSED unknown message kind")
 
     io.println("")
     io.println("{r.checks} checks, {r.bad} bad")

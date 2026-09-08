@@ -766,6 +766,27 @@ pub fn encode_js(call: int, name: string, args: List<string>) -> string {
     return out.to_string()
 }
 
+/// The fence: "I processed your message number `n`, and here is nothing more."
+///
+/// Wire v1.0 had no frame that meant this (BLOCKERS.md B11). Every other
+/// server frame is a statement about the PAGE — `hello`, `batch`, `err`,
+/// `bye`, `js`, `nav` — and a client that sends a message which legally
+/// changes nothing (a click on a slot the page has already disposed, an `ack`,
+/// a `range` that clamps to what the client already holds) got silence back
+/// and no way to tell it from a dead socket.
+///
+/// It is a FENCE and not an alternative to a batch: it is sent AFTER whatever
+/// else the message produced, so the client's rule has no case analysis —
+/// when `seen` for `n` arrives, message `n` is finished. That is what makes a
+/// per-message deadline sound; see `Circuit.accept`.
+///
+/// `n` is the client's own number, echoed. The server never invents one: two
+/// messages in flight are told apart by the end that sent them, and a client
+/// that wants no fence for a message simply omits `n`.
+pub fn encode_seen(sequence: int) -> string {
+    return "\{\"t\":\"seen\",\"n\":{sequence}\}"
+}
+
 /// Server-driven navigation. Same-origin and path-only is enforced before this
 /// is written, so what reaches the client is already a path.
 pub fn encode_nav(url: string) -> string {
@@ -850,6 +871,12 @@ pub class ClientMessage {
     /// what the `bye` carries, so it may never quote server state.
     pub fault: string = ""
 
+    /// The client's own message number, echoed back in a `seen` fence when the
+    /// message is processed. Zero means the client asked for no fence — a
+    /// missing `n`, or an explicit `0` — and it is the only value that means
+    /// that, which is why a negative one is a refusal rather than a rounding.
+    pub sequence: int = 0
+
     pub circuit: string = ""
     pub url: string = ""
 
@@ -895,65 +922,98 @@ pub fn decode_client(text: string, limits: WireLimits) -> ClientMessage {
     match parse_json(text, limits) {
         ok(root) => {
             if !root.is_object() { return refuse("a message must be a JSON object") }
-            let kind: string = root.text_field("t", "")
-            if kind == "attach" {
-                let out: ClientMessage = new ClientMessage()
-                out.kind = CLIENT_ATTACH
-                out.circuit = root.text_field("c", "")
-                out.url = root.text_field("u", "")
-                if out.circuit == "" { return refuse("attach carries no circuit id") }
-                return out
-            }
-            if kind == "resume" {
-                let out: ClientMessage = new ClientMessage()
-                out.kind = CLIENT_RESUME
-                out.circuit = root.text_field("c", "")
-                out.batch = root.int_field("a", -1)
-                if out.circuit == "" { return refuse("resume carries no circuit id") }
-                if out.batch < 0 { return refuse("resume carries no acknowledged batch") }
-                return out
-            }
-            if kind == "ev" { return decode_event(root) }
-            if kind == "ack" {
-                let out: ClientMessage = new ClientMessage()
-                out.kind = CLIENT_ACK
-                out.batch = root.int_field("b", -1)
-                if out.batch < 0 { return refuse("ack carries no batch number") }
-                return out
-            }
-            if kind == "nav" {
-                let out: ClientMessage = new ClientMessage()
-                out.kind = CLIENT_NAV
-                out.url = root.text_field("u", "")
-                if out.url == "" { return refuse("nav carries no url") }
-                return out
-            }
-            if kind == "js" {
-                let out: ClientMessage = new ClientMessage()
-                out.kind = CLIENT_JS
-                out.call = root.int_field("i", -1)
-                out.ok = root.bool_field("ok", false)
-                out.value = root.text_field("v", "")
-                if out.call < 0 { return refuse("a js result carries no call id") }
-                return out
-            }
-            if kind == "range" {
-                let out: ClientMessage = new ClientMessage()
-                out.kind = CLIENT_RANGE
-                out.handler = root.int_field("h", -1)
-                out.start = root.int_field("s", -1)
-                out.count = root.int_field("n", -1)
-                if out.handler < 0 { return refuse("a range carries no region id") }
-                if out.start < 0 || out.count < 0 {
-                    return refuse("a range must be two non-negative numbers")
+            // The sequence is read for EVERY kind, before the kind is looked
+            // at, because the fence rule is about messages and not about any
+            // one of them. A present `n` that is not an integer is refused
+            // rather than defaulted: defaulting it to "no fence" is exactly
+            // the silence B11 is about, and it would be invisible.
+            var sequence: int = 0
+            match root.field("n") {
+                some(value) => {
+                    if !value.is_int() {
+                        return refuse("a message sequence must be a whole number")
+                    }
+                    sequence = value.number
+                    if sequence < 0 {
+                        return refuse("a message sequence must not be negative")
+                    }
                 }
-                return out
+                none => {}
             }
-            if kind == "" { return refuse("a message with no \"t\"") }
-            return refuse("unknown message kind")
+            var out: ClientMessage = decode_body(root)
+            out.sequence = sequence
+            return out
         }
         err(problem) => { return refuse(problem) }
     }
+}
+
+/// The kind dispatch. Split out so `decode_client` can stamp the sequence on
+/// whatever comes back without every branch having to remember to.
+fn decode_body(root: Json) -> ClientMessage {
+    let kind: string = root.text_field("t", "")
+    if kind == "attach" {
+        let out: ClientMessage = new ClientMessage()
+        out.kind = CLIENT_ATTACH
+        out.circuit = root.text_field("c", "")
+        out.url = root.text_field("u", "")
+        if out.circuit == "" { return refuse("attach carries no circuit id") }
+        return out
+    }
+    if kind == "resume" {
+        let out: ClientMessage = new ClientMessage()
+        out.kind = CLIENT_RESUME
+        out.circuit = root.text_field("c", "")
+        out.batch = root.int_field("a", -1)
+        if out.circuit == "" { return refuse("resume carries no circuit id") }
+        if out.batch < 0 { return refuse("resume carries no acknowledged batch") }
+        return out
+    }
+    if kind == "ev" { return decode_event(root) }
+    if kind == "ack" {
+        let out: ClientMessage = new ClientMessage()
+        out.kind = CLIENT_ACK
+        out.batch = root.int_field("b", -1)
+        if out.batch < 0 { return refuse("ack carries no batch number") }
+        return out
+    }
+    if kind == "nav" {
+        let out: ClientMessage = new ClientMessage()
+        out.kind = CLIENT_NAV
+        out.url = root.text_field("u", "")
+        if out.url == "" { return refuse("nav carries no url") }
+        return out
+    }
+    if kind == "js" {
+        let out: ClientMessage = new ClientMessage()
+        out.kind = CLIENT_JS
+        out.call = root.int_field("i", -1)
+        out.ok = root.bool_field("ok", false)
+        out.value = root.text_field("v", "")
+        if out.call < 0 { return refuse("a js result carries no call id") }
+        return out
+    }
+    if kind == "range" {
+        let out: ClientMessage = new ClientMessage()
+        out.kind = CLIENT_RANGE
+        out.handler = root.int_field("h", -1)
+        out.start = root.int_field("s", -1)
+        // `c` for the count, and NOT `n`. `n` is the message sequence on every
+        // client message, read above before the kind is even looked at, and a
+        // field that means one thing for six kinds and another for the seventh
+        // is the shape RULES.md § "The refusal that never runs" is about: with
+        // the count still on `n`, a range whose count is negative would be
+        // refused by the SEQUENCE check with the sequence's sentence, and
+        // "a range must be two non-negative numbers" would never run again.
+        out.count = root.int_field("c", -1)
+        if out.handler < 0 { return refuse("a range carries no region id") }
+        if out.start < 0 || out.count < 0 {
+            return refuse("a range must be two non-negative numbers")
+        }
+        return out
+    }
+    if kind == "" { return refuse("a message with no \"t\"") }
+    return refuse("unknown message kind")
 }
 
 /// Takes no `WireLimits`: everything a limit bounds — the message size, the
