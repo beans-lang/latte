@@ -205,6 +205,28 @@ fn click(slot: int) -> string {
 
 fn ack(batch: int) -> string { return "\{\"t\":\"ack\",\"b\":{batch}\}" }
 
+/// The same two messages carrying a sequence, so § 15 can ask for a fence on
+/// exactly the shapes § 2 and § 3 send without one.
+fn click_seq(slot: int, sequence: int) -> string {
+    return "\{\"t\":\"ev\",\"h\":{slot},\"k\":\"click\",\"p\":\{\"b\":0,\"x\":1,\"y\":2\},\"n\":{sequence}\}"
+}
+
+/// The `b` of a batch frame, so a replay can be asserted in order without
+/// pinning the whole body twice.
+fn batch_number_of(frame: string) -> string {
+    let head: string = "\{\"t\":\"batch\",\"b\":"
+    if !frame.starts_with(head) { return "not a batch" }
+    let rest: string = frame.slice(head.len(), frame.len())
+    match rest.find(",") {
+        some(comma) => { return rest.slice(0, comma) }
+        none => { return "malformed" }
+    }
+}
+
+fn ack_seq(batch: int, sequence: int) -> string {
+    return "\{\"t\":\"ack\",\"b\":{batch},\"n\":{sequence}\}"
+}
+
 fn resume(id: string, batch: int) -> string {
     return "\{\"t\":\"resume\",\"c\":\"{id}\",\"a\":{batch}\}"
 }
@@ -643,9 +665,9 @@ fn main() {
     var window2: CircuitOptions = options_of()
     window2.max_window = 5
     let c9o: Circuit = attached(new Shell(), window2)
-    c9o.accept("\{\"t\":\"range\",\"h\":1,\"s\":0,\"n\":5\}", 2)
+    c9o.accept("\{\"t\":\"range\",\"h\":1,\"s\":0,\"c\":5\}", 2)
     r.no("9.17 the control: a range exactly at the cap", c9o.ending())
-    c9o.accept("\{\"t\":\"range\",\"h\":1,\"s\":0,\"n\":6\}", 3)
+    c9o.accept("\{\"t\":\"range\",\"h\":1,\"s\":0,\"c\":6\}", 3)
     r.eq("9.18 limit: one row over", drained(c9o),
          "\{\"t\":\"bye\",\"k\":\"limit\",\"m\":\"a range asked for 6 rows, over the 5 cap\"\}")
 
@@ -964,6 +986,139 @@ fn main() {
     r.eq("14.1 the refusal names the program, not the emitter",
          NO_POLLER_MESSAGE,
          "latte: interactive mode needs a fiber network poller, which this platform does not have. Static rendering still works; map_pages without map_circuit.")
+
+    // ========================================================== § 15
+    //
+    // The `seen` fence — BLOCKERS.md B11.
+    //
+    // § 3 is the hole itself: an inert click produces NOTHING, which over a
+    // socket is indistinguishable from a server that has died. This section is
+    // the answer, and every row here is about ORDER and COUNT, because a fence
+    // that arrives instead of a batch, or twice, or after a `bye`, is a
+    // different protocol from the one `js/latte.js` is written against.
+    io.println("")
+    io.println("-- 15. the seen fence: every accepted message is answered")
+
+    let shell15: Shell = new Shell()
+    let c15: Circuit = attached(shell15, options_of())
+
+    // 15.1 is § 3.1 with a sequence on it. Same message, same nothing-happened,
+    // and now a frame says so.
+    c15.accept(click_seq(999, 7), 2)
+    r.eq("15.1 an inert click is answered", drained(c15),
+         "\{\"t\":\"seen\",\"n\":7\}")
+    r.no("15.2 and the circuit lives", c15.ending())
+    r.eqi("15.3 the handler still did not run", shell15.inner.count, 0)
+
+    // The control, and it is the one that matters: the fence is sent AFTER
+    // whatever else the message produced, not instead of it. A client whose
+    // rule is "clear the deadline on seen" must never see a batch swallowed.
+    c15.accept(click_seq(2, 8), 3)
+    r.eq("15.4 a live click sends the batch FIRST, then the fence",
+         drained(c15),
+         // The batch is § 2.3's, byte for byte — this row is not re-deciding
+         // the edit stream, it is asserting that the fence did not displace
+         // it. `si 0` is a CHILD index and not the `b.text` frame's seq 2; my
+         // first want said 2 and the server was right.
+         "\{\"t\":\"batch\",\"b\":2,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",0],[\"ut\",0,\"Count: 1\"],[\"so\"]]\}],\"d\":[]\}\n\{\"t\":\"seen\",\"n\":8\}")
+
+    // A message with no sequence asks for no fence, and gets none. This is a
+    // decision, not an oversight: `ack` is the message a client sends without
+    // ever waiting for an answer, and fencing it would put a server frame on
+    // the wire for every batch the client acknowledges, forever.
+    c15.accept(click(2), 4)
+    r.eqi("15.5 no sequence, no fence — only the batch", frame_count(c15), 1)
+    c15.accept(ack(2), 5)
+    r.eqi("15.6 an ack with no sequence is answered by nothing",
+          frame_count(c15), 0)
+    c15.accept(ack_seq(3, 9), 6)
+    r.eq("15.7 an ack WITH a sequence is answered", drained(c15),
+         "\{\"t\":\"seen\",\"n\":9\}")
+
+    // The sequence is echoed, not counted. The server never invents one, so a
+    // client may number its messages however it likes and still match them.
+    c15.accept(click_seq(999, 4611686018427387904), 7)
+    r.eq("15.8 the sequence is echoed exactly, whatever it is", drained(c15),
+         "\{\"t\":\"seen\",\"n\":4611686018427387904\}")
+
+    // Attach is fenced too, and its batch comes first for the same reason.
+    let shell15b: Shell = new Shell()
+    let c15b: Circuit = circuit_over(shell15b, options_of())
+    c15b.open(0)
+    let _hello15: List<string> = c15b.take_outbox()
+    c15b.accept("\{\"t\":\"attach\",\"c\":\"{CID}\",\"u\":\"/\",\"n\":1\}", 1)
+    let attach15: List<string> = c15b.take_outbox()
+    r.eqi("15.9 attach answers with two frames", attach15.len(), 2)
+    r.eq("15.10 the second is the fence", attach15[attach15.len() - 1],
+         "\{\"t\":\"seen\",\"n\":1\}")
+
+    // A `bye` is the LAST frame on a circuit. A fence after it would be a
+    // frame after the last frame, so the fence is not sent when the message
+    // ended the circuit — `latte.js` clears every outstanding deadline on a
+    // `bye` instead.
+    let shell15c: Shell = new Shell()
+    let c15c: Circuit = attached(shell15c, options_of())
+    c15c.accept("\{\"t\":\"nav\",\"u\":\"https://elsewhere.example/x\",\"n\":3\}", 2)
+    r.eq("15.11 a message that ends the circuit is answered by the bye alone",
+         drained(c15c),
+         "\{\"t\":\"bye\",\"k\":\"forbidden\",\"m\":\"a navigation target must be same-origin and path-only\"\}")
+
+    // A refused message ends the circuit before the sequence is ever used, so
+    // the same rule covers a protocol fault.
+    let c15d: Circuit = attached(new Shell(), options_of())
+    c15d.accept("\{\"t\":\"whatever\",\"n\":5\}", 2)
+    r.eq("15.12 a refused message is answered by the bye alone", drained(c15d),
+         "\{\"t\":\"bye\",\"k\":\"protocol\",\"m\":\"unknown message kind\"\}")
+
+    // A contained panic: the circuit SURVIVES, so the message is still
+    // answered — err, then the boundary's batch, then the fence.
+    let shell15e: Shell = new Shell()
+    let c15e: Circuit = attached(shell15e, options_of())
+    shell15e.inner.boom = true
+    c15e.accept(click_seq(2, 11), 2)
+    let after15e: List<string> = c15e.take_outbox()
+    r.eqi("15.13 a contained panic answers with three frames", after15e.len(), 3)
+    r.eq("15.14 err first", after15e[0], "\{\"t\":\"err\",\"k\":\"panic\",\"m\":\"t1\"\}")
+    r.eq("15.15 the fence last", after15e[after15e.len() - 1],
+         "\{\"t\":\"seen\",\"n\":11\}")
+    r.no("15.16 and the circuit lives", c15e.ending())
+
+    // An UNCONTAINED panic ends the circuit, so no fence — same rule as 15.11.
+    let bare15: Bare = new Bare()
+    let c15f: Circuit = attached(bare15, options_of())
+    bare15.inner.boom = true
+    c15f.accept(click_seq(2, 12), 2)
+    r.eq("15.17 an uncontained panic is answered by the bye alone",
+         drained(c15f), "\{\"t\":\"bye\",\"k\":\"panic\",\"m\":\"t1\"\}")
+
+    // Resume replays, then fences. A reconnecting client is the one with the
+    // most reason to want a definite end to its outstanding messages.
+    let shell15g: Shell = new Shell()
+    let c15g: Circuit = attached(shell15g, options_of())
+    c15g.accept(click(2), 2)
+    let _batch15g: List<string> = c15g.take_outbox()
+    c15g.disconnected(3)
+    c15g.accept("\{\"t\":\"resume\",\"c\":\"{CID}\",\"a\":0,\"n\":21\}", 4)
+    let replay15: List<string> = c15g.take_outbox()
+    // TWO batches, not one: `attached()` drains the WIRE but batch 1 is still
+    // un-acked, so a resume from 0 replays the attach batch and the click
+    // batch. Then the fence. My first want said two frames and was wrong.
+    r.eqi("15.18 resume replays both un-acked batches and then fences",
+          replay15.len(), 3)
+    r.eq("15.19a the replay is in order", "{batch_number_of(replay15[0])},{batch_number_of(replay15[1])}",
+         "1,2")
+    r.eq("15.19 the fence is last", replay15[replay15.len() - 1],
+         "\{\"t\":\"seen\",\"n\":21\}")
+
+    // Two messages in flight, answered in the order they were sent. This is
+    // what lets a client hold several deadlines at once and clear them by
+    // number rather than by guessing which answer belongs to which question.
+    let shell15h: Shell = new Shell()
+    let c15h: Circuit = attached(shell15h, options_of())
+    c15h.accept(click_seq(999, 31), 2)
+    c15h.accept(click_seq(999, 32), 3)
+    r.eq("15.20 two inert messages, two fences, in order", drained(c15h),
+         "\{\"t\":\"seen\",\"n\":31\}\n\{\"t\":\"seen\",\"n\":32\}")
 
     io.println("")
     io.println("{r.checks} checks, {r.bad} bad")
