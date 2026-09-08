@@ -1,0 +1,189 @@
+-- 1. the reader, on values it must take
+ok 1.1 object
+ok 1.2 array
+ok 1.3 nesting
+ok 1.4 keywords
+ok 1.5 empty containers
+ok 1.6 whitespace everywhere
+ok 1.7 negative and zero
+ok 1.8 i64 edges
+ok 1.9 duplicate keys keep both
+ok 1.10 a bare string is a value
+
+-- 2. the four limits, each at its exact boundary
+ok 2.1 the message under test is 17 bytes
+ok 2.2 message exactly at the cap
+ok 2.3 message one byte over
+ok 2.4 two levels holding a value
+ok 2.5 three levels holding nothing
+ok 2.6 three levels holding a value
+ok 2.7 twenty-three levels of the default holding a value
+ok 2.8 twenty-four holding a value
+ok 2.9 twenty-four holding nothing
+ok 2.10 twenty-five holding nothing
+ok 2.11 array exactly at the cap
+ok 2.12 array one over
+ok 2.13 object exactly at the cap
+ok 2.14 object one over
+ok 2.15 string exactly at the cap
+ok 2.16 string one over
+ok 2.17 an escape counts what it PRODUCES, not what it spells
+ok 2.18 a key is a string too
+ok 2.19 submit under the field cap
+ok 2.20 submit exactly at the field cap
+ok 2.21 submit one field over
+
+-- 3. numbers: integers only, and every way that is said
+ok 3.1 a fraction is refused, not truncated
+ok 3.2 an exponent is refused, not evaluated
+ok 3.3 a capital exponent too
+ok 3.4 the control: the same digits with no exponent
+ok 3.5 a leading zero
+ok 3.6 a negative leading zero
+ok 3.7 the control: zero itself
+ok 3.8 one over i64
+ok 3.9 far over i64
+ok 3.10 the control: i64 max itself
+ok 3.11 a minus with no digits
+ok 3.12 a plus sign is not a value
+
+-- 4. strings: escapes, and what may not appear raw
+ok 4.1 the eight short escapes
+ok 4.2 \u below the BMP
+ok 4.3 a surrogate pair
+ok 4.4 a lone high surrogate
+ok 4.5 a lone low surrogate
+ok 4.6 a high surrogate then something else
+ok 4.7 an unknown escape
+ok 4.8 a \u with a non-hex digit
+ok 4.9 a \u that runs off the end
+ok 4.10 a raw control byte
+ok 4.11 the control: the same byte, escaped
+ok 4.12 a string that never closes
+ok 4.13 a string that ends inside an escape
+ok 4.14 raw UTF-8 passes through
+
+-- 5. structure: what is not a message, and what is
+ok 5.1 an array root is not a message
+ok 5.2 a number root is not a message
+ok 5.3 trailing bytes
+ok 5.4 the control: trailing WHITESPACE is fine
+ok 5.5 a bare key
+ok 5.6 a missing colon
+ok 5.7 a missing comma in an object
+ok 5.8 a missing comma in an array
+ok 5.9 an empty message
+ok 5.10 a truncated keyword
+ok 5.11 the control: the whole keyword
+ok 5.12 a stray closer
+
+-- 6. the batch encoder: every frame opcode, every edit opcode
+ok 6.1 all nineteen frame kinds staged
+ok 6.2 twelve edit opcodes on the parent
+ok 6.3 the batch on the wire
+ok 6.4 an empty batch
+
+-- 7. the other server frames
+ok 7.1 the protocol number
+ok 7.2 hello
+ok 7.3 hello carries the cap that is actually in force
+ok 7.4 err
+ok 7.5 bye
+ok 7.6 js
+ok 7.7 js with no arguments
+ok 7.8 nav
+
+-- 8. the escaper
+ok 8.1 quote and backslash
+ok 8.2 the named control escapes
+ok 8.3 an unnamed control byte
+ok 8.4 a less-than can never leave a JSON string
+ok 8.5 U+2028 and U+2029, legal in JSON and fatal in JavaScript
+ok 8.6 greater-than and ampersand stay raw, so a golden reads
+ok 8.7 U+2028 at the very end
+ok 8.8 other three-byte UTF-8 starting E2 80 is untouched
+ok 8.9 astral characters pass through
+ok 8.10 the empty string
+ok 8.11 escaper and reader agree
+
+-- 9. client messages: every kind, and every refusal
+ok 9.1 attach
+ok 9.2 attach with no url is still an attach
+ok 9.3 attach with no circuit id
+ok 9.4 attach whose circuit id is not a string
+ok 9.5 resume
+ok 9.6 resume from batch zero
+ok 9.7 resume with no ack
+ok 9.8 resume with a negative ack
+ok 9.9 resume with no circuit id
+ok 9.10 ack
+ok 9.11 ack for batch zero
+ok 9.12 ack with no batch
+ok 9.13 ack with a negative batch
+ok 9.14 nav
+ok 9.15 nav with no url
+ok 9.16 js result
+ok 9.17 js failure
+ok 9.18 js with no call id
+ok 9.19 range
+ok 9.20 range from zero
+ok 9.21 range with no region
+ok 9.22 range with a negative start
+ok 9.23 range with a negative count
+ok 9.24 a message with no t
+ok 9.25 a message whose t is not a string
+ok 9.26 an unknown kind
+
+-- 10. events: a name selects a FAMILY, never a method
+ok 10.1 mouse
+ok 10.2 mouse with no payload
+ok 10.3 input
+ok 10.4 keyboard
+ok 10.5 focus takes no payload
+ok 10.6 submit coerces numbers and booleans to text
+ok 10.7 submit drops a member that is neither text, number nor bool
+ok 10.8 an unknown event name
+ok 10.9 the control: a name one letter away that IS known
+ok 10.10 no handler id
+ok 10.11 handler id zero is not a slot
+ok 10.12 a negative handler id
+ok 10.13 a payload that is not an object
+ok 10.14 submit fields that are not an object
+ok 10.15 submit with no fields at all
+ok 10.16 the table has twenty-one names
+ok 10.17 every name in the table has a family
+ok 10.18 exactly the four that do not bubble
+ok 10.19 a name outside the table has no family
+ok 10.20 the empty name has no family
+ok 10.21 focusin bubbles, so it is not captured
+ok 10.22 the whole table, in the order latte.js registers it
+
+-- 11. the event objects a handler is given
+ok 11.1 MouseEvent
+ok 11.2 InputEvent
+ok 11.3 KeyboardEvent
+ok 11.4 SubmitEvent carries the fields
+ok 11.5 and their values
+ok 11.6 a focus payload fills nothing
+
+-- 12. Json accessors: a missing or wrong-kind member
+ok 12.1 int_field
+ok 12.2 int_field on a string
+ok 12.3 int_field on a missing member
+ok 12.4 text_field
+ok 12.5 text_field on a number
+ok 12.6 bool_field
+ok 12.7 bool_field on a number
+ok 12.8 len of the root object
+ok 12.9 field finds an array
+ok 12.10 its length
+ok 12.11 at(1)
+ok 12.12 at past the end
+ok 12.13 at below zero
+ok 12.14 a member that is not there
+ok 12.15 json_null
+ok 12.16 json_bool
+ok 12.17 json_int
+ok 12.18 json_text
+
+164 checks, 0 bad
