@@ -1,0 +1,552 @@
+== 1 every fault site in apply.b
+seed: <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok the seed is the tree every case starts from
+ok the seed raises nothing
+-- update-for-a-component-that-never-mounts
+   site:    root_for / update for component N arrived before its mount
+   faults:  update for component 7 arrived before its mount
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 7 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>tail<em>raw</em>stray</div> roots= 0 attrs=2 binds=1 sfaults=0
+ok update-for-a-component-that-never-mounts: the exact faults
+ok update-for-a-component-that-never-mounts: what the refusal left
+ok update-for-a-component-that-never-mounts: the control raises nothing
+ok update-for-a-component-that-never-mounts: and the control applied
+ok update-for-a-component-that-never-mounts: and the control changed the tree
+-- a-childs-update-before-its-own-mount
+   site:    root_for / update for component N arrived before its mount
+   faults:  update for component 3 arrived before its mount
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em>from the child</div> roots= 0 3 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>tail<em>raw</em>from the child</div> roots= 0 3 attrs=2 binds=1 sfaults=0
+ok a-childs-update-before-its-own-mount: the exact faults
+ok a-childs-update-before-its-own-mount: what the refusal left
+ok a-childs-update-before-its-own-mount: the control raises nothing
+ok a-childs-update-before-its-own-mount: and the control applied
+ok a-childs-update-before-its-own-mount: and the control changed the tree
+-- step-in-past-the-last-child
+   site:    step_in / step_in N of M
+   faults:  component 0: step_in 4 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>TAIL<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok step-in-past-the-last-child: the exact faults
+ok step-in-past-the-last-child: what the refusal left
+ok step-in-past-the-last-child: the control raises nothing
+ok step-in-past-the-last-child: and the control applied
+ok step-in-past-the-last-child: and the control changed the tree
+-- step-in-a-negative-index
+   site:    step_in / step_in N of M
+   faults:  component 0: step_in -1 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">ONE</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok step-in-a-negative-index: the exact faults
+ok step-in-a-negative-index: what the refusal left
+ok step-in-a-negative-index: the control raises nothing
+ok step-in-a-negative-index: and the control applied
+ok step-in-a-negative-index: and the control changed the tree
+-- step-out-at-the-root
+   site:    step_out / step_out at the root
+   faults:  component 0: step_out at the root
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>TAIL<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok step-out-at-the-root: the exact faults
+ok step-out-at-the-root: what the refusal left
+ok step-out-at-the-root: the control raises nothing
+ok step-out-at-the-root: and the control applied
+ok step-out-at-the-root: and the control changed the tree
+-- one-step-out-too-many
+   site:    step_out / step_out at the root
+   faults:  component 0: step_out at the root
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>TAIL<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok one-step-out-too-many: the exact faults
+ok one-step-out-too-many: what the refusal left
+ok one-step-out-too-many: the control raises nothing
+ok one-step-out-too-many: and the control applied
+ok one-step-out-too-many: and the control changed the tree
+-- insert-past-the-end
+   site:    insert / insert at N of M
+   faults:  component 0: insert at 5 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em><b>new</b></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>tail<em>raw</em><b>new</b></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok insert-past-the-end: the exact faults
+ok insert-past-the-end: what the refusal left
+ok insert-past-the-end: the control raises nothing
+ok insert-past-the-end: and the control applied
+ok insert-past-the-end: and the control changed the tree
+-- insert-at-a-negative-index
+   site:    insert / insert at N of M
+   faults:  component 0: insert at -1 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em><b>new</b></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root"><b>new</b>head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok insert-at-a-negative-index: the exact faults
+ok insert-at-a-negative-index: what the refusal left
+ok insert-at-a-negative-index: the control raises nothing
+ok insert-at-a-negative-index: and the control applied
+ok insert-at-a-negative-index: and the control changed the tree
+-- insert-from-past-the-end-of-the-pool
+   site:    insert / no staged subtree at N
+   faults:  component 0: no staged subtree at 7
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root"><b>new</b>head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok insert-from-past-the-end-of-the-pool: the exact faults
+ok insert-from-past-the-end-of-the-pool: what the refusal left
+ok insert-from-past-the-end-of-the-pool: the control raises nothing
+ok insert-from-past-the-end-of-the-pool: and the control applied
+ok insert-from-past-the-end-of-the-pool: and the control changed the tree
+-- insert-from-a-negative-offset
+   site:    insert / no staged subtree at N
+   faults:  component 0: no staged subtree at -1
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root"><b>new</b>head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok insert-from-a-negative-offset: the exact faults
+ok insert-from-a-negative-offset: what the refusal left
+ok insert-from-a-negative-offset: the control raises nothing
+ok insert-from-a-negative-offset: and the control applied
+ok insert-from-a-negative-offset: and the control changed the tree
+-- insert-from-the-close-frame-of-a-staged-subtree
+   site:    insert / no staged subtree at N
+   faults:  component 0: no staged subtree at 2
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">secondhead<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok insert-from-the-close-frame-of-a-staged-subtree: the exact faults
+ok insert-from-the-close-frame-of-a-staged-subtree: what the refusal left
+ok insert-from-the-close-frame-of-a-staged-subtree: the control raises nothing
+ok insert-from-the-close-frame-of-a-staged-subtree: and the control applied
+ok insert-from-the-close-frame-of-a-staged-subtree: and the control changed the tree
+-- insert-from-inside-an-attribute-run
+   site:    insert / no staged subtree at N
+   faults:  component 0: no staged subtree at 1
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root"><b class="x">new</b>head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=3 binds=1 sfaults=0
+ok insert-from-inside-an-attribute-run: the exact faults
+ok insert-from-inside-an-attribute-run: what the refusal left
+ok insert-from-inside-an-attribute-run: the control raises nothing
+ok insert-from-inside-an-attribute-run: and the control applied
+ok insert-from-inside-an-attribute-run: and the control changed the tree
+-- remove-past-the-last-child
+   site:    remove / remove N of M
+   faults:  component 0: remove 4 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>tail</div> roots= 0 attrs=2 binds=1 sfaults=0
+ok remove-past-the-last-child: the exact faults
+ok remove-past-the-last-child: what the refusal left
+ok remove-past-the-last-child: the control raises nothing
+ok remove-past-the-last-child: and the control applied
+ok remove-past-the-last-child: and the control changed the tree
+-- remove-a-negative-index
+   site:    remove / remove N of M
+   faults:  component 0: remove -1 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root"><p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok remove-a-negative-index: the exact faults
+ok remove-a-negative-index: what the refusal left
+ok remove-a-negative-index: the control raises nothing
+ok remove-a-negative-index: and the control applied
+ok remove-a-negative-index: and the control changed the tree
+-- move-from-past-the-last-child
+   site:    relocate / move from N of M
+   faults:  component 0: move from 4 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root"><em>raw</em>head<p class="row">one</p>tail</div> roots= 0 attrs=2 binds=1 sfaults=0
+ok move-from-past-the-last-child: the exact faults
+ok move-from-past-the-last-child: what the refusal left
+ok move-from-past-the-last-child: the control raises nothing
+ok move-from-past-the-last-child: and the control applied
+ok move-from-past-the-last-child: and the control changed the tree
+-- move-from-a-negative-index
+   site:    relocate / move from N of M
+   faults:  component 0: move from -1 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root"><p class="row">one</p>tail<em>raw</em>head</div> roots= 0 attrs=2 binds=1 sfaults=0
+ok move-from-a-negative-index: the exact faults
+ok move-from-a-negative-index: what the refusal left
+ok move-from-a-negative-index: the control raises nothing
+ok move-from-a-negative-index: and the control applied
+ok move-from-a-negative-index: and the control changed the tree
+-- move-to-past-the-end
+   site:    relocate / move to N of M
+   faults:  component 0: move to 4 of 3
+   left:    <div id="root"><p class="row">one</p>tail<em>raw</em>head</div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root"><p class="row">one</p>tail<em>raw</em>head</div> roots= 0 attrs=2 binds=1 sfaults=0
+ok move-to-past-the-end: the exact faults
+ok move-to-past-the-end: what the refusal left
+ok move-to-past-the-end: the control raises nothing
+ok move-to-past-the-end: and the control applied
+ok move-to-past-the-end: and the control changed the tree
+-- move-to-a-negative-index
+   site:    relocate / move to N of M
+   faults:  component 0: move to -1 of 3
+   left:    <div id="root"><p class="row">one</p>tail<em>raw</em>head</div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root"><em>raw</em>head<p class="row">one</p>tail</div> roots= 0 attrs=2 binds=1 sfaults=0
+ok move-to-a-negative-index: the exact faults
+ok move-to-a-negative-index: what the refusal left
+ok move-to-a-negative-index: the control raises nothing
+ok move-to-a-negative-index: and the control applied
+ok move-to-a-negative-index: and the control changed the tree
+-- remove-an-attribute-at-a-seq-that-has-none
+   site:    remove_attr / no attribute S:N to remove
+   faults:  component 0: no attribute 9:class to remove
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p>one</p>tail<em>raw</em></div> roots= 0 attrs=1 binds=1 sfaults=0
+ok remove-an-attribute-at-a-seq-that-has-none: the exact faults
+ok remove-an-attribute-at-a-seq-that-has-none: what the refusal left
+ok remove-an-attribute-at-a-seq-that-has-none: the control raises nothing
+ok remove-an-attribute-at-a-seq-that-has-none: and the control applied
+ok remove-an-attribute-at-a-seq-that-has-none: and the control changed the tree
+-- remove-an-attribute-by-a-name-that-is-not-there
+   site:    remove_attr / no attribute S:N to remove
+   faults:  component 0: no attribute 1:id to remove
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div>head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=1 binds=1 sfaults=0
+ok remove-an-attribute-by-a-name-that-is-not-there: the exact faults
+ok remove-an-attribute-by-a-name-that-is-not-there: what the refusal left
+ok remove-an-attribute-by-a-name-that-is-not-there: the control raises nothing
+ok remove-an-attribute-by-a-name-that-is-not-there: and the control applied
+ok remove-an-attribute-by-a-name-that-is-not-there: and the control changed the tree
+-- remove-a-handler-at-a-seq-that-has-none
+   site:    remove_handler / no handler S:E to remove
+   faults:  component 0: no handler 9:click to remove
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=0 sfaults=0
+ok remove-a-handler-at-a-seq-that-has-none: the exact faults
+ok remove-a-handler-at-a-seq-that-has-none: what the refusal left
+ok remove-a-handler-at-a-seq-that-has-none: the control raises nothing
+ok remove-a-handler-at-a-seq-that-has-none: and the control applied
+ok remove-a-handler-at-a-seq-that-has-none: and the control changed the tree
+-- remove-a-handler-for-an-event-that-is-not-bound
+   site:    remove_handler / no handler S:E to remove
+   faults:  component 0: no handler 2:dblclick to remove
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=0 sfaults=0
+ok remove-a-handler-for-an-event-that-is-not-bound: the exact faults
+ok remove-a-handler-for-an-event-that-is-not-bound: what the refusal left
+ok remove-a-handler-for-an-event-that-is-not-bound: the control raises nothing
+ok remove-a-handler-for-an-event-that-is-not-bound: and the control applied
+ok remove-a-handler-for-an-event-that-is-not-bound: and the control changed the tree
+-- the-stream-ended-one-level-deep
+   site:    run / the edit stream ended N level(s) deep
+   faults:  component 0: the edit stream ended 1 level(s) deep
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>TAIL<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok the-stream-ended-one-level-deep: the exact faults
+ok the-stream-ended-one-level-deep: what the refusal left
+ok the-stream-ended-one-level-deep: the control raises nothing
+ok the-stream-ended-one-level-deep: and the control applied
+ok the-stream-ended-one-level-deep: and the control changed the tree
+-- the-stream-ended-two-levels-deep
+   site:    run / the edit stream ended N level(s) deep
+   faults:  component 0: the edit stream ended 2 level(s) deep
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">ONE</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok the-stream-ended-two-levels-deep: the exact faults
+ok the-stream-ended-two-levels-deep: what the refusal left
+ok the-stream-ended-two-levels-deep: the control raises nothing
+ok the-stream-ended-two-levels-deep: and the control applied
+ok the-stream-ended-two-levels-deep: and the control changed the tree
+-- set-text-past-the-last-child
+   site:    kid / WHAT N of M
+   faults:  component 0: set_text 4 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>TAIL<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok set-text-past-the-last-child: the exact faults
+ok set-text-past-the-last-child: what the refusal left
+ok set-text-past-the-last-child: the control raises nothing
+ok set-text-past-the-last-child: and the control applied
+ok set-text-past-the-last-child: and the control changed the tree
+-- set-text-at-a-negative-index
+   site:    kid / WHAT N of M
+   faults:  component 0: set_text -1 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">HEAD<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok set-text-at-a-negative-index: the exact faults
+ok set-text-at-a-negative-index: what the refusal left
+ok set-text-at-a-negative-index: the control raises nothing
+ok set-text-at-a-negative-index: and the control applied
+ok set-text-at-a-negative-index: and the control changed the tree
+-- set-markup-past-the-last-child
+   site:    kid / WHAT N of M
+   faults:  component 0: set_markup 4 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>tail<b>mk</b></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok set-markup-past-the-last-child: the exact faults
+ok set-markup-past-the-last-child: what the refusal left
+ok set-markup-past-the-last-child: the control raises nothing
+ok set-markup-past-the-last-child: and the control applied
+ok set-markup-past-the-last-child: and the control changed the tree
+-- set-markup-at-a-negative-index
+   site:    kid / WHAT N of M
+   faults:  component 0: set_markup -1 of 4
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>tail<b>mk</b></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok set-markup-at-a-negative-index: the exact faults
+ok set-markup-at-a-negative-index: what the refusal left
+ok set-markup-at-a-negative-index: the control raises nothing
+ok set-markup-at-a-negative-index: and the control applied
+ok set-markup-at-a-negative-index: and the control changed the tree
+-- the sites in apply.b, and how many shapes reach each
+   2x insert / insert at N of M
+   4x insert / no staged subtree at N
+   4x kid / WHAT N of M
+   2x relocate / move from N of M
+   2x relocate / move to N of M
+   2x remove / remove N of M
+   2x remove_attr / no attribute S:N to remove
+   2x remove_handler / no handler S:E to remove
+   2x root_for / update for component N arrived before its mount
+   2x run / the edit stream ended N level(s) deep
+   2x step_in / step_in N of M
+   2x step_out / step_out at the root
+ok every fault site in apply.b has a case
+== 2 what the applier takes without a fault
+-- set_text at an element node
+   faults: 
+   after:  <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok set_text at an element node: raises nothing
+ok set_text at an element node: and this is what it did
+-- set_text at a markup node
+   faults: 
+   after:  <div id="root">head<p class="row">one</p>tail<img src=x onerror=alert(1)></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok set_text at a markup node: raises nothing
+ok set_text at a markup node: and this is what it did
+-- set_markup at a text node
+   faults: 
+   after:  <div id="root">&lt;b&gt;x&lt;/b&gt;<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok set_markup at a text node: raises nothing
+ok set_markup at a text node: and this is what it did
+-- set_attr with the cursor on a text node
+   faults: 
+   after:  <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok set_attr with the cursor on a text node: raises nothing
+ok set_attr with the cursor on a text node: and this is what it did
+-- set_handler with the cursor on a text node
+   faults: 
+   after:  <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok set_handler with the cursor on a text node: raises nothing
+ok set_handler with the cursor on a text node: and this is what it did
+-- remove_attr with the cursor on a text node
+   faults: 
+   after:  <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok remove_attr with the cursor on a text node: raises nothing
+ok remove_attr with the cursor on a text node: and this is what it did
+-- a mounted child, before
+   after:  <div id="root">head<p class="row">one</p>tail<em>raw</em>from the child</div> roots= 0 3 attrs=2 binds=1 sfaults=0
+ok the mount landed and raised nothing
+-- set_text at a mounted child
+   faults: 
+   after:  <div id="root">head<p class="row">one</p>tail<em>raw</em>from the child</div> roots= 0 3 attrs=2 binds=1 sfaults=0
+ok set_text at a mount raises nothing
+ok and the child's subtree is untouched here
+ok the seed is not what any of this produced
+== 3 every fault site in serialize.b
+-- a-mount-whose-activation-failed
+   site:    one / no frame buffer for the T mounted at slot N
+   faults:  no frame buffer for the NeedsSeed mounted at slot 1
+   builder: 0: cannot activate NeedsSeed: wrong reflected argument count
+   left:    <div></div>
+   control: <div><span>badge</span></div>
+ok a-mount-whose-activation-failed: the exact serializer faults
+ok a-mount-whose-activation-failed: the builder faults beside them
+ok a-mount-whose-activation-failed: what the refusal left
+ok a-mount-whose-activation-failed: the control raises nothing
+ok a-mount-whose-activation-failed: the control raises no builder fault either
+ok a-mount-whose-activation-failed: and the control renders
+-- a-child-frame-with-no-buffer-at-all
+   site:    one / no frame buffer for the T mounted at slot N
+   faults:  no frame buffer for the Ghost mounted at slot 4
+   builder: 
+   left:    
+   control: ghost body
+ok a-child-frame-with-no-buffer-at-all: the exact serializer faults
+ok a-child-frame-with-no-buffer-at-all: the builder faults beside them
+ok a-child-frame-with-no-buffer-at-all: what the refusal left
+ok a-child-frame-with-no-buffer-at-all: the control raises nothing
+ok a-child-frame-with-no-buffer-at-all: the control raises no builder fault either
+ok a-child-frame-with-no-buffer-at-all: and the control renders
+-- an-attribute-frame-in-a-child-position
+   site:    one / F is not a child position
+   faults:  3 attr class=x is not a child position
+   builder: 
+   left:    
+   control: <div class="x"></div>
+ok an-attribute-frame-in-a-child-position: the exact serializer faults
+ok an-attribute-frame-in-a-child-position: the builder faults beside them
+ok an-attribute-frame-in-a-child-position: what the refusal left
+ok an-attribute-frame-in-a-child-position: the control raises nothing
+ok an-attribute-frame-in-a-child-position: the control raises no builder fault either
+ok an-attribute-frame-in-a-child-position: and the control renders
+-- a-flag-frame-in-a-child-position
+   site:    one / F is not a child position
+   faults:  3 flag hidden=true is not a child position
+   builder: 
+   left:    
+   control: <div hidden=""></div>
+ok a-flag-frame-in-a-child-position: the exact serializer faults
+ok a-flag-frame-in-a-child-position: the builder faults beside them
+ok a-flag-frame-in-a-child-position: what the refusal left
+ok a-flag-frame-in-a-child-position: the control raises nothing
+ok a-flag-frame-in-a-child-position: the control raises no builder fault either
+ok a-flag-frame-in-a-child-position: and the control renders
+-- a-splat-marker-in-a-child-position
+   site:    one / F is not a child position
+   faults:  3 splat 2 is not a child position
+   builder: 
+   left:    
+   control: <div data-a="1"></div>
+ok a-splat-marker-in-a-child-position: the exact serializer faults
+ok a-splat-marker-in-a-child-position: the builder faults beside them
+ok a-splat-marker-in-a-child-position: what the refusal left
+ok a-splat-marker-in-a-child-position: the control raises nothing
+ok a-splat-marker-in-a-child-position: the control raises no builder fault either
+ok a-splat-marker-in-a-child-position: and the control renders
+-- a-handler-frame-in-a-child-position
+   site:    one / F is not a child position
+   faults:  3 on:click -> 8 is not a child position
+   builder: 
+   left:    
+   control: <div></div>
+ok a-handler-frame-in-a-child-position: the exact serializer faults
+ok a-handler-frame-in-a-child-position: the builder faults beside them
+ok a-handler-frame-in-a-child-position: what the refusal left
+ok a-handler-frame-in-a-child-position: the control raises nothing
+ok a-handler-frame-in-a-child-position: the control raises no builder fault either
+ok a-handler-frame-in-a-child-position: and the control renders
+-- a-ref-frame-in-a-child-position
+   site:    one / F is not a child position
+   faults:  3 ref is not a child position
+   builder: 
+   left:    
+   control: <div></div>
+ok a-ref-frame-in-a-child-position: the exact serializer faults
+ok a-ref-frame-in-a-child-position: the builder faults beside them
+ok a-ref-frame-in-a-child-position: what the refusal left
+ok a-ref-frame-in-a-child-position: the control raises nothing
+ok a-ref-frame-in-a-child-position: the control raises no builder fault either
+ok a-ref-frame-in-a-child-position: and the control renders
+-- a-preserve-frame-in-a-child-position
+   site:    one / F is not a child position
+   faults:  3 preserve is not a child position
+   builder: 
+   left:    
+   control: <div></div>
+ok a-preserve-frame-in-a-child-position: the exact serializer faults
+ok a-preserve-frame-in-a-child-position: the builder faults beside them
+ok a-preserve-frame-in-a-child-position: what the refusal left
+ok a-preserve-frame-in-a-child-position: the control raises nothing
+ok a-preserve-frame-in-a-child-position: the control raises no builder fault either
+ok a-preserve-frame-in-a-child-position: and the control renders
+-- a-void-element-given-text
+   site:    element / void element <T> was given children
+   faults:  void element <br> was given children
+   builder: 
+   left:    <br>
+   control: <br class="rule">
+ok a-void-element-given-text: the exact serializer faults
+ok a-void-element-given-text: the builder faults beside them
+ok a-void-element-given-text: what the refusal left
+ok a-void-element-given-text: the control raises nothing
+ok a-void-element-given-text: the control raises no builder fault either
+ok a-void-element-given-text: and the control renders
+-- a-void-element-given-an-element
+   site:    element / void element <T> was given children
+   faults:  void element <img> was given children
+   builder: 
+   left:    <img src="/a.png">
+   control: <img src="/a.png"><span>x</span>
+ok a-void-element-given-an-element: the exact serializer faults
+ok a-void-element-given-an-element: the builder faults beside them
+ok a-void-element-given-an-element: what the refusal left
+ok a-void-element-given-an-element: the control raises nothing
+ok a-void-element-given-an-element: the control raises no builder fault either
+ok a-void-element-given-an-element: and the control renders
+-- a-void-element-given-a-transparent-container
+   site:    element / void element <T> was given children
+   faults:  void element <input> was given children
+   builder: 
+   left:    <input>
+   control: <input>slotted
+ok a-void-element-given-a-transparent-container: the exact serializer faults
+ok a-void-element-given-a-transparent-container: the builder faults beside them
+ok a-void-element-given-a-transparent-container: what the refusal left
+ok a-void-element-given-a-transparent-container: the control raises nothing
+ok a-void-element-given-a-transparent-container: the control raises no builder fault either
+ok a-void-element-given-a-transparent-container: and the control renders
+-- text-that-closes-its-script
+   site:    content / WHAT inside <T> could close it
+   faults:  text inside <script> could close it
+   builder: 
+   left:    <script></script>
+   control: <script>if (a < b && c > d) go("</p>")</script>
+ok text-that-closes-its-script: the exact serializer faults
+ok text-that-closes-its-script: the builder faults beside them
+ok text-that-closes-its-script: what the refusal left
+ok text-that-closes-its-script: the control raises nothing
+ok text-that-closes-its-script: the control raises no builder fault either
+ok text-that-closes-its-script: and the control renders
+-- raw-that-closes-its-script
+   site:    content / WHAT inside <T> could close it
+   faults:  raw inside <script> could close it
+   builder: 
+   left:    <script></script>
+   control: <script>var a = 1</script>
+ok raw-that-closes-its-script: the exact serializer faults
+ok raw-that-closes-its-script: the builder faults beside them
+ok raw-that-closes-its-script: what the refusal left
+ok raw-that-closes-its-script: the control raises nothing
+ok raw-that-closes-its-script: the control raises no builder fault either
+ok raw-that-closes-its-script: and the control renders
+-- a-constant-that-closes-its-style
+   site:    content / WHAT inside <T> could close it
+   faults:  constant inside <style> could close it
+   builder: 
+   left:    <style></style>
+   control: <style>p { color: red }</style>
+ok a-constant-that-closes-its-style: the exact serializer faults
+ok a-constant-that-closes-its-style: the builder faults beside them
+ok a-constant-that-closes-its-style: what the refusal left
+ok a-constant-that-closes-its-style: the control raises nothing
+ok a-constant-that-closes-its-style: the control raises no builder fault either
+ok a-constant-that-closes-its-style: and the control renders
+-- a-comment-opener-inside-a-script
+   site:    content / WHAT inside <T> could close it
+   faults:  text inside <script> could close it
+   builder: 
+   left:    <script></script>
+   control: <script>// -- not a comment opener --</script>
+ok a-comment-opener-inside-a-script: the exact serializer faults
+ok a-comment-opener-inside-a-script: the builder faults beside them
+ok a-comment-opener-inside-a-script: what the refusal left
+ok a-comment-opener-inside-a-script: the control raises nothing
+ok a-comment-opener-inside-a-script: the control raises no builder fault either
+ok a-comment-opener-inside-a-script: and the control renders
+-- an-uppercase-script-tag-still-refuses
+   site:    content / WHAT inside <T> could close it
+   faults:  text inside <script> could close it
+   builder: 
+   left:    <SCRIPT></SCRIPT>
+   control: <textarea>&lt;/textarea&gt;</textarea>
+ok an-uppercase-script-tag-still-refuses: the exact serializer faults
+ok an-uppercase-script-tag-still-refuses: the builder faults beside them
+ok an-uppercase-script-tag-still-refuses: what the refusal left
+ok an-uppercase-script-tag-still-refuses: the control raises nothing
+ok an-uppercase-script-tag-still-refuses: the control raises no builder fault either
+ok an-uppercase-script-tag-still-refuses: and the control renders
+-- the sites in serialize.b, and how many shapes reach each
+   5x content / WHAT inside <T> could close it
+   3x element / void element <T> was given children
+   6x one / F is not a child position
+   2x one / no frame buffer for the T mounted at slot N
+ok every fault site in serialize.b has a case
+== 4 the builder refuses in front of "is not a child position"
+   builder: 0: attribute 2:"class" is outside an element's attribute run
+   builder: 0: flag 3:"hidden" is outside an element's attribute run
+   builder: 0: attrs 4:"" is outside an element's attribute run
+   builder: 0: on:click 5:"" is outside an element's attribute run
+   builder: 0: ref 6:"" is outside an element's attribute run
+   builder: 0: preserve 7:"" is outside an element's attribute run
+   html:    <div>a child closes the attribute run</div>
+   frames:  3
+ok all six frames are refused by the builder
+ok and none of them was written: open, text, close and nothing else
+ok so the serializer never sees one
+ok and the page is what the legal half of the body asked for
+== summary
+checks: 260, failed: 0
