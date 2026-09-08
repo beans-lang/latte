@@ -692,5 +692,54 @@ ok all six frames are refused by the builder
 ok and none of them was written: open, text, close and nothing else
 ok so the serializer never sees one
 ok and the page is what the legal half of the body asked for
+== 5 a stray attribute frame reads the same to both walkers
+-- a stray attribute frame in a child position
+   applier:    <b>onetwo</b>
+   serializer: <b>onetwo</b>  1 attr class=x is not a child position
+ok a stray attribute: the serializer reports it
+ok a stray attribute: and writes the children after it
+ok a stray attribute: the applier reads the same children
+ok a stray attribute: and the applier says nothing about it
+-- a stray flag frame in a child position
+   applier:    <b>onetwo</b>
+   serializer: <b>onetwo</b>  1 flag hidden=true is not a child position
+ok a stray flag: the serializer reports it
+ok a stray flag: and writes the children after it
+ok a stray flag: the applier reads the same children
+ok a stray flag: and the applier says nothing about it
+-- a stray splat frame in a child position
+   applier:    <b>onetwo</b>
+   serializer: <b>onetwo</b>  1 splat 0 is not a child position
+ok a stray splat: the serializer reports it
+ok a stray splat: and writes the children after it
+ok a stray splat: the applier reads the same children
+ok a stray splat: and the applier says nothing about it
+-- a stray handler frame in a child position
+   applier:    <b>onetwo</b>
+   serializer: <b>onetwo</b>  1 on:click -> 7 is not a child position
+ok a stray handler: the serializer reports it
+ok a stray handler: and writes the children after it
+ok a stray handler: the applier reads the same children
+ok a stray handler: and the applier says nothing about it
+-- a stray reference frame in a child position
+   applier:    <b>onetwo</b>
+   serializer: <b>onetwo</b>  1 ref is not a child position
+ok a stray reference: the serializer reports it
+ok a stray reference: and writes the children after it
+ok a stray reference: the applier reads the same children
+ok a stray reference: and the applier says nothing about it
+-- a stray preserve frame in a child position
+   applier:    <b>onetwo</b>
+   serializer: <b>onetwo</b>  1 preserve is not a child position
+ok a stray preserve: the serializer reports it
+ok a stray preserve: and writes the children after it
+ok a stray preserve: the applier reads the same children
+ok a stray preserve: and the applier says nothing about it
+-- the control: no stray frame
+   applier:    <b>onetwo</b>
+   serializer: <b>onetwo</b>  
+ok with no stray the serializer raises nothing
+ok and both walkers read the same two children
+ok which is the same page the stray cases produced
 == summary
-checks: 335, failed: 0
+checks: 362, failed: 0
