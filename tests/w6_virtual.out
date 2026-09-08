@@ -105,6 +105,10 @@ ok and none of them was let through
 ok a hostile viewport is capped like a hostile count
 ok and the window it answers is still sound
 ok an honest viewport is not capped
+   the largest viewport at the end of the list: start=49996 shown=4 top=1599872 bottom=0
+ok a viewport that would overflow the add is bounded by the list
+ok and the window it answers is sound
+ok an honest viewport at the same offset answers the same window
    a negative row height, window(5,3): start=0 shown=0 top=0 bottom=0
    a negative row height, window_at:   start=0 shown=0 top=0 bottom=0
 ok a negative row height answers no window at all
@@ -214,4 +218,4 @@ ok all four numbers are on the element
 ok a different overscan renders a different element
 ok and not the first one's number
 
-140 checks, 0 bad
+143 checks, 0 bad

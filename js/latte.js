@@ -1952,6 +1952,15 @@
         if (!isFinite(height)) { height = 0; }
         height = Math.trunc(height);
         if (height < 0) { height = 0; }
+        // THIS LINE CHANGES NO ANSWER HERE and it is kept anyway. `stop` below
+        // is already clamped to `rows`, so bounding the viewport by the list's
+        // own height moves nothing: breaking it and re-running the whole
+        // fixture turns nothing red, which is how that was established rather
+        // than assumed. It is live in `virtual.b` for a reason a double does
+        // not have — `offset + height - 1` is an i64 add there and a viewport
+        // near i64 max overflows it — so the mirror keeps the same shape as
+        // the thing it mirrors. A reader should not take it for a guard that
+        // this file is relying on.
         if (height > span) { height = span; }
 
         var first = Math.floor(offset / rowHeight);
@@ -2133,20 +2142,38 @@
     };
 
     /// 0..100. A total of zero is 0%, not a division by zero and not 100%.
+    ///
+    /// THIS IS NOT A COPY OF WHAT `UploadProgress.percent` DOES, and an
+    /// earlier draft that was one answered 26 where Beans answers 27.
+    ///
+    /// Beans halves both sides while `sent` is above 92233720368547758,
+    /// because an i64 `sent * 100` overflows there. That loop can never run
+    /// for anything a browser produces: every number this class holds has been
+    /// through `wireInt`, which clamps at 9007199254740991, so Beans' answer
+    /// for every reachable pair is the plain exact truncated `sent * 100 /
+    /// total`. Halving HERE is a different operation — two integer divisions
+    /// in front of a third — and it moves a quotient that lands exactly on an
+    /// integer percentage down to the one below it.
+    ///
+    /// So the mirror has to be exact over the whole of that range, and a
+    /// double is not: `sent * 100` is exact only while `sent` is at most
+    /// 2^53/100, and above that the product rounds — `1945564707327492` of
+    /// `7782258829309968` is 25% and the float multiply answers 24. Below the
+    /// ceiling the multiply is exact and is used; above it the arithmetic is
+    /// done in integers that cannot round. `BigInt` is no bigger a dependency
+    /// than the `Map` and `WeakMap` the applier already needs.
     Progress.prototype.percent = function () {
         if (this.total <= 0) { return 0; }
-        var top = this.sent;
-        var bottom = this.total;
-        // `sent * 100` is exact in a double only below 2^53/100. Beans halves
-        // for the same reason with a different ceiling — an i64 multiply that
-        // overflows — and both land on the same integer percentage, because
-        // halving loses at most one unit out of more than 9e13.
-        while (top > 90071992547409) {
-            top = Math.floor(top / 2);
-            bottom = Math.floor(bottom / 2);
+        // `report` clamps `sent` into `[0, total]`, so this is equality and
+        // not a guess — and it keeps the exact path off the one pair where
+        // the answer is not a fraction at all.
+        if (this.sent >= this.total) { return 100; }
+        var out;
+        if (this.sent <= 90071992547409) {
+            out = Math.floor(this.sent * 100 / this.total);
+        } else {
+            out = Number(BigInt(this.sent) * BigInt(100) / BigInt(this.total));
         }
-        if (bottom <= 0) { return 100; }
-        var out = Math.floor(top * 100 / bottom);
         if (out < 0) { return 0; }
         if (out > 100) { return 100; }
         return out;

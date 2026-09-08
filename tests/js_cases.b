@@ -31,7 +31,7 @@ import std.io
 import std.fmt
 import {Applier, Batch, Builder, ChunkReader, CircuitOptions, Component,
         ComponentUpdate, Edit, ErrorBoundary, Frame, Frames, InputEvent,
-        MAX_STREAM_ID, MouseEvent, Placement, Renderer, StreamDocument,
+        MAX_STREAM_ID, MouseEvent, Placement, Renderer, StreamDocument, Virtual,
         UploadProgress, VIRTUAL_INITIAL_ROWS, VIRTUAL_MAX_WINDOW,
         VirtualGeometry, assemble_chunks, encode_batch, event_captures,
         event_names, nav_target_is_local, slot_placeholder,
@@ -973,6 +973,33 @@ fn window_cases() -> List<WindowCase> {
     return move out
 }
 
+/// The element a mounted `Virtual` actually renders, as the serializer writes
+/// it.
+///
+/// § 7 of the browser leg drives the reporter off THIS string and not off an
+/// element the harness builds, so that the four data attributes are the ones
+/// `virtual.b` emits. With a hand-built element, `virtual.b` dropping
+/// `data-latte-overscan` left the browser leg green — the reporter went on
+/// reading an attribute only the harness was writing.
+fn virtual_element() -> string {
+    let renderer: Renderer = new Renderer()
+    var list: Virtual = new Virtual()
+    list.count = 50
+    list.row_height = 32
+    list.overscan = 4
+    // Every row is exactly `row_height` tall, so the box the browser lays out
+    // is the box the geometry describes and a scroll offset means the same
+    // thing on both sides.
+    list.row = fn(b: Builder, index: int) {
+        b.open(0, "div")
+        b.attr(1, "style", "height:32px")
+        b.text(2, "row {index}")
+        b.close()
+    }
+    renderer.mount(list)
+    return renderer.html()
+}
+
 // ------------------------------------------------------------ upload progress
 
 class ProgressCase {
@@ -1017,11 +1044,34 @@ fn progress_cases() -> List<ProgressCase> {
     pairs.push([999999, 1000000])
     pairs.push([4194304, 4194304])
     pairs.push([2097152, 4194304])
-    // Where the halving loop runs on BOTH sides, for different reasons.
+    // The top of the range a client can produce at all.
     pairs.push([9007199254740991, 9007199254740991])
     pairs.push([4503599627370495, 9007199254740991])
     pairs.push([90071992547409, 9007199254740991])
     pairs.push([9007199254740991, 90071992547409])
+    // The pairs that decide whether the browser's arithmetic is EXACT.
+    //
+    // Each is the smallest `sent` for which `sent * 100 / total` is exactly an
+    // integer percentage, at a magnitude where a double cannot hold
+    // `sent * 100`. Beans computes every one of them in i64 without halving —
+    // they are all far below 92233720368547758 — so the answer below is the
+    // true one, and a browser that reached for a float multiply, or for the
+    // halving loop Beans uses at a ceiling it never gets near, answers one
+    // less. Both mistakes were made and both are caught here.
+    pairs.push([1945564707327492, 7782258829309968])
+    pairs.push([3030858388831695, 5412247122913741])
+    pairs.push([1086912448375834, 2173824896751668])
+    pairs.push([3007163060737640, 4295947229625200])
+    pairs.push([749988916482882, 2999955665931528])
+    pairs.push([3544952512435071, 5908254187391785])
+    pairs.push([1898008027989444, 7592032111957776])
+    pairs.push([630030747188385, 4200204981255900])
+    pairs.push([2254129066541374, 8348626172375459])
+    pairs.push([3335597999380130, 4331945453740428])
+    pairs.push([3774166198701264, 5550244409854800])
+    pairs.push([638798159225215, 3362095574869549])
+    pairs.push([539983741247242, 4153721086517239])
+    pairs.push([3269058897142931, 6671548769679450])
     for pair: List<int> in pairs {
         var p: UploadProgress = new UploadProgress()
         var row: ProgressCase = new ProgressCase()
@@ -1075,6 +1125,10 @@ fn emit_w6(out: fmt.StringBuilder) {
     // drifted would kill a tab on its first scroll.
     var options: CircuitOptions = new CircuitOptions()
     out.push("var LATTE_CAPS = \{\"wire\":{options.max_window},\"renderer\":{VIRTUAL_MAX_WINDOW},\"initialRows\":{VIRTUAL_INITIAL_ROWS},\"maxStreamId\":{MAX_STREAM_ID}\};\n")
+
+    out.push("var LATTE_VIRTUAL_ELEMENT = \{\"html\":")
+    write_json_string(out, virtual_element())
+    out.push(",\"id\":0,\"rows\":50,\"rowHeight\":32,\"overscan\":4\};\n")
 
     out.push("var LATTE_VIRTUAL = [\n")
     first = true
