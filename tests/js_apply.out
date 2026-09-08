@@ -339,7 +339,9 @@ ok an unregistered name answers ok:false and never evaluates anything
 ok and neither does __proto__
 ok an unknown wire version stops rather than guessing
 ok and it sent nothing
-ok a hello for a different circuit stops
+ok a hello for a different circuit stops one that never attached
+ok and it is the forbidden ending, not some other
+ok and it attached to nothing
 ok a bye ends the circuit
 ok and it closed the socket
 ok and a close after a bye does not reconnect
@@ -379,9 +381,16 @@ ok and never reconnects
 ok the attach is still outstanding when the socket goes
 ok a drop clears the deadlines
 ok the reconnect opened a socket
-ok and the resume it sends carries a NEW sequence, not the old one
+ok the reconnect resumes across a hello with a DIFFERENT id
+ok and the resume it sends names the OLD circuit, with a NEW sequence
+ok and this end still holds the id it is resuming, not the fresh one
 ok the dropped attach never stalls the reconnected circuit
 ok and the stall that did happen is the RESUME, not the dead attach
+ok the attach went out and nothing came back
+ok it reconnects like any other drop
+ok but a circuit that never attached still refuses a different id
+ok with the forbidden ending
+ok and it sent nothing on the new socket
 ok a message that could not be sent returns false
 ok and is not outstanding
 ok so it can never stall
@@ -493,4 +502,24 @@ ok with no wrapper and no placeholder left
 ok a stopped observer lands nothing
 ok and the second chunk is still in its wrapper
 
-469 checks, 0 bad
+=== 10. the page's own timer: a fence that fires, a socket that comes back
+ok arming a fence on the page's own timer does not throw
+ok so the attach went out
+ok and a real deadline is armed for it
+ok a batch arrived through the socket callback
+ok the fence fired without anything advancing a clock
+ok and it names the message that went unanswered
+ok the stalled socket was closed
+ok the backoff timer opened a new one
+ok and a stall is still not an ending
+ok the hello on the new socket does not throw either
+ok the reconnect is not refused
+ok and it resumes the circuit this page remembers
+ok the resume armed a deadline of its own
+ok a seen retires it
+ok and clearTimeout on the page's own timer disarmed the deadline
+ok an answered fence never fires a second time
+ok and no third socket was opened
+ok the circuit is still live
+
+496 checks, 0 bad
