@@ -325,12 +325,22 @@ pub class Circuit {
             self.stop("protocol", "a {kind_name(message.kind)} arrived before attach")
             return
         }
-        if message.kind == CLIENT_EVENT { self.on_event(message, now_ms); return }
-        if message.kind == CLIENT_ACK { self.on_ack(message); return }
-        if message.kind == CLIENT_NAV { self.on_nav(message, now_ms); return }
-        if message.kind == CLIENT_JS { self.on_js(message, now_ms); return }
-        if message.kind == CLIENT_RANGE { self.on_range(message); return }
-        self.stop("protocol", "unhandled message kind")
+        if message.kind == CLIENT_EVENT { self.on_event(message, now_ms) }
+        else if message.kind == CLIENT_ACK { self.on_ack(message) }
+        else if message.kind == CLIENT_NAV { self.on_nav(message, now_ms) }
+        else if message.kind == CLIENT_JS { self.on_js(message, now_ms) }
+        else if message.kind == CLIENT_RANGE { self.on_range(message) }
+        else { self.stop("protocol", "unhandled message kind"); return }
+        // Every path above that dispatched has already settled; this is for
+        // the ones that did NOT — a stale handler id, an ack, a range — after
+        // which the renderer may still hold work raised from somewhere else.
+        // A `notify()` from a Callback, a timer or an error boundary's own
+        // `recover()` is not tied to any message, and without this it would
+        // sit unsent until the next tick. The probe that found it: recover()
+        // then a click on a slot id the failed boundary had already disposed
+        // — the click landed nowhere, so nothing settled, so the recovery
+        // never went out.
+        if !self.ended { self.settle(now_ms) }
     }
 
     fn on_attach(message: ClientMessage, now_ms: int) {
@@ -599,6 +609,13 @@ pub class Circuit {
     pub fn tick(now_ms: int) -> bool {
         if self.ended { return false }
         var worked: bool = self.drain(now_ms) > 0
+        // Anything `notify()`ed between messages settles here, which is what
+        // makes a timer, a Callback or a boundary recovery reach the wire on
+        // a circuit nobody is clicking.
+        if !self.ended && self.renderer.pending() > 0 {
+            self.settle(now_ms)
+            worked = true
+        }
         if self.connected && now_ms - self.seen_ms >= self.options.idle_ms {
             self.stop("idle", "no message for {self.options.idle_ms} ms")
             worked = true
