@@ -848,6 +848,7 @@ run_examples_leg
 refusal_coverage_for() {
     local file="$1" golden="$2" suite="$3"
     classified="$classified $file"
+    audited="$audited $file"
     local source="$ROOT/$file"
     local recorded="$ROOT/$golden"
     if [[ ! -f "$source" || ! -f "$recorded" ]]; then
@@ -900,6 +901,7 @@ refusal_coverage_for() {
 refusal_coverage_none() {
     local file="$1"
     classified="$classified $file"
+    empties="$empties $file"
     local source="$ROOT/$file"
     if [[ ! -f "$source" ]]; then
         echo "--- refusal-coverage FAILED: $file is missing ---" >&2
@@ -928,6 +930,7 @@ refusal_coverage_none() {
 refusal_coverage_pending() {
     local file="$1" recorded="$2"
     classified="$classified $file"
+    pendings="$pendings $file"
     local source="$ROOT/$file"
     if [[ ! -f "$source" ]]; then
         echo "--- refusal-coverage FAILED: $file is missing ---" >&2
@@ -994,9 +997,17 @@ run_refusal_coverage_leg() {
     local pending=0
     local swept=0
     local classified=""
+    # The names, collected as the rows run. They used to be spelled out in the
+    # summary sentence below, which is the same "hardcoded list goes stale"
+    # failure this leg's own sweep was added to fix, one level up: stream.b was
+    # audited and the sentence still said "builder.b, apply.b and serialize.b".
+    local audited=""
+    local empties=""
+    local pendings=""
     refusal_coverage_for builder.b   tests/frames.out    "tests/frames.b § 13"
     refusal_coverage_for apply.b     tests/w1_faults.out "tests/w1_faults.b § 1"
     refusal_coverage_for serialize.b tests/w1_faults.out "tests/w1_faults.b § 3"
+    refusal_coverage_for stream.b    tests/w6_stream.out  "tests/w6_stream.b § 4"
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
     refusal_coverage_pending render.b 2
@@ -1012,7 +1023,7 @@ run_refusal_coverage_leg() {
     # own reads identically whether a file is audited, deliberately empty,
     # recorded but unaudited, or merely swept.
     if [[ $uncovered -eq 0 ]]; then
-        echo "ok refusal-coverage — $covered report sites in builder.b, apply.b and serialize.b have a case and a control; frames.b and diff.b deliberately have none; render.b, pages.b and circuit.b hold $pending that are recorded and NOT audited (lanes/W1.md); $swept other .b file(s) swept and confirmed empty"
+        echo "ok refusal-coverage — $covered report sites in$audited have a case and a control;$empties deliberately have none;$pendings hold $pending that are recorded and NOT audited (lanes/W1.md); $swept other .b file(s) swept and confirmed empty"
     else
         echo "--- refusal-coverage FAILED: $uncovered source file(s) are not covered ---" >&2
     fi
