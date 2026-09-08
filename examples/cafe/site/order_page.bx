@@ -7,9 +7,13 @@
 // the user typed still in the boxes. Nothing here is a circuit, and that is
 // the point: forms are the half of latte that needs no socket.
 //
-// `Order` is hand-written in this block because it has no markup — it is a
+// `Basket` is hand-written in this block because it has no markup — it is a
 // model, not a component, and a `.bx` file compiles the markup of exactly one
 // class: the one it is named after.
+//
+// It is `Basket` and not `Order` because `Order` is a name Beans already has:
+// `error: type name 'Order' already taken`. The comparison interface is
+// builtin, so a model called `Order` never compiles.
 package site
 
 import std.reflect
@@ -23,7 +27,7 @@ import {FieldError, FormComponent, TOKEN_FIELD, page, layout, param,
 /// `@field` is a property no body can reach — that is the rule, and this is
 /// the property that shows why it matters.
 @form
-pub class Order {
+pub class Basket {
     @field @required @length(min: 2, max: 24) pub name: string = ""
     @field @required @range(min: 1, max: 6) pub cups: int = 0
     @field pub decaf: bool = false
@@ -37,7 +41,7 @@ pub partial class OrderPage extends FormComponent {
     /// Required, and the route carries it. A `@param(required: true)` whose
     /// name is not a placeholder in the route is refused at startup, by name.
     @param(required: true) pub table: int = 0
-    pub model: Order = new Order()
+    pub model: Basket = new Basket()
     pub placed: int = 0
     pub fn init() { super.init() }
 

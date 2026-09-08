@@ -528,8 +528,25 @@ cover_nested_modules() {
         # to reach this way; the loop above already checked them by name.
         [[ ${#dirs[@]} -gt 0 ]] || continue
 
+        # WHERE the staged entry may sit is decided by the module's kind, and
+        # getting it wrong is a leg that fails for a reason that is not the
+        # code's. A `kind library` may hold a program entry only under
+        # `examples/` or `tests/`; an `application` must have its entry NEXT TO
+        # the manifest, and answers
+        # `error: entry file must sit next to beans.pot` anywhere else. This
+        # used to be `tests/` unconditionally, which was right for every nested
+        # module that existed (all of them libraries) and refused the first
+        # application one — examples/cafe — with a message about the layout
+        # rather than about the packages this leg exists to compile.
+        local kind
+        kind=$(awk '$1 == "kind" { print $2; exit }' "$module/beans.pot")
         local staged="$module/tests/_examples_cover.b"
-        mkdir -p "$module/tests"
+        local staged_dir="$module/tests"
+        if [[ "$kind" == "application" ]]; then
+            staged="$module/_examples_cover.b"
+            staged_dir=""
+        fi
+        [[ -z "$staged_dir" ]] || mkdir -p "$staged_dir"
         {
             echo "// Written by test.sh and deleted by it. It imports every package"
             echo "// directory $name has, so a package nothing imports is still compiled."
@@ -537,7 +554,12 @@ cover_nested_modules() {
             for rel in "${dirs[@]}"; do
                 echo "import $name.${rel//\//.}"
             done
-            echo "fn main() {}"
+            # An application module's own entry already declares `fn main`, and
+            # one directory is one package — a second `main` beside it is
+            # `error: 'main' is already declared in this package`. A file next
+            # to the manifest checks perfectly well without one, and checking
+            # is all this leg wants.
+            [[ "$kind" == "application" ]] || echo "fn main() {}"
         } >"$staged"
         EXAMPLES_STAGED+=("$staged")
 
@@ -554,7 +576,7 @@ cover_nested_modules() {
             echo "ok examples/packages — ${#dirs[@]} package(s) of $name compile: ${dirs[*]}"
         fi
         rm -f "$staged"
-        rmdir "$module/tests" 2>/dev/null || true
+        [[ -z "$staged_dir" ]] || rmdir "$staged_dir" 2>/dev/null || true
     done < <(examples_nested_modules)
 }
 
