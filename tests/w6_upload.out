@@ -1,0 +1,152 @@
+== 1 progress: every number off the wire is clamped ==
+ok nothing reported yet
+ok an honest report is taken
+ok and answered exactly
+ok the same report again changes nothing
+ok more sent than there is
+ok both numbers negative
+ok a negative sent against a real total
+ok the largest int as both
+ok the largest int against a small total
+ok nothing over nothing is nought percent
+ok and sent bytes against no total are clamped away
+ok 199 of 200 is not finished
+ok 200 of 200 is
+
+== 2 the control a page renders ==
+the empty control:
+  <div data-latte-upload="0" data-latte-max-bytes="100" data-latte-max-files="1"><input type="file" name="file"><div data-latte-progress="0" style="width:0%"></div><ul data-latte-files="0"></ul><ul data-latte-refusals="0"></ul></div>
+ok the control a page renders before anything happened
+with one file:
+  <div data-latte-upload="0" data-latte-max-bytes="100" data-latte-max-files="1"><input type="file" name="file"><div data-latte-progress="100" style="width:100%"></div><ul data-latte-files="1"><li data-latte-file="a1b2" data-latte-size="12">&lt;script&gt;steal()&lt;/script&gt;</li></ul><ul data-latte-refusals="0"></ul></div>
+ok the submitted filename is escaped text
+ok and no tag survived it
+ok the serializer raised nothing
+ok two files with one name are two keys
+ok and the builder raised nothing
+ok and the control offers multiple
+ok a refusal is shown in its own words
+
+== 3 every two-way split of every body ==
+a field and a file: 159 bytes, 160 splits
+   fields=1 | field a=1 | file f "n.txt" text/plain form=5 stored=5
+ok a field and a file: every split agrees
+ok a field and a file: and the first disagreement
+ok a field and a file: the sweep was every byte plus both ends
+two files: 159 bytes, 160 splits
+   fields=0 | file f "one.txt"  form=4 stored=4 | file f "two.txt"  form=6 stored=6
+ok two files: every split agrees
+ok two files: and the first disagreement
+ok two files: the sweep was every byte plus both ends
+an empty file: 80 bytes, 81 splits
+   fields=0 | file f "empty.bin"  form=0 stored=0
+ok an empty file: every split agrees
+ok an empty file: and the first disagreement
+ok an empty file: the sweep was every byte plus both ends
+a payload that looks like a boundary: 105 bytes, 106 splits
+   fields=0 | file f "tricky.bin"  form=24 stored=24
+ok a payload that looks like a boundary: every split agrees
+ok a payload that looks like a boundary: and the first disagreement
+ok a payload that looks like a boundary: the sweep was every byte plus both ends
+a payload full of line ends: 89 bytes, 90 splits
+   fields=0 | file f "lines.txt"  form=9 stored=9
+ok a payload full of line ends: every split agrees
+ok a payload full of line ends: and the first disagreement
+ok a payload full of line ends: the sweep was every byte plus both ends
+three scalars: 163 bytes, 164 splits
+   fields=3 | field a=1 | field a=3 | field b=2
+ok three scalars: every split agrees
+ok three scalars: and the first disagreement
+ok three scalars: the sweep was every byte plus both ends
+
+== 4 the limits, each crossed and each controlled ==
+a part of 5 bytes against a 4 byte limit:
+   refused: a multipart part exceeds the 4-byte limit
+ok an oversized part is refused
+ok and the refusal names the limit it crossed
+   the control, at exactly 5: fields=0 | file f "n.txt" text/plain form=5 stored=5
+ok the control: a part exactly at the limit is taken
+   two parts against a one part limit: refused: the multipart body carries more than 1 parts
+ok too many parts is refused
+ok the control: exactly as many parts as allowed
+   two bytes against a one byte total: refused: the multipart body exceeds the 1-byte total limit
+ok an oversized total is refused
+ok the control: a total exactly at the limit
+   a 5 character filename against a 4 byte limit: refused: a submitted filename is longer than 4 bytes
+ok an over-long filename is refused
+ok the control: a filename exactly at the limit
+   text/plain against an image-only endpoint: refused: a file part declares 'text/plain', which this endpoint does not accept
+ok a media type outside the list is refused
+ok the control: a media type on the list
+   a body that is not multipart: refused: this endpoint reads a multipart/form-data body, not 'application/json'
+ok a body with no boundary is refused
+ok and nothing was opened for it
+
+== 5 the release: the ordinary end and the unwind ==
+after the parse: opened=2 released=0 leaked=2
+ok two parts were opened
+ok and while nobody has released them they are outstanding
+after release_all: opened=2 released=2 leaked=0
+ok release_all releases every one
+ok exactly once each
+ok and releasing twice releases nothing twice
+the handler said: true
+after the unwind: opened=2 released=2 leaked=0
+ok the handler panicked
+ok and the parts it held were opened
+ok and every one of them was released
+ok once each
+ok newest first, the way an unwind runs
+ok the control: a handler that failed early also panicked
+ok and opened nothing
+ok and leaked nothing
+
+== 6 every fault site in upload.b ==
+-- no field name
+   site:    render / a misconfigured control renders nothing that can be posted to
+   faults:  an upload control needs a field name
+ok no field name: the exact fault
+ok no field name: the control raises nothing
+-- no files at all
+   site:    render / a misconfigured control renders nothing that can be posted to
+   faults:  an upload control needs to take at least one file, not 0
+ok no files at all: the exact fault
+ok no files at all: the control raises nothing
+-- a negative file count
+   site:    render / a misconfigured control renders nothing that can be posted to
+   faults:  an upload control needs to take at least one file, not -3
+ok a negative file count: the exact fault
+ok a negative file count: the control raises nothing
+-- a size limit of zero
+   site:    render / a misconfigured control renders nothing that can be posted to
+   faults:  an upload control needs a positive size limit, not 0
+ok a size limit of zero: the exact fault
+ok a size limit of zero: the control raises nothing
+-- a negative size limit
+   site:    render / a misconfigured control renders nothing that can be posted to
+   faults:  an upload control needs a positive size limit, not -1
+ok a negative size limit: the exact fault
+ok a negative size limit: the control raises nothing
+-- an empty media type in the accept list
+   site:    render / a misconfigured control renders nothing that can be posted to
+   faults:  an upload control cannot accept an empty media type
+ok an empty media type in the accept list: the exact fault
+ok an empty media type in the accept list: the control raises nothing
+-- every parameter wrong at once
+   site:    render / a misconfigured control renders nothing that can be posted to
+   faults:  an upload control needs a field name | an upload control needs to take at least one file, not 0 | an upload control needs a positive size limit, not 0 | an upload control cannot accept an empty media type
+ok every parameter wrong at once: the exact fault
+ok every parameter wrong at once: the control raises nothing
+a refused control renders: <div class="latte-upload latte-upload-refused"></div>
+ok a refused control renders nothing that can be posted to
+ok and it carries no input
+ok a misconfigured control takes no progress
+ok and marks nothing dirty
+ok the control: a configured one takes it
+ok and marks exactly itself
+-- the sites in upload.b, and how many shapes reach each
+   7x render / a misconfigured control renders nothing that can be posted to
+ok every fault site in upload.b has a case
+ok the defaults are what the control advertises
+
+87 checks, 0 bad

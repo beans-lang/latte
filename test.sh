@@ -1009,6 +1009,7 @@ run_refusal_coverage_leg() {
     refusal_coverage_for serialize.b tests/w1_faults.out "tests/w1_faults.b § 3"
     refusal_coverage_for stream.b    tests/w6_stream.out  "tests/w6_stream.b § 4"
     refusal_coverage_for virtual.b   tests/w6_virtual.out "tests/w6_virtual.b § 4"
+    refusal_coverage_for upload.b    tests/w6_upload.out  "tests/w6_upload.b § 6"
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
     refusal_coverage_pending render.b 2
