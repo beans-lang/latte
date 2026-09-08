@@ -2366,15 +2366,36 @@
 
     // ---------------------------------------------------------------- boot
 
-    // The shell carries the circuit id and the socket path on the script tag
+    // The shell carries the socket path and the root element on the script tag
     // itself, so nothing on the page is an inline script and a
     // `script-src 'self'` CSP holds with no `unsafe-inline`.
+    //
+    // `data-latte-boot` says the page wants a circuit; `data-latte-circuit`
+    // says which one, and is for a host that decides ids itself. THE SHELL
+    // LATTE SHIPS SENDS ONLY THE FIRST, and that is a decision about where a
+    // circuit id comes from rather than a shorthand.
+    //
+    // The server mints the id for every socket — nothing in a WebSocket
+    // handshake says which circuit a client wants — and announces it in
+    // `hello`. That is already how a RECONNECT works: it arrives on a fresh
+    // circuit and names the one it remembers, which is what `CircuitSet.adopt`
+    // exists for. A page that printed an id would have to make the server stop
+    // minting one, and would put a live reconnect credential into cacheable
+    // HTML. So this end takes its id from `hello` (`onHello`, "if (!this.id)"),
+    // and `on_attach`'s equality check holds because there is nothing else it
+    // could hold against.
     function readConfig(doc, script) {
-        var config = { id: '', path: '/_latte/ws', rootId: 'latte-root' };
+        var config = { id: '', path: '/_latte/ws', rootId: 'latte-root',
+                       boot: false };
         if (script && script.dataset) {
             if (script.dataset.latteCircuit) { config.id = script.dataset.latteCircuit; }
             if (script.dataset.latteWs) { config.path = script.dataset.latteWs; }
             if (script.dataset.latteRoot) { config.rootId = script.dataset.latteRoot; }
+            // `typeof … === 'string'` and not truthiness: the attribute is a
+            // flag, so `data-latte-boot` with no value at all reads back as
+            // `''` and must still mean yes. A page with no circuit omits the
+            // attribute entirely, and then `dataset.latteBoot` is undefined.
+            if (typeof script.dataset.latteBoot === 'string') { config.boot = true; }
         }
         return config;
     }
@@ -2418,7 +2439,13 @@
         current: null,
 
         /// Start the circuit this page was served with. Called automatically
-        /// on DOMContentLoaded when the script tag carries a circuit id.
+        /// on DOMContentLoaded when the script tag asked for one.
+        ///
+        /// A page asks in one of two ways: `data-latte-boot`, which starts a
+        /// circuit whose id arrives in `hello`, or `data-latte-circuit`, which
+        /// names the id a host already decided. Neither, and this answers
+        /// `null` and opens no socket — which is what a purely static or
+        /// streamed page gets, and why the check below cannot be dropped.
         boot: function (options) {
             options = options || {};
             var doc = options.document ||
@@ -2426,7 +2453,7 @@
             if (!doc) { return null; }
             var config = readConfig(doc, options.script || null);
             var id = options.id || config.id;
-            if (!id) { return null; }
+            if (!id && !config.boot && options.boot !== true) { return null; }
             var host = options.host || doc.getElementById(config.rootId);
             if (!host) { return null; }
             var circuit = new Circuit({

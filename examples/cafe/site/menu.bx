@@ -1,0 +1,62 @@
+<beans>
+// `examples/cafe/site/menu.bx` — the front page, at `/`.
+//
+// A `@page` with a `@layout`, a keyed loop, and a child component with a
+// callback out. Clicking a drink runs `Menu.pick`, which calls `notify()`;
+// the circuit renders this component on the next flush and sends only its
+// edits.
+package site
+
+import {page, layout} from latte
+
+@page(route: r"/")
+@layout(name: "Shell")
+pub partial class Menu extends Component {
+    pub names: List<string> = ["espresso", "flat white", "cortado"]
+    pub prices: List<int> = [190, 320, 280]
+    pub picked: string = ""
+    pub picks: int = 0
+    pub fn init() {}
+
+    /// What the price list says. A method rather than a second parallel index
+    /// in the markup, because the loop is over names and a `$for` binds one
+    /// element, not a pair.
+    pub fn price_of(name: string) -> int {
+        var index: int = 0
+        for index < self.names.len() {
+            if self.names[index] == name { return self.prices[index] }
+            index += 1
+        }
+        return 0
+    }
+
+    pub fn summary() -> string {
+        if self.picked == "" { return "nothing picked yet" }
+        return "picked {self.picked} ({self.picks})"
+    }
+
+    /// `notify()` is what marks this component dirty. Without it the state
+    /// would change and nothing would re-render — the callback ran, and the
+    /// renderer was never told.
+    fn pick(name: string) {
+        self.picked = name
+        self.picks += 1
+        self.notify()
+    }
+}
+</beans>
+<section class="menu">
+  <h2>Menu</h2>
+
+  <ul id="drinks">
+    $for name: string in self.names {
+      <Drink key={name}
+             name={name}
+             price={self.price_of(name)}
+             chosen={self.picked == name}
+             on_pick={some(new Callback<string>(self, fn(chosen: string) { self.pick(chosen) }))} />
+    }
+  </ul>
+
+  <p id="picked">$self.summary()</p>
+</section>
