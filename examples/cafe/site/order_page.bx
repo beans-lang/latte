@@ -1,0 +1,105 @@
+<beans>
+// `examples/cafe/site/order_page.bx` — the order form.
+//
+// It works **with JavaScript switched off**. The form has a `method`, an
+// `action` and a real submit button, so the browser posts it; `PageHost` binds
+// the body to the model, validates it, and re-renders the page with whatever
+// the user typed still in the boxes. Nothing here is a circuit, and that is
+// the point: forms are the half of latte that needs no socket.
+//
+// `Basket` is hand-written in this block because it has no markup — it is a
+// model, not a component, and a `.bx` file compiles the markup of exactly one
+// class: the one it is named after.
+//
+// It is `Basket` and not `Order` because `Order` is a name Beans already has:
+// `error: type name 'Order' already taken`. The comparison interface is
+// builtin, so a model called `Order` never compiles.
+package site
+
+import std.reflect
+import {FieldError, FormComponent, TOKEN_FIELD, page, layout, param,
+        form, field, required, length, range} from latte
+
+/// What a POST is allowed to write.
+///
+/// `table` is NOT a `@field`: it comes from the route, and a `@field` on it
+/// would let a body move an order to another table. A property with no
+/// `@field` is a property no body can reach — that is the rule, and this is
+/// the property that shows why it matters.
+@form
+pub class Basket {
+    @field @required @length(min: 2, max: 24) pub name: string = ""
+    @field @required @range(min: 1, max: 6) pub cups: int = 0
+    @field pub decaf: bool = false
+    pub table: int = 0
+    pub fn init() {}
+}
+
+@page(route: r"/order/{table}", methods: ["GET", "POST"])
+@layout(name: "Shell")
+pub partial class OrderPage extends FormComponent {
+    /// Required, and the route carries it. A `@param(required: true)` whose
+    /// name is not a placeholder in the route is refused at startup, by name.
+    @param(required: true) pub table: int = 0
+    pub model: Basket = new Basket()
+    pub placed: int = 0
+    pub fn init() { super.init() }
+
+    pub override fn form_id() -> string { return "order" }
+    pub override fn form_model() -> reflect.Value { return reflect.value(self.model) }
+
+    /// Runs only when every field bound and every rule passed.
+    pub override fn on_submit() {
+        self.model.table = self.table
+        self.placed += 1
+    }
+
+    pub fn action() -> string { return "/order/{self.table}" }
+    pub fn heading() -> string { return "Order for table {self.table}" }
+
+    /// What the boxes show on the way back: the text this post carried, and
+    /// the model for a GET or a field the body never named. A failed post that
+    /// gave the boxes back the model would erase what the user typed.
+    pub fn typed_name() -> string {
+        return self.state.value_for("name", self.model.name)
+    }
+    pub fn typed_cups() -> string {
+        return self.state.value_for("cups", "{self.model.cups}")
+    }
+
+    pub fn receipt() -> string {
+        if self.placed == 0 { return "no order placed" }
+        let kind: string = if self.model.decaf { "decaf" } else { "regular" }
+        return "{self.model.cups} {kind} for {self.model.name} at table {self.model.table}"
+    }
+}
+</beans>
+<section class="order">
+  <h2>$self.heading()</h2>
+
+  <form method="post" action={self.action()}>
+    <input type="hidden" name={TOKEN_FIELD} value={self.state.token} />
+
+    <label>name
+      <input name="name" id="name" value={self.typed_name()} />
+    </label>
+
+    <label>cups
+      <input name="cups" id="cups" value={self.typed_cups()} />
+    </label>
+
+    <label>decaf
+      <input type="checkbox" name="decaf" id="decaf" checked={self.model.decaf} />
+    </label>
+
+    <button type="submit" id="place">place the order</button>
+  </form>
+
+  <ul id="problems">
+    $for problem: FieldError in self.state.result.errors {
+      <li key={problem.field}>$problem.field: $problem.message</li>
+    }
+  </ul>
+
+  <p id="placed">$self.receipt()</p>
+</section>
