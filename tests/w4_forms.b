@@ -35,7 +35,7 @@ import {Builder, Component, Renderer, Layout, PageMap, PagePlan, PageMatch,
         FormComponent, FormField, FormMap, FormPlan, FormResult, FormState,
         FieldError, Signer, SeamSigner, Antiforgery, TokenOutcome,
         describe_token, scan_forms, parse_form_body, form_decode,
-        is_safe_method, TOKEN_FIELD} from latte
+        is_safe_method, parse_form_int, TOKEN_FIELD} from latte
 import {hmac_signer, same_bytes} from latte.web
 
 // ================================================================ the healthy
@@ -369,6 +369,8 @@ fn main() {
     section_four(report, pages, forms)
     section_five(report)
     section_six(report, forms)
+    section_seven(report, forms)
+    section_eight(report, forms)
 
     io.println("")
     io.println("{report.checks} checks, {report.failures} bad")
@@ -844,4 +846,221 @@ fn section_six(r: Report, forms: FormMap) {
         }
     }
     r.eqi("every fault site in forms.b has a case", names.len(), 17)
+}
+
+// ---------------------------------------------------------- § 7 re-rendering
+
+/// What a re-render would put in each box, and what the model ended up with.
+///
+/// The model is SEEDED rather than fresh, so "the box fell back to the model"
+/// and "the box is empty" cannot print the same line — which they would with a
+/// default-constructed `Signup`, and then every case below would pass whether
+/// or not the fallback worked.
+fn redisplay(forms: FormMap, body: string) -> string {
+    match plan_named(forms, "Signup") {
+        none => { return "<no plan>" }
+        some(plan) => {
+            let model: Signup = new Signup()
+            model.name = "SEED"
+            model.address = "seed@example.com"
+            model.age = 41
+            var result: FormResult = plan.bind(reflect.value(model), parse_form_body(body))
+            var state: FormState = new FormState()
+            state.result = move result
+            let age_now: string = "{model.age}"
+            return "posted={state.posted()} name=[{state.value_for("name", model.name)}] email=[{state.value_for("email", model.address)}] age=[{state.value_for("age", age_now)}] model.age={age_now}"
+        }
+    }
+}
+
+/// § 7 — a field that failed to parse must come back as the user typed it.
+///
+/// Binding writes through to the model, so a re-render shows what the model
+/// holds — and a value that did not PARSE was never written. `age=twelve` came
+/// back as the model's own number with "age must be a whole number" printed
+/// beside it: a message about text the user could no longer see, and their
+/// input gone. An `int` field has no representation for "the user typed
+/// twelve", so the model cannot answer this and the post has to be kept.
+///
+/// Every case here is a PAIR of facts on one line — what the box shows and
+/// what the model bound — because the bug is precisely that those two were the
+/// same value.
+fn section_seven(r: Report, forms: FormMap) {
+    io.println("")
+    io.println("== 7. a failed post comes back as it was typed ==")
+
+    // The bug, exactly. The box must say `twelve` while the model keeps 41.
+    r.eq("a value that did not parse",
+         redisplay(forms, "name=Ada&email=a%40b.c&age=twelve"),
+         "posted=true name=[Ada] email=[a@b.c] age=[twelve] model.age=41")
+
+    // A rule failure is the easy half — the model DID take the value — and it
+    // is here because a fix that only kept unparseable text would pass the
+    // case above and quietly change this one.
+    r.eq("a value that parsed and broke a rule",
+         redisplay(forms, "name=Ada&email=a%40b.c&age=7"),
+         "posted=true name=[Ada] email=[a@b.c] age=[7] model.age=7")
+
+    // The case that decides whether the post or the model wins when BOTH have
+    // an answer. `007` binds to 7, and a form that re-rendered the model would
+    // silently rewrite what the user typed on a page they never submitted.
+    r.eq("a value that parsed to something spelled differently",
+         redisplay(forms, "name=Ada&email=a%40b.c&age=007"),
+         "posted=true name=[Ada] email=[a@b.c] age=[007] model.age=7")
+
+    // Trimmed, because trimmed is what was measured. A box showing "  Al  "
+    // under "must be 3 to 12 characters" is a message about a string the user
+    // cannot see.
+    r.eq("a value is shown as it was judged, not as it arrived",
+         redisplay(forms, "name=++Al++&email=a%40b.c&age=36"),
+         "posted=true name=[Al] email=[a@b.c] age=[36] model.age=36")
+
+    // Present-and-empty is not absent. An emptied text input posts `name=`,
+    // and re-filling it from the model would put back the value the user just
+    // deleted.
+    r.eq("a box the user emptied stays empty",
+         redisplay(forms, "name=&email=a%40b.c&age=36"),
+         "posted=true name=[] email=[a@b.c] age=[36] model.age=36")
+
+    // And absent IS absent: a field the body never carried falls back to the
+    // model, which is the only thing that knows anything about it.
+    r.eq("a field the body did not carry falls back to the model",
+         redisplay(forms, ""),
+         "posted=true name=[SEED] email=[seed@example.com] age=[41] model.age=41")
+
+    // A GET. Nothing was posted, so every box is the model's.
+    var fresh: FormState = new FormState()
+    r.no("a state no post produced says so", fresh.posted())
+    r.eq("and every box falls back", fresh.value_for("age", "41"), "41")
+    r.eq("including one whose fallback is empty", fresh.value_for("name", ""), "")
+
+    // The map itself, so the shape is asserted and not only its readers.
+    match plan_named(forms, "Signup") {
+        none => { r.eq("the posted map", "<no plan>", "Signup") }
+        some(plan) => {
+            let model: Signup = new Signup()
+            let result: FormResult = plan.bind(reflect.value(model),
+                parse_form_body("name=Ada&email=a%40b.c&age=twelve&is_admin=true"))
+            var keys: List<string> = result.posted.keys()
+            keys.sort()
+            // Only the `@field`s the body carried: `is_admin` is not one, so it
+            // is in `ignored` and must not be here. A re-render that echoed an
+            // unannotated name back into the page would be handing the wire a
+            // way to put text on it.
+            r.eq("the posted map holds the @fields the body carried, and only those",
+                 keys.join(","), "age,email,name")
+            r.eq("and the values are the trimmed text",
+                 "{result.posted.get("age").or("<none>")}", "twelve")
+            r.eq("an unannotated name is ignored, not echoed",
+                 result.ignored.join(","), "is_admin")
+            r.yes("the result knows a post produced it", result.received)
+        }
+    }
+}
+
+// ------------------------------------------------------- § 8 typed form text
+
+/// § 8 — the two parsers a form field goes through, and the values that used
+/// to walk past them.
+///
+/// This section exists because § 7 could not be written without it: `age=007`
+/// was refused as "not a whole number" by `parse_int`, whose spelling rule is
+/// right for a route and wrong for a box a person types in. Chasing that one
+/// shape led to the float half, where the hole is worse than a bad message —
+/// `to_float` reads `nan`, and `nan < min` and `nan > max` are BOTH false, so a
+/// `@range` that is live, reached and running lets it through and says nothing.
+///
+/// Each refusal has an accepted case beside it in the same block, because
+/// "refused" and "refused for some earlier reason" print the same line.
+fn section_eight(r: Report, forms: FormMap) {
+    io.println("")
+    io.println("== 8. a whole number and a decimal, as a person spells them ==")
+
+    io.println("-- leading zeros and signs")
+    r.eq("a leading zero is not a syntax error",
+         bind(forms, "name=Ada&email=a%40b.c&age=0036"),
+         "name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[]")
+    r.eq("all zeros is zero, and then the range has its say",
+         bind(forms, "name=Ada&email=a%40b.c&age=000"),
+         "name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be between 18 and 120]")
+    r.eq("a plus sign",
+         bind(forms, "name=Ada&email=a%40b.c&age=%2B36"),
+         "name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[]")
+    r.eq("a minus sign binds and then breaks the range",
+         bind(forms, "name=Ada&email=a%40b.c&age=-5"),
+         "name=Ada email=a@b.c age=-5 sub=off score=0 admin=no ignored=[] errors=[age: age must be between 18 and 120]")
+
+    io.println("-- and what is still refused")
+    // The overflow refusal the spelling round trip was there for. It has to
+    // survive the leading-zero fix, or the fix traded one wrong answer for a
+    // worse one: `to_int` SATURATES, so this would otherwise bind i64 max.
+    r.eq("a number too large for an int",
+         bind(forms, "name=Ada&email=a%40b.c&age=99999999999999999999"),
+         "name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]")
+    r.eq("the same number written with leading zeros is still too large",
+         bind(forms, "name=Ada&email=a%40b.c&age=00099999999999999999999"),
+         "name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]")
+    r.eq("digits with something after them",
+         bind(forms, "name=Ada&email=a%40b.c&age=36abc"),
+         "name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]")
+    r.eq("a sign and nothing else",
+         bind(forms, "name=Ada&email=a%40b.c&age=-"),
+         "name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]")
+    r.eq("a decimal is not a whole number",
+         bind(forms, "name=Ada&email=a%40b.c&age=36.5"),
+         "name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]")
+
+    io.println("-- a route still has the stricter rule")
+    // The two rules, side by side. If they ever became one function again this
+    // is the pair that would say so.
+    r.yes("a route accepts the canonical spelling", parse_int("36").is_some())
+    r.no("and refuses one with a leading zero", parse_int("007").is_some())
+    r.yes("a form accepts both", parse_form_int("007").is_some())
+    r.eqi("with the same value", parse_form_int("007").or(-1), 7)
+    r.no("and neither accepts an overflow", parse_form_int("99999999999999999999").is_some())
+
+    io.println("-- decimals")
+    r.eq("a fraction",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=007.5"),
+         "name=Ada email=a@b.c age=36 sub=off score=7.5 admin=no ignored=[] errors=[]")
+    r.eq("no digits before the point",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=.5"),
+         "name=Ada email=a@b.c age=36 sub=off score=0.5 admin=no ignored=[] errors=[]")
+    r.eq("no digits after it",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=5."),
+         "name=Ada email=a@b.c age=36 sub=off score=5 admin=no ignored=[] errors=[]")
+    r.eq("an exponent, which is what a number input sends for a big value",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=1e2"),
+         "name=Ada email=a@b.c age=36 sub=off score=100 admin=no ignored=[] errors=[]")
+
+    io.println("-- the three values to_float reads and no form should")
+    // THE one that matters. Before this, `score=nan` bound NaN and every
+    // comparison in `@range(min: 0, max: 100)` answered false, so the field
+    // was accepted with no error at all — a rule that was running and could
+    // not refuse the single value built to slip past comparisons.
+    r.eq("nan is not a number a form takes",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=nan"),
+         "name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]")
+    r.eq("nor is infinity",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=inf"),
+         "name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]")
+    r.eq("nor a hexadecimal spelling of a different value",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=0x10"),
+         "name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]")
+    r.eq("and an exponent that overflows to infinity is refused with them",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=1e400"),
+         "name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]")
+    r.eq("an exponent marker with no exponent",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=1e"),
+         "name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]")
+    r.eq("a point on its own",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=."),
+         "name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]")
+
+    // The control for the whole block: the range still refuses a real number
+    // outside it, so "refused" above is about the spelling and not about the
+    // range having started refusing everything.
+    r.eq("a real number outside the range is still refused by the range",
+         bind(forms, "name=Ada&email=a%40b.c&age=36&score=100.5"),
+         "name=Ada email=a@b.c age=36 sub=off score=100.5 admin=no ignored=[] errors=[score: score must be between 0 and 100]")
 }

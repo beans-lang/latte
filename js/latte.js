@@ -2,9 +2,20 @@
 //
 // One hand-written, dependency-free file: the DOM applier, the delegated event
 // listeners, the payload serializers, the JS interop registry, enhanced
-// navigation, and reconnect with replay. It is embedded into the Beans package
-// as a constant by `examples/latte_js.b`, and `test.sh`'s js-embed leg
-// regenerates and diffs so the copy in `latte_js.b` can never go stale.
+// navigation, and reconnect with replay.
+//
+// **This file is NOT embedded into the Beans package, and there is no drift
+// check for a copy of it.** This comment used to say it was — embedded as a
+// constant by `examples/latte_js.b`, regenerated and diffed by a `js-embed`
+// leg in `test.sh` — and PLAN.md line 563 still says so. Neither the file nor
+// the leg has ever existed: `git log --all` finds no `latte_js` file on any
+// branch, and no `.b` file in this repo holds a copy of this one. A host
+// serves it from disk instead (`tests/_w8b_smoke_server.b` reads
+// `js/latte.js` and answers `/latte.js` with it). Nothing is stale, because
+// there is no second copy to go stale; what is missing is the packaging, and
+// closing it means a generator that writes this file into a Beans constant
+// plus a `test.sh` leg that regenerates and diffs it, the way the
+// `examples/markup` leg already does for `counter.bx`.
 //
 // Three rules shape everything below, and none of them is a preference.
 //
@@ -1188,10 +1199,25 @@
         // The clock and the timer are injected for the same reason the socket
         // is: a deadline that can only be observed by waiting is a deadline no
         // gate can assert. `tests/js_apply.js` drives all three by hand.
+        //
+        // WRAPPED, never stored bare. `window.setTimeout` is a method of
+        // `window`, so `this.setTimeout(fn, ms)` on a bare copy calls it with
+        // a `Circuit` as its receiver and every browser answers
+        // `TypeError: Illegal invocation`. Nothing here would have armed a
+        // fence or reconnected a dropped socket, and no rig in
+        // `tests/js_apply.js` could see it because every one of them injects a
+        // timer — see § 10 there, which injects none. A closure and not
+        // `.bind(window)`: this file also loads under node, where `setTimeout`
+        // is a bare function and `window` does not exist. `Ranges` wraps
+        // `requestAnimationFrame` the same way.
         this.setTimeout = options.setTimeout ||
-            (typeof setTimeout !== 'undefined' ? setTimeout : null);
+            (typeof setTimeout !== 'undefined'
+                ? function (fn, ms) { return setTimeout(fn, ms); }
+                : null);
         this.clearTimeout = options.clearTimeout ||
-            (typeof clearTimeout !== 'undefined' ? clearTimeout : null);
+            (typeof clearTimeout !== 'undefined'
+                ? function (id) { return clearTimeout(id); }
+                : null);
         this.now = options.now || function () { return Date.now(); };
 
         // How long a fenced message may go unanswered before this end treats
@@ -1471,10 +1497,34 @@
                       ' and the server speaks v' + message.v);
             return;
         }
-        if (this.id && message.c && message.c !== this.id) {
+        // THE ID IS COMPARED ONLY WHERE THIS END IS ABOUT TO ATTACH.
+        //
+        // This is the client half of `Circuit.on_attach`'s rule — "the id the
+        // client presents must be the one this circuit was opened with" — and
+        // it holds for an attach and for nothing else.
+        //
+        // A RECONNECT always arrives with a different id, and that is the
+        // protocol rather than an error. Nothing in a WebSocket handshake says
+        // which circuit a returning client wants, so the server can only open
+        // a FRESH circuit for the new socket and announce ITS id here; this
+        // end then sends `resume` naming the circuit it remembers, and
+        // `CircuitSet.adopt` moves the socket to it. See `adopt`'s own
+        // comment in circuit.b, and `tests/circuit_live.b` § 8.2, which
+        // asserts that the second hello's id is NOT the one being resumed.
+        // Comparing ids here refused every reconnect the whole `adopt`
+        // mechanism exists for.
+        //
+        // `this.attached` is the gate because it is already what chooses
+        // `resume` over `attach` below, so the two can never disagree about
+        // which message is going out. It is set by the first batch: a circuit
+        // that never received one has nothing to resume and re-attaches.
+        if (!this.attached && this.id && message.c && message.c !== this.id) {
             this.stop('forbidden', 'the socket belongs to a different circuit');
             return;
         }
+        // Only ever on the attach path — `this.id` must stay the id of the
+        // circuit being resumed, not the id of the fresh one the socket
+        // landed on.
         if (!this.id) { this.id = message.c; }
         if (typeof message.mx === 'number' && message.mx > 0) {
             this.maxMessage = message.mx;

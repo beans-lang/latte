@@ -52,6 +52,15 @@ esac
 
 [[ -z ${BEANS_RUNTIME:-} && -f "$beans/runtime/beans_rt.c" ]] && export BEANS_RUNTIME="$beans/runtime/beans_rt.c"
 [[ -z ${BEANS_STDLIB:-}  && -d "$beans/stdlib/std"        ]] && export BEANS_STDLIB="$beans/stdlib/std"
+# The bridge roots, the same five `test.sh` pins. Two of them are not optional
+# here: `tests/w4_forms.b` reaches `std.crypto` through `latte.web`, and
+# `std.crypto` finds its digest under the NETWORKING bridge — so without
+# BEANS_NET this probe dies with "networking bridge 'hash' is unavailable" and
+# reports `forms.b` as "not green before the pass starts", which reads as a
+# broken suite rather than a missing export.
+[[ -z ${BEANS_ENCODING:-} && -d "$beans/runtime/encoding" ]] && export BEANS_ENCODING="$beans/runtime/encoding"
+[[ -z ${BEANS_NET:-}      && -d "$beans/runtime/net"      ]] && export BEANS_NET="$beans/runtime/net"
+[[ -z ${BEANS_LOG:-}      && -d "$beans/runtime/log"      ]] && export BEANS_LOG="$beans/runtime/log"
 
 exec python3 - "$root" "$beansc" "$only" <<'PYTHON'
 import re

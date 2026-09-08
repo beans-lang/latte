@@ -79,7 +79,16 @@ pub class NotePage extends FormComponent {
         b.close()
         b.open(7, "p")
         b.attr(8, "class", "title")
-        b.text(9, self.model.title)
+        // What a browser would put back in the box: the text this post carried
+        // for `title`, and the model on a GET or a body that named no title.
+        b.text(9, self.state.value_for("title", self.model.title))
+        b.close()
+        // `stars` is an int, so it is the field that CANNOT hold what a user
+        // types when they type something that is not a number. It is rendered
+        // here for exactly that reason — see § 7.
+        b.open(19, "p")
+        b.attr(20, "class", "stars")
+        b.text(21, self.state.value_for("stars", "{self.model.stars}"))
         b.close()
         b.open(10, "p")
         b.attr(11, "class", "errors")
@@ -350,7 +359,7 @@ fn section_one(r: Report, host: espresso.TestHost, dial: Dial, ticket: Ticket) {
             // empty error line are all pinned at once. The token is the only
             // part that varies, and it is replaced by its own name.
             r.eq("the page", reply.text().replace(ticket.token, "<token>"),
-                 "<html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\"></p><p class=\"errors\"></p><p class=\"ignored\"></p><p class=\"owner\">nobody</p></form></body></html>")
+                 "<html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\"></p><p class=\"stars\">0</p><p class=\"errors\"></p><p class=\"ignored\"></p><p class=\"owner\">nobody</p></form></body></html>")
         }
     }
 
@@ -435,16 +444,16 @@ fn section_two(r: Report, host: espresso.TestHost, dial: Dial, ticket: Ticket) {
     let good: string = post(host, ticket.session,
                             body_with(ticket.token, "title=Hello&stars=4&pinned=on"))
     r.eq("a clean post", good.replace(ticket.token, "<token>"),
-         "200 <html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\">Hello</p><p class=\"errors\"></p><p class=\"ignored\"></p><p class=\"owner\">nobody</p></form></body></html>")
+         "200 <html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\">Hello</p><p class=\"stars\">4</p><p class=\"errors\"></p><p class=\"ignored\"></p><p class=\"owner\">nobody</p></form></body></html>")
 
     let bad: string = post(host, ticket.session,
                            body_with(ticket.token, "title=H&stars=9"))
     r.eq("a post that fails both rules", bad.replace(ticket.token, "<token>"),
-         "200 <html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\">H</p><p class=\"errors\">title: title must be 2 to 10 characters | stars: stars must be between 1 and 5</p><p class=\"ignored\"></p><p class=\"owner\">nobody</p></form></body></html>")
+         "200 <html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\">H</p><p class=\"stars\">9</p><p class=\"errors\">title: title must be 2 to 10 characters | stars: stars must be between 1 and 5</p><p class=\"ignored\"></p><p class=\"owner\">nobody</p></form></body></html>")
 
     let missing: string = post(host, ticket.session, body_with(ticket.token, "stars=3"))
     r.eq("a post missing a required field", missing.replace(ticket.token, "<token>"),
-         "200 <html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\"></p><p class=\"errors\">title: title is required</p><p class=\"ignored\"></p><p class=\"owner\">nobody</p></form></body></html>")
+         "200 <html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\"></p><p class=\"stars\">3</p><p class=\"errors\">title: title is required</p><p class=\"ignored\"></p><p class=\"owner\">nobody</p></form></body></html>")
 
     // Mass assignment, end to end. `owner` is public and is not a `@field`, and
     // a body that names it must leave it at its default AND say it was ignored.
@@ -452,7 +461,7 @@ fn section_two(r: Report, host: espresso.TestHost, dial: Dial, ticket: Ticket) {
                               body_with(ticket.token, "title=Hello&stars=4&owner=root"))
     r.eq("a post naming a field the author did not annotate",
          sneaky.replace(ticket.token, "<token>"),
-         "200 <html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\">Hello</p><p class=\"errors\"></p><p class=\"ignored\">owner</p><p class=\"owner\">nobody</p></form></body></html>")
+         "200 <html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\">Hello</p><p class=\"stars\">4</p><p class=\"errors\"></p><p class=\"ignored\">owner</p><p class=\"owner\">nobody</p></form></body></html>")
 
     // A markup-shaped value goes through the serializer's escaping, not around
     // it: the model holds the bytes the user typed and the page renders them
@@ -462,6 +471,29 @@ fn section_two(r: Report, host: espresso.TestHost, dial: Dial, ticket: Ticket) {
     r.yes("a posted value is escaped where it renders",
           hostile.contains("<p class=\"title\">&lt;b&gt;hi</p>"))
     r.no("and no tag reaches the document", hostile.contains("<b>hi"))
+
+    // ---- the field an int cannot hold -----------------------------------
+    //
+    // `stars=twelve` does not parse, so nothing is written to the model and
+    // the model still says 0. Before `FormResult` kept the post, the page
+    // re-rendered that 0 with "stars must be a whole number" printed beside
+    // it: a message about text the user could no longer see, and their input
+    // gone. The box must say `twelve`.
+    let unparsed: string = post(host, ticket.session,
+                                body_with(ticket.token, "title=Hi&stars=twelve"))
+    r.eq("a value an int cannot hold comes back as it was typed",
+         unparsed.replace(ticket.token, "<token>"),
+         "200 <html><body><form method=\"post\" action=\"/notes/hello\"><input type=\"hidden\" name=\"__latte_token\" value=\"<token>\"><p class=\"title\">Hi</p><p class=\"stars\">twelve</p><p class=\"errors\">stars: stars must be a whole number</p><p class=\"ignored\"></p><p class=\"owner\">nobody</p></form></body></html>")
+
+    // And the same value is escaped on the way back, because it takes the
+    // serializer's text path like anything else. A framework that echoed the
+    // post through a second route would have a second escaping question.
+    let hostile_number: string = post(host, ticket.session,
+                    body_with(ticket.token, "title=Hi&stars=%3Cimg+src%3Dx%3E"))
+    r.yes("and an unparseable value is escaped where it comes back",
+          hostile_number.contains("<p class=\"stars\">&lt;img src=x&gt;</p>"))
+    r.no("no tag reaches the document from the echo either",
+         hostile_number.contains("<img src=x>"))
 }
 
 // ---------------------------------------------------------------- § 3 the token
