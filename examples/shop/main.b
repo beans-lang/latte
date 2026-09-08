@@ -16,10 +16,11 @@
 //
 //   * **three levels, each in a different package**, each with its own frame
 //     buffer, mounted through `Builder.component<T>` across a module boundary.
-//   * **child content travelling both ways.** This page hands `Panel` nothing
-//     but data; `Panel` hands `Card` a `fn(Builder)` closure, and `Card`
-//     places it with `b.fragment`. A library component's `$slot` is filled by
-//     another module's code and diffs as part of the card's subtree.
+//   * **child content across a module boundary.** `Panel` hands `Card` a
+//     `fn(Builder)` closure and `Card` places it with `b.fragment`, so a
+//     library component's `$slot` is filled by another package's code and
+//     diffs as part of the card's subtree. `Card` therefore has no
+//     `should_render` — read the comment there before adding one.
 //   * **an event crossing three modules.** A click binds in `shelf`'s buffer,
 //     dispatches through `latte`'s registry, and runs a closure this file
 //     wrote. The `Callback` marks THIS page, not the library component that

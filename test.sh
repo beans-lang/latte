@@ -579,11 +579,20 @@ run_examples_leg() {
     # guard would stop covering the files it exists for. They are covered by
     # `cover_nested_modules` instead, which stages an entry that imports every
     # package directory the module has — including one nothing imports.
+    # The test is the COMPILER'S OWN answer and not a guess about the layout:
+    # a file it cannot be pointed at says so in one exact sentence, and only
+    # that sentence is allowed to excuse a file from this check. Deciding it
+    # here by looking for a `beans.pot` beside the file would quietly skip
+    # every non-entry file directly under `examples/` — latte's manifest is at
+    # the repo root, not in `examples/` — and that guard would be dead the day
+    # somebody adds one.
     local other
     if [[ -z "$only" ]]; then
         for other in ${others[@]+"${others[@]}"}; do
-            [[ -f "$(dirname "$other")/beans.pot" ]] || continue
             (cd "$ROOT" && "$BEANSC" check "${other#"$ROOT"/}") >"$tmp/example_check.log" 2>&1 && continue
+            if grep -q 'entry file must sit next to beans.pot' "$tmp/example_check.log"; then
+                continue    # a nested module's package file; cover_nested_modules has it
+            fi
             echo "--- examples FAILED: ${other#"$ROOT"/} does not check ---" >&2
             cat "$tmp/example_check.log" >&2
             failed=1
