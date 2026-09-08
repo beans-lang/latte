@@ -12,6 +12,8 @@
 #   apply.b       14 sites   tests/w1_faults.b § 1
 #   serialize.b    4 sites   tests/w1_faults.b § 3
 #   stream.b      24 sites   tests/w6_stream.b § 4
+#   virtual.b      1 site    tests/w6_virtual.b § 4
+#   upload.b       1 site    tests/w6_upload.b § 6
 #
 # Run it with no argument for all three, or name one source file to run just
 # that one: `probes/delete_faults.sh apply.b`.
@@ -151,6 +153,20 @@ FILES = [
         ],
     },
     {
+        "source": "virtual.b",
+        "suite": "tests/w6_virtual.b",
+        "labels": [
+            "render / a misconfigured list renders nothing and says why",
+        ],
+    },
+    {
+        "source": "upload.b",
+        "suite": "tests/w6_upload.b",
+        "labels": [
+            "render / a misconfigured control renders nothing that can be posted to",
+        ],
+    },
+    {
         "source": "serialize.b",
         "suite": "tests/w1_faults.b",
         "labels": [
@@ -166,7 +182,7 @@ if only:
     FILES = [entry for entry in FILES if entry["source"] == only]
     if not FILES:
         print(f"no source file named {only}; this script knows builder.b, "
-              f"apply.b, serialize.b and stream.b", file=sys.stderr)
+              f"apply.b, serialize.b, stream.b, virtual.b and upload.b", file=sys.stderr)
         sys.exit(1)
 
 
