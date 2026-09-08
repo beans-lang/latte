@@ -12,7 +12,10 @@
 //
 // The golden is the folded HTML of every case, with the builder's and the
 // serializer's faults under it — a refusal that stopped being a refusal is a
-// diff, not a silence.
+// diff, not a silence. That makes a broken refusal visible as a diff; it does
+// not exercise one. `tests/w1_faults.b` § 3 is the audit of `serialize.b`'s
+// four report sites — a trip with the exact fault text, a positive control
+// that must be accepted, and a confirmed deletion failure for each.
 package main
 
 import std.io

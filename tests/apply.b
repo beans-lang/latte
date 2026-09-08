@@ -25,6 +25,15 @@
 // The named cases in § 1 to § 3 are shapes this sweep found. They are pinned
 // by name because a fuzz that stops covering a shape goes quiet about it, and a
 // named case does not.
+//
+// WHAT IS NOT HERE: `apply.b`'s 12 report sites. This suite asserts every fault
+// list is EMPTY, which is what keeps the generator honest and is the opposite
+// of exercising a refusal — ten thousand cases that raise nothing say nothing
+// about whether a fault can be raised at all. `tests/w1_faults.b` § 1 is the
+// audit: a trip, a positive control and an exact count for each of the 12, and
+// `probes/delete_faults.sh apply.b` deletes each one and watches the case that
+// names it turn red. It is a separate suite because this one takes 184 s and
+// the deletion pass runs a suite once per site.
 package main
 
 import std.io
