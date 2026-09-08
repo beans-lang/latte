@@ -184,7 +184,7 @@ if [[ $status -ne 0 ]]; then
     echo "--- w8b-smoke FAILED: the browser half reported failures (exit $status) ---" >&2
     if grep -q 'Illegal invocation' "$out/smoke.txt"; then
         echo "" >&2
-        echo "    READ THIS BEFORE BLAMING YOUR CHANGE. "Illegal invocation" is a" >&2
+        echo '    READ THIS BEFORE BLAMING YOUR CHANGE. "Illegal invocation" is a' >&2
         echo "    standing bug in js/latte.js and has nothing to do with whatever you" >&2
         echo "    are editing. js/latte.js:1191 keeps a bare \`window.setTimeout\` and" >&2
         echo "    then calls it as \`this.setTimeout(fn, ms)\`, which hands the browser's" >&2
