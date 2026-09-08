@@ -111,6 +111,16 @@ ok row6.token-does-not-carry-the-form
 ok row6.a-signer-that-cannot-sign-refuses
 ok row6.token-field-name
 
+-- row 7: cross-site WebSocket hijacking
+   NO CONTROL IN LATTE: the Origin and session comparisons are inside CircuitEndpoint.upgrade, which takes `move stream: net.TcpStream`; the socket half of this row is tests/w4_upgrade.b
+ok row7.the-origin-allowlist-starts-empty
+ok row7.the-session-cookie-default-is-the-one-map-pages-mints
+ok row7.anonymous-circuits-are-off-by-default
+ok row7.control-the-allowlist-is-an-option
+ok row7.control-the-cookie-name-is-an-option
+ok row7.control-anonymous-circuits-is-an-option
+ok row7.control-and-a-fresh-one-is-unchanged
+
 -- row 8: circuit id theft or fixation
    NO CONTROL IN LATTE: PLAN.md says the id is rotated when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here
 ok row8.id-is-64-hex-characters
@@ -308,7 +318,16 @@ ok row17.and-the-unguarded-log-carries-the-message
 ok row17.the-end-reason-is-a-fixed-word
 
 -- row 18: clickjacking and script injection
-ok row18.latte-ships-a-security-header-middleware
+ok row18.the-policy-denies-framing
+ok row18.the-policy-names-a-script-source
+ok row18.the-policy-names-a-connect-source-for-the-socket
+ok row18.the-referrer-policy-is-set
+ok row18.default-src-is-still-none
+ok row18.and-nothing-was-loosened-with-unsafe-inline
+ok row18.and-nothing-was-loosened-with-unsafe-eval
+ok row18.control-the-policy-reads-its-options
+ok row18.control-and-no-directive-appeared-or-vanished
+ok row18.control-one-option-moves-exactly-one-directive
 ok row18.a-rendered-page-writes-no-inline-handler
 ok row18.a-rendered-page-writes-no-inline-script
 ok row18.a-rendered-page-writes-no-javascript-url
@@ -320,6 +339,7 @@ row 3 XSS through a URL attribute: covered (16 checks)
 row 4 XSS through a raw-text element: covered (14 checks)
 row 5 XSS through an inline handler: covered (14 checks)
 row 6 CSRF on a form post: covered (26 checks)
+row 7 cross-site WebSocket hijacking: partial — the Origin and session comparisons are inside CircuitEndpoint.upgrade, which takes `move stream: net.TcpStream`; the socket half of this row is tests/w4_upgrade.b (7 checks)
 row 8 circuit id theft or fixation: partial — PLAN.md says the id is rotated when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here (15 checks)
 row 9 authorization outliving its token: covered (29 checks)
 row 10 mass assignment: covered (16 checks)
@@ -330,7 +350,7 @@ row 14 DoS: flooding, render loops, retention: partial — PLAN.md names a per-c
 row 15 prototype pollution in the applier: covered (16 checks)
 row 16 open redirect and SSRF through navigation: covered (9 checks)
 row 17 information disclosure: covered (12 checks)
-row 18 clickjacking and script injection: covered (4 checks)
+row 18 clickjacking and script injection: covered (13 checks)
 
-17 rows: 14 covered, 0 covered-but-failing, 3 with a gap
-277 checks, 0 failed
+18 rows: 14 covered, 0 covered-but-failing, 4 with a gap
+293 checks, 0 failed

@@ -48,7 +48,8 @@ import {Antiforgery, Anonymous, Applier, Batch, Builder, Circuit,
         is_url_attribute, nav_target_is_local, open_page, parse_int, parse_json,
         raw_text_is_safe, scan_forms, scan_pages, scheme_is_allowed,
         tag_name_is_safe, authorize, page, form, field, required} from latte
-import {fresh_id, hmac_signer, same_bytes} from latte.web
+import {fresh_id, hmac_signer, same_bytes, EndpointOptions, HeaderOptions,
+        SESSION_COOKIE} from latte.web
 import {run} from latte.boundary
 import {describe_body, HandleStore, ReleaseLog} from latte.uploads
 
@@ -251,6 +252,7 @@ fn main() {
     row4_raw_text(r)
     row5_inline_handler(r)
     row6_csrf(r)
+    row7_origin(r)
     row8_circuit_id(r)
     row9_authorization(r)
     row10_mass_assignment(r)
@@ -932,12 +934,70 @@ fn row6_csrf(r: Report) {
     r.eq("row6.token-field-name", TOKEN_FIELD, "__latte_token")
 }
 
+// ======================================================================= 7
+//
+// | cross-site WebSocket hijacking | SameSite does not protect a handshake, so
+// | the upgrade checks `Origin` and the circuit id must match the session
+// | cookie. |
+//
+// **The comparisons are not reachable from here and this row does not pretend
+// they are.** Both live in `CircuitEndpoint.upgrade`, which takes
+// `move stream: net.TcpStream`: espresso's in-memory `TestHost` cannot reach
+// it and neither can this file. `tests/w4_upgrade.b` drives it over real
+// sockets on port 0 — § 4 refuses a foreign `Origin` with the session
+// satisfied and refuses a missing session with the `Origin` satisfied, which
+// is what tells one refusal from the other.
+//
+// What IS here is the pair of DEFAULTS those comparisons read, and that is not
+// a formality. W4 found that `session_cookie` defaulted to `"sid"` while
+// `map_pages` mints `latte_session`, so every handshake read no session, every
+// circuit opened for `""`, and `adopt`'s comparison ran on every pair of
+// circuits on the machine and could never refuse. The comparison was fine. The
+// default made it dead. So the defaults get their own checks, in the file whose
+// subject is refusals that cannot fire.
+
+fn row7_origin(r: Report) {
+    r.uncovered(7, "cross-site WebSocket hijacking",
+        "the Origin and session comparisons are inside CircuitEndpoint.upgrade, which takes `move stream: net.TcpStream`; the socket half of this row is tests/w4_upgrade.b")
+
+    let fresh: EndpointOptions = new EndpointOptions()
+
+    // Empty, and empty means "refuse every handshake that carries an Origin".
+    // A deployment must name its own. A default holding some example value
+    // would be an allowlist that allows one host nobody deployed.
+    r.eqi("row7.the-origin-allowlist-starts-empty", fresh.origins.len(), 0)
+
+    // The name the socket half reads must be the name the page half writes.
+    // These are two spellings of one thing in two files, which is exactly the
+    // shape that broke, so they are compared to each other and not to a
+    // literal — a literal here would have matched `"sid"` just as happily.
+    r.eq("row7.the-session-cookie-default-is-the-one-map-pages-mints",
+         fresh.session_cookie, SESSION_COOKIE)
+
+    // And a handshake with no session may NOT open a circuit by default,
+    // because `""` is not a weaker identity: it is one identity shared by
+    // everyone who has it, and `adopt` comparing `""` to `""` is the dead
+    // refusal all over again.
+    r.no("row7.anonymous-circuits-are-off-by-default", fresh.anonymous_circuits)
+
+    // The control for the whole trio: they are OPTIONS, not constants. Without
+    // this, three fields hard-coded to their safe values would pass every check
+    // above and a deployment would have no way to name its own origin.
+    var opened: EndpointOptions = new EndpointOptions()
+    opened.origins = ["https://example.test"]
+    opened.session_cookie = "other"
+    opened.anonymous_circuits = true
+    r.eqi("row7.control-the-allowlist-is-an-option", opened.origins.len(), 1)
+    r.eq("row7.control-the-cookie-name-is-an-option", opened.session_cookie, "other")
+    r.yes("row7.control-anonymous-circuits-is-an-option", opened.anonymous_circuits)
+    r.eqi("row7.control-and-a-fresh-one-is-unchanged",
+          new EndpointOptions().origins.len(), 0)
+}
+
 // ======================================================================= 8
 //
 // | circuit id theft or fixation | 256 bits from `std.random`, bound to the
 // | session, never in a URL, never logged, rotated when privileges change. |
-//
-// Row 7 needs a real socket and lives in `tests/w8_origin.b`.
 
 fn row8_circuit_id(r: Report) {
     r.uncovered(8, "circuit id theft or fixation",
@@ -2271,22 +2331,66 @@ pub class Unguarded extends Component {
 // | `frame-ancestors 'none'`, nosniff, a referrer policy, and a CSP of
 // | `script-src 'self'` with `connect-src` for the socket. |
 //
-// **This row FAILS, and it is meant to.** `latte.security_headers` does not
-// exist; nothing in latte sends a security header, and `WebReply` has no field
-// that could carry one. PLAN.md's own "Concrete finding" says espresso's
-// `security_headers` sends `default-src 'none'`, which blocks `latte.js` and
-// the WebSocket, and that latte must therefore ship its own — so falling back
-// to espresso's is not a partial answer, it is a broken page.
+// This row failed for as long as `latte.security_headers` did not exist. It
+// landed with W4, and the check that stood in for it here was a hand-written
+// sentence about what was missing — so it had to be REPLACED by one that
+// probes, not flipped to green. A gap-marker check goes on printing whatever
+// it was written to print, whether or not the gap closed.
 //
-// The golden holds what PLAN.md says must happen. The run prints what happens.
-// The diff is the gap, and it stays visible until the middleware lands.
+// `HeaderOptions.policy()` is the half that needs no server. The middleware
+// putting those headers on a real response, and a real headless Chrome reading
+// them, is `tests/w4_headers.b` and the gated `csp-browser` leg.
 
 fn row18_headers(r: Report) {
     r.row(18, "clickjacking and script injection")
 
-    r.eq("row18.latte-ships-a-security-header-middleware",
-         "missing: latte has no security_headers, WebReply carries no headers, and espresso's sends default-src 'none' which blocks latte.js",
-         "latte.security_headers(options) sends frame-ancestors 'none', X-Content-Type-Options: nosniff, a referrer policy, and script-src 'self' with connect-src for the socket")
+    // PLAN.md names four things, so four checks. A single `eq` against the
+    // whole policy string would say "the policy changed" and not WHICH clause
+    // of the plan stopped holding, and it would have to be re-recorded every
+    // time a directive is added — which is how an assertion becomes a
+    // photograph of a run.
+    let options: HeaderOptions = new HeaderOptions()
+    let policy: string = options.policy()
+    r.yes("row18.the-policy-denies-framing",
+          policy.contains("frame-ancestors 'none'"))
+    r.yes("row18.the-policy-names-a-script-source",
+          policy.contains("script-src 'self'"))
+    r.yes("row18.the-policy-names-a-connect-source-for-the-socket",
+          policy.contains("connect-src 'self'"))
+    r.eq("row18.the-referrer-policy-is-set", options.referrer, "no-referrer")
+
+    // PLAN.md's concrete finding is that espresso's own middleware sends
+    // `default-src 'none'` and names no script or connect source, so it blocks
+    // `latte.js` and the socket. latte's `default-src` is `'none'` TOO — the
+    // difference is only that latte names what it needs, so the refusal falls
+    // on what is not named instead of on everything. Asserting `default-src
+    // 'none'` here is what stops that clause being read as "latte loosened it".
+    r.yes("row18.default-src-is-still-none", policy.contains("default-src 'none'"))
+    r.no("row18.and-nothing-was-loosened-with-unsafe-inline",
+         policy.contains("unsafe-inline"))
+    r.no("row18.and-nothing-was-loosened-with-unsafe-eval",
+         policy.contains("unsafe-eval"))
+
+    // The control, and it is the one that matters: `policy()` must READ its
+    // options, not print a constant. Every check above passes against a
+    // hard-coded string. One field moves, and exactly one directive must move
+    // with it — no more, and not none.
+    var framed: HeaderOptions = new HeaderOptions()
+    framed.frame_ancestors = ["'self'"]
+    let moved: string = framed.policy()
+    r.yes("row18.control-the-policy-reads-its-options",
+          moved.contains("frame-ancestors 'self'"))
+    let before: List<string> = policy.split("; ")
+    let after: List<string> = moved.split("; ")
+    r.eqi("row18.control-and-no-directive-appeared-or-vanished",
+          after.len(), before.len())
+    var differing: int = 0
+    var index: int = 0
+    for index < before.len() && index < after.len() {
+        if before[index] != after[index] { differing += 1 }
+        index += 1
+    }
+    r.eqi("row18.control-one-option-moves-exactly-one-directive", differing, 1)
 
     // The half that IS true today, and the reason no `unsafe-inline` is
     // needed: latte writes no inline script and no `eval`. A CSP of
