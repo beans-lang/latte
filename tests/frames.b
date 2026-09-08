@@ -2653,7 +2653,7 @@ fn fault_sites(r: Report) {
     // cases. 24 is every `self.faults.push` in builder.b; `grep -c` says so.
     var names: List<string> = reached.keys()
     names.sort()
-    io.println("-- the sites, and how many shapes reach each")
+    io.println("-- the sites in builder.b, and how many shapes reach each")
     for name: string in names {
         match reached.get(name) {
             some(n) => { io.println("   {n}x {name}") }
