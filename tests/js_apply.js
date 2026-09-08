@@ -361,7 +361,7 @@
     // here, so every timer that fires does so because a check asked it to.
     function newCircuit(options) {
         options = options || {};
-        var host = freshHost();
+        var host = options.host || freshHost();
         var sockets = [];
         var clock = { t: 1000, next: 1 };
         var timers = [];
@@ -374,6 +374,11 @@
             host: host,
             enhanceNav: options.enhanceNav,
             answerMs: options.answerMs,
+            // The animation frame, injected for the same reason the clock is:
+            // the scroll reporter coalesces to one message per frame, and a
+            // gate that waited for a real frame could not say which frame it
+            // was waiting for.
+            schedule: options.schedule,
             open: function () {
                 var made = new FakeSocket();
                 sockets.push(made);
@@ -793,7 +798,699 @@
     strayrig.advance(60000);
     eq('and leaves no timer behind', strayrig.stalls.length, 0);
 
+    // =================================================== § 6 streaming
+    //
+    // W6 row 1, the browser half. `stream.b` produces the bytes and
+    // `assemble_chunks` says what a browser should be left holding; this feeds
+    // the same bytes to Chrome's own HTML tokenizer AT EVERY SPLIT and
+    // requires the DOM to be that.
+    //
+    // Why an iframe and `document.write`: a split is only a real split if the
+    // parser sees it as one. `innerHTML = a + b` is not a split — it parses a
+    // complete string. `doc.open(); doc.write(a); …; doc.write(b); doc.close()`
+    // feeds an open document incrementally, which is exactly what a chunked
+    // response does, and it is the only way to get a browser to hold half a
+    // tag the way the network makes it hold one.
+
     say('');
-    say(checks + ' checks, ' + bad + ' bad');
-    emit();
+    say('=== 6. streaming: every byte split, through the real HTML parser');
+
+    var frame = document.createElement('iframe');
+    frame.setAttribute('title', 'stream');
+    document.body.appendChild(frame);
+
+    // The id rule, both copies. latte.js reads an id out of an attribute and
+    // writes it straight into an attribute SELECTOR, so the set that cannot
+    // carry a quote or a bracket out of the document is the set that keeps
+    // that safe.
+    var badIds = 0;
+    for (var ip = 0; ip < LATTE_STREAM.ids.length; ip++) {
+        var probe = LATTE_STREAM.ids[ip];
+        if (latte.streamIdIsSafe(probe[0]) !== probe[1]) {
+            badIds += 1;
+            say('   id ' + JSON.stringify(probe[0]) + ' beans=' + probe[1] +
+                ' browser=' + latte.streamIdIsSafe(probe[0]));
+        }
+    }
+    say('slot ids compared: ' + LATTE_STREAM.ids.length);
+    eq('every slot id gets the same answer from both halves', badIds, 0);
+    eq('the longest slot id is the same number on both sides',
+       latte.maxStreamId, LATTE_CAPS.maxStreamId);
+
+    /// Write `text` into the frame in `parts` pieces, sweeping after each, and
+    /// answer what the document was left holding.
+    ///
+    /// `early` is how many chunks had landed BEFORE the last write, and it is
+    /// the answer to the question that decides whether this whole section
+    /// means anything: if `document.write` buffered its input and parsed it
+    /// all at `close()`, every sweep between the writes would see an empty
+    /// document, every split would pass for the same trivial reason, and the
+    /// 4397 below would be 4397 runs of one test. The count is printed into
+    /// the golden.
+    function runStream(text, cuts) {
+        var doc = frame.contentDocument;
+        doc.open();
+        var stream = new latte.Stream({ document: doc,
+                                        log: { warn: function () {}, error: function () {} } });
+        var at = 0;
+        for (var c = 0; c < cuts.length; c++) {
+            doc.write(text.slice(at, cuts[c]));
+            stream.sweep();
+            at = cuts[c];
+        }
+        var early = stream.landed.length;
+        doc.write(text.slice(at));
+        stream.sweep();
+        doc.close();
+        stream.sweep();
+        return { stream: stream, early: early,
+                 html: doc.body ? doc.body.innerHTML : '',
+                 doc: doc };
+    }
+
+    var splitsRun = 0;
+    var splitWrong = 0;
+    var splitFaults = 0;
+    var splitsEarly = 0;
+    var splitsSwept = 0;
+    var firstSplitFailure = '';
+    for (var sc = 0; sc < LATTE_STREAM.docs.length; sc++) {
+        var scase = LATTE_STREAM.docs[sc];
+        if (!scase.sealed) { continue; }
+        splitsSwept += 1;
+        var wantHtml = normalize(scase.want);
+        var wantFaults = scase.faults.join('\n');
+        // EVERY split, 0 through the whole length. 0 is "nothing written yet"
+        // and length is "one write"; both are real deliveries and both have
+        // caught something in this repo's siblings.
+        for (var cut = 0; cut <= scase.doc.length; cut++) {
+            var got = runStream(scase.doc, [cut]);
+            splitsRun += 1;
+            if (got.early > 0) { splitsEarly += 1; }
+            if (normalize(got.html) !== wantHtml) {
+                splitWrong += 1;
+                if (firstSplitFailure === '') {
+                    firstSplitFailure = scase.name + ' at ' + cut + ': ' +
+                        JSON.stringify(got.html) + ' want ' + JSON.stringify(scase.want);
+                }
+            }
+            if (got.stream.faults.join('\n') !== wantFaults) {
+                splitFaults += 1;
+                if (firstSplitFailure === '') {
+                    firstSplitFailure = scase.name + ' at ' + cut + ' faults: ' +
+                        JSON.stringify(got.stream.faults) + ' want ' + JSON.stringify(scase.faults);
+                }
+            }
+        }
+        // And one three-way split, so a document is also cut in two places at
+        // once — the shape where a chunk's OPEN tag and its SEAL land in
+        // different writes with the body divided between them.
+        for (var a = 0; a <= scase.doc.length; a += 7) {
+            for (var b = a; b <= scase.doc.length; b += 11) {
+                var got3 = runStream(scase.doc, [a, b]);
+                splitsRun += 1;
+                if (got3.early > 0) { splitsEarly += 1; }
+                if (normalize(got3.html) !== wantHtml) {
+                    splitWrong += 1;
+                    if (firstSplitFailure === '') {
+                        firstSplitFailure = scase.name + ' at ' + a + '/' + b + ': ' +
+                            JSON.stringify(got3.html);
+                    }
+                }
+            }
+        }
+    }
+    if (firstSplitFailure !== '') { say('   first: ' + firstSplitFailure); }
+    // "documents" is how many were SWEPT, not how many are in the fixture:
+    // `unsealed` is deliberately excluded and asserted separately below, and a
+    // count that included it would say 8 while 7 were tested.
+    say('documents swept at every split: ' + splitsSwept + ' of ' +
+        LATTE_STREAM.docs.length + ', splits run: ' + splitsRun);
+    say('splits where a chunk had landed before the last write: ' + splitsEarly);
+    eq('every split lands on the document assemble_chunks describes', splitWrong, 0);
+    eq('and raises exactly the faults assemble_chunks raises', splitFaults, 0);
+    // THE LINE THAT MAKES THE 4397 ABOVE MEAN SOMETHING. A `document.write`
+    // that buffered until `close()` would leave every intermediate sweep
+    // looking at an empty document and every split would pass for the same
+    // trivial reason. Some splits land early and some do not, which is only
+    // possible if the parser is really being fed incrementally.
+    eq('the parser is fed incrementally: some splits land before the end',
+       splitsEarly > 0, true);
+    eq('and not all of them, or the cut would not be a cut',
+       splitsEarly < splitsRun, true);
+
+    // --- the seal is what makes the difference, and here is the proof ---
+    //
+    // The `unsealed` document ends inside a chunk. The Beans model, handed the
+    // whole event stream at once, can say the document ended mid-chunk. A
+    // browser cannot and must not: the next byte may be the rest of it. So the
+    // chunk stays exactly where it is and the placeholder stays with it — a
+    // hole on the page rather than half a region moved into it.
+    var unsealed = null;
+    for (var u = 0; u < LATTE_STREAM.docs.length; u++) {
+        if (LATTE_STREAM.docs[u].name === 'unsealed') { unsealed = LATTE_STREAM.docs[u]; }
+    }
+    var half = runStream(unsealed.doc, [unsealed.doc.length]);
+    eq('an unsealed chunk lands nothing', half.stream.landed.length, 0);
+    eq('and raises no fault, because more bytes could still be coming',
+       half.stream.faults.length, 0);
+    eq('the placeholder is still on the page',
+       half.doc.querySelectorAll('latte-slot[id="s0"]').length, 1);
+    eq('and the chunk is still beside it, whole',
+       half.doc.querySelectorAll('latte-chunk[for="s0"]').length, 1);
+    // The positive control: the SAME document with the seal appended lands.
+    // Without it "nothing landed" could not be told from "this sweep never ran".
+    var sealed = runStream(unsealed.doc + '</latte-chunk><latte-seal for="s0"></latte-seal>',
+                           [unsealed.doc.length]);
+    eq('the same bytes with a seal after them land the chunk',
+       sealed.stream.landed.join(','), 's0');
+    eq('and the placeholder is gone',
+       sealed.doc.querySelectorAll('latte-slot').length, 0);
+    eq('and the wrapper with it',
+       sealed.doc.querySelectorAll('latte-chunk,latte-seal').length, 0);
+    eq('leaving the content where the hole was',
+       normalize(sealed.doc.body.innerHTML), normalize('<div><p>half</p></div>'));
+
+    // The same thing said once, concretely, at a cut chosen by hand: after the
+    // first write the placeholder is parsed and in the document, the seal is
+    // not, and nothing has landed. If the parser buffered, the first two of
+    // these would be 0 and 0.
+    var oneDoc = LATTE_STREAM.docs[0];
+    var midCut = oneDoc.doc.indexOf('</latte-chunk>');
+    var midDoc = frame.contentDocument;
+    midDoc.open();
+    var midStream = new latte.Stream({ document: midDoc });
+    midDoc.write(oneDoc.doc.slice(0, midCut));
+    midStream.sweep();
+    eq('half a document already holds its placeholder',
+       midDoc.querySelectorAll('latte-slot[id="s0"]').length, 1);
+    eq('and the chunk element the parser has opened',
+       midDoc.querySelectorAll('latte-chunk[for="s0"]').length, 1);
+    eq('but not the seal, so nothing may land yet',
+       midDoc.querySelectorAll('latte-seal').length, 0);
+    eq('and nothing did', midStream.landed.length, 0);
+    midDoc.write(oneDoc.doc.slice(midCut));
+    midStream.sweep();
+    midDoc.close();
+    eq('the rest of the bytes land it', midStream.landed.join(','), 's0');
+
+    // --- the observer may arrive AFTER the parser has finished ---
+    //
+    // A deferred script, or one that boots on DOMContentLoaded, starts on a
+    // document that is already complete. An observer only reports what happens
+    // after it starts, so if `start()` did not sweep once on the way in, every
+    // chunk on such a page would stay in its wrapper for ever. Nothing here
+    // mutates the document after `start()`, so the catch-up sweep is the only
+    // thing that can land anything.
+    var late = LATTE_STREAM.docs[1];
+    var lateDoc = frame.contentDocument;
+    lateDoc.open();
+    lateDoc.write(late.doc);
+    lateDoc.close();
+    var lateStream = new latte.Stream({ document: lateDoc });
+    eq('a document that finished before the observer started still lands',
+       lateStream.start(), true);
+    eq('all three of them', lateStream.landed.join(','), 's0,s1,s2');
+    eq('leaving what assemble_chunks describes',
+       normalize(lateDoc.body.innerHTML), normalize(late.want));
+    // `document.open()` REUSES the Document object rather than making a new
+    // one, so an observer left running here would still be attached to the
+    // document § 9 reopens — and § 9's whole claim is that ITS observer did
+    // the work. This cost two red lines to find.
+    lateStream.stop();
+
+    // --- sweeping twice does not land twice ---
+    var twice = runStream(LATTE_STREAM.docs[0].doc, [LATTE_STREAM.docs[0].doc.length]);
+    var before = twice.doc.body.innerHTML;
+    eq('a second sweep lands nothing', twice.stream.sweep(), 0);
+    eq('and changes nothing', twice.doc.body.innerHTML, before);
+
+    // =================================================== § 7 virtual lists
+    //
+    // W6 row 2, the browser half. Two separate claims, and they are pinned
+    // separately because they can fail separately:
+    //
+    //   the MIRROR — `latte.virtualWindow` answers what `VirtualGeometry
+    //   .window_at` answers, for every scroll position in the fixture. Judged
+    //   against Beans and nothing else.
+    //
+    //   the REPORTER — it reads the four numbers off the right element, takes
+    //   `scrollTop` and `clientHeight` from a real scrolling box, coalesces to
+    //   one message per frame, and sends `c` for the count. Judged against the
+    //   mirror and against hand-computed messages.
+
+    say('');
+    say('=== 7. virtual lists: the geometry mirror and the scroll reporter');
+
+    // The caps latte.js holds copies of. `hello` carries `v`, `c` and `mx` and
+    // nothing else, so a client cannot ask what the window cap is — and
+    // `circuit.b:on_range` ENDS the circuit for a range over it. A drift here
+    // is a tab that dies on its first scroll of a tall list.
+    eq('the window cap latte.js holds is the one circuit.b enforces',
+       latte.maxWindow, LATTE_CAPS.wire);
+    eq('and the one virtual.b trims to', latte.maxWindow, LATTE_CAPS.renderer);
+
+    var windowWrong = 0;
+    var firstWindow = '';
+    for (var w = 0; w < LATTE_VIRTUAL.length; w++) {
+        var row = LATTE_VIRTUAL[w];
+        var band = latte.virtualWindow(row[0], row[1], row[2], row[3], row[4], row[5]);
+        if (band.start !== row[6] || band.count !== row[7]) {
+            windowWrong += 1;
+            if (firstWindow === '') {
+                firstWindow = 'rows=' + row[0] + ' h=' + row[1] + ' scan=' + row[2] +
+                    ' cap=' + row[3] + ' top=' + row[4] + ' view=' + row[5] +
+                    ' got ' + band.start + '+' + band.count +
+                    ' want ' + row[6] + '+' + row[7];
+            }
+        }
+    }
+    if (firstWindow !== '') { say('   first: ' + firstWindow); }
+    say('scroll positions compared: ' + LATTE_VIRTUAL.length);
+    eq('every one lands on the window VirtualGeometry lays out', windowWrong, 0);
+
+    // Four windows computed BY HAND from the rule in virtual.b, so the mirror
+    // is not judged only against a table that came out of the same tree.
+    //   50,000 rows of 32px, overscan 4, cap 200.
+    //   at 320px with a 100px viewport: first = 320/32 = 10, last = (320+99)/32
+    //   = 13, so the band is 6..17 — twelve rows.
+    eqJson('by hand: 320px, 100px viewport',
+           latte.virtualWindow(50000, 32, 4, 200, 320, 100), { start: 6, count: 12 });
+    //   one pixel earlier the band starts a row sooner: first = 9, last = 13.
+    eqJson('by hand: one pixel earlier crosses a row boundary',
+           latte.virtualWindow(50000, 32, 4, 200, 319, 100), { start: 5, count: 13 });
+    //   at the very top there is nothing to overscan into.
+    eqJson('by hand: the top of the list',
+           latte.virtualWindow(50000, 32, 4, 200, 0, 100), { start: 0, count: 8 });
+    //   a viewport of 100,000px wants 3129 rows and gets the cap.
+    eqJson('by hand: a viewport taller than the cap allows',
+           latte.virtualWindow(50000, 32, 4, 200, 0, 100000), { start: 0, count: 200 });
+
+    // --- the reporter, in a real scrolling box ---
+    function scroller(id, rows, height, overscan, inner) {
+        var el = document.createElement('div');
+        el.setAttribute('data-latte-virtual', String(id));
+        el.setAttribute('data-latte-rows', String(rows));
+        el.setAttribute('data-latte-row-height', String(height));
+        el.setAttribute('data-latte-overscan', String(overscan));
+        // No border and no padding, so `clientHeight` is the number written
+        // here and the check below is arithmetic rather than a measurement.
+        el.setAttribute('style', 'height:100px;overflow:auto;border:0;padding:0');
+        el.innerHTML = '<div style="height:' + inner + 'px"></div>';
+        return el;
+    }
+
+    function newReporter(options) {
+        options = options || {};
+        var host = options.host || freshHost();
+        var frames = [];
+        var rig = newCircuit({ schedule: function (fn) { frames.push(fn); },
+                               host: host });
+        rig.frames = frames;
+        rig.tick = function () {
+            var due = frames.slice();
+            frames.length = 0;
+            for (var i = 0; i < due.length; i++) { due[i](); }
+        };
+        return rig;
+    }
+
+    // The element `virtual.b` ACTUALLY renders, taken from the fixture and not
+    // built here. An earlier draft of this section built its own element with
+    // `scroller()` below, and deleting `data-latte-overscan` from `virtual.b`
+    // left this leg green — the reporter went on reading an attribute only the
+    // harness was writing. The four numbers the reporter needs now come from
+    // the serializer.
+    var serverHost = freshHost();
+    serverHost.innerHTML = LATTE_VIRTUAL_ELEMENT.html;
+    var served = serverHost.querySelector('[data-latte-virtual]');
+    eq('the server renders an element the reporter can read', served !== null, true);
+    eq('carrying the row count', served.getAttribute('data-latte-rows'),
+       String(LATTE_VIRTUAL_ELEMENT.rows));
+    eq('the row height', served.getAttribute('data-latte-row-height'),
+       String(LATTE_VIRTUAL_ELEMENT.rowHeight));
+    eq('and the overscan, which the client cannot derive',
+       served.getAttribute('data-latte-overscan'),
+       String(LATTE_VIRTUAL_ELEMENT.overscan));
+    served.setAttribute('style', 'height:100px;overflow:auto;border:0;padding:0');
+    served.scrollTop = 320;
+    eq('the served element scrolls like the geometry says', served.scrollTop, 320);
+    eqJson('and the window it describes is the hand-computed one',
+           latte.windowForElement(served, latte.maxWindow), { start: 6, count: 12 });
+    var servedRig = newReporter({ host: serverHost });
+    hello(servedRig);
+    served.dispatchEvent(new Event('scroll', { bubbles: false }));
+    servedRig.tick();
+    eqJson('the reporter reports the SERVER\'s element', last(servedRig.socket.sent),
+           { t: 'range', h: LATTE_VIRTUAL_ELEMENT.id, s: 6, c: 12, n: 2 });
+
+    var rrig = newReporter();
+    hello(rrig);
+    var list = scroller(7, 50, 32, 4, 1600);
+    rrig.host.appendChild(list);
+    eq('the box is exactly as tall as it was told to be', list.clientHeight, 100);
+    list.scrollTop = 320;
+    eq('and it really scrolled', list.scrollTop, 320);
+    list.dispatchEvent(new Event('scroll', { bubbles: false }));
+    eq('a scroll sends nothing until the frame comes', rrig.socket.sent.length, 1);
+    // Four more scrolls before the frame. All of them cost one message.
+    list.dispatchEvent(new Event('scroll', { bubbles: false }));
+    list.dispatchEvent(new Event('scroll', { bubbles: false }));
+    list.dispatchEvent(new Event('scroll', { bubbles: false }));
+    eq('and four scrolls schedule one frame, not four', rrig.frames.length, 1);
+    rrig.tick();
+    // The COUNT rides on `c`. On `n` it would be read as the message sequence
+    // — which wire.b takes before it looks at the kind — the range would
+    // decode with no count at all, and "a range must be two non-negative
+    // numbers" would refuse every scroll the page ever made.
+    eqJson('one range goes out, with the count on c and the sequence on n',
+           last(rrig.socket.sent), { t: 'range', h: 7, s: 6, c: 12, n: 2 });
+    eq('four scrolls, one message', rrig.socket.sent.length, 2);
+
+    // --- a window that did not move sends nothing ---
+    rrig.circuit.ranges.request();
+    rrig.tick();
+    eq('the same window again sends nothing', rrig.socket.sent.length, 2);
+    // ...and the positive control, so "nothing" is not "the reporter is dead".
+    list.scrollTop = 1600;
+    list.dispatchEvent(new Event('scroll', { bubbles: false }));
+    rrig.tick();
+    eqJson('a window that moved does send', last(rrig.socket.sent),
+           { t: 'range', h: 7, s: 42, c: 8, n: 3 });
+
+    // --- two lists on one page are two messages, each with its own id ---
+    var second = scroller(9, 50, 32, 4, 1600);
+    rrig.host.appendChild(second);
+    second.scrollTop = 320;
+    second.dispatchEvent(new Event('scroll', { bubbles: false }));
+    rrig.tick();
+    eqJson('the second list reports under its own id', last(rrig.socket.sent),
+           { t: 'range', h: 9, s: 6, c: 12, n: 4 });
+    eq('and the first, which did not move, says nothing', rrig.socket.sent.length, 4);
+
+    // --- unlisten takes the scroll listener with it ---
+    //
+    // `unlisten` is public and nothing inside latte.js calls it, so without
+    // this the line that drops the scroll listener is a line no input reaches.
+    var offrig = newReporter();
+    hello(offrig);
+    var leaving = scroller(13, 50, 32, 4, 1600);
+    offrig.host.appendChild(leaving);
+    leaving.scrollTop = 320;
+    leaving.dispatchEvent(new Event('scroll', { bubbles: false }));
+    offrig.tick();
+    eq('a watched list reports', last(offrig.socket.sent).t, 'range');
+    offrig.circuit.unlisten();
+    leaving.scrollTop = 1600;
+    leaving.dispatchEvent(new Event('scroll', { bubbles: false }));
+    offrig.tick();
+    eq('and an unlistened circuit does not', last(offrig.socket.sent).s, 6);
+
+    // --- the cap is never crossed, whatever the box says ---
+    var caprigv = newReporter();
+    hello(caprigv);
+    var tall = scroller(3, 50000, 32, 4, 1600000);
+    tall.setAttribute('style', 'height:100000px;overflow:auto;border:0;padding:0');
+    caprigv.host.appendChild(tall);
+    tall.dispatchEvent(new Event('scroll', { bubbles: false }));
+    caprigv.tick();
+    var capped = last(caprigv.socket.sent);
+    eq('a viewport that wants thousands of rows asks for the cap',
+       capped.c, latte.maxWindow);
+    eq('which is not more than circuit.b would accept',
+       capped.c <= LATTE_CAPS.wire, true);
+
+    // --- an element with no usable id is not reported ---
+    var badrig = newReporter();
+    hello(badrig);
+    var nameless = scroller(0, 50, 32, 4, 1600);
+    nameless.setAttribute('data-latte-virtual', 'nope');
+    badrig.host.appendChild(nameless);
+    nameless.scrollTop = 320;
+    nameless.dispatchEvent(new Event('scroll', { bubbles: false }));
+    badrig.tick();
+    eq('an element whose id is not a number reports nothing',
+       badrig.socket.sent.length, 1);
+    // The positive control: the same element with a number on it does report,
+    // so the silence above is the id and not the listener.
+    nameless.setAttribute('data-latte-virtual', '0');
+    nameless.dispatchEvent(new Event('scroll', { bubbles: false }));
+    badrig.tick();
+    eqJson('and with a number on it, it does', last(badrig.socket.sent),
+           { t: 'range', h: 0, s: 6, c: 12, n: 2 });
+
+    // --- a batch re-evaluates the lists it just changed ---
+    //
+    // A list that GREW under a stationary scroll position has a new window and
+    // no scroll event is coming to say so.
+    var batchrig = newReporter();
+    hello(batchrig);
+    var grows = scroller(11, 50, 32, 4, 1600);
+    batchrig.host.appendChild(grows);
+    grows.scrollTop = 1600;
+    grows.dispatchEvent(new Event('scroll', { bubbles: false }));
+    batchrig.tick();
+    eqJson('the window at the bottom of a 50-row list', last(batchrig.socket.sent),
+           { t: 'range', h: 11, s: 42, c: 8, n: 2 });
+    grows.setAttribute('data-latte-rows', '500');
+    batchrig.circuit.onBatch({ b: 1, u: [] });
+    batchrig.tick();
+    eqJson('the same scroll position in a 500-row list is a different window',
+           last(batchrig.socket.sent), { t: 'range', h: 11, s: 42, c: 12, n: 3 });
+    // And it settles: a batch that changed nothing about the list sends no
+    // second range, so a batch and a range cannot chase each other.
+    batchrig.circuit.onBatch({ b: 2, u: [] });
+    batchrig.tick();
+    eq('a batch that moved no window sends no range',
+       last(batchrig.socket.sent).t, 'ack');
+
+    // =================================================== § 8 uploads
+    //
+    // W6 row 3, the browser half. The POST is real; the progress REPORT stops
+    // at a sink, because wire v1 has no client message for progress and a
+    // client that invented one would be answered with `bye protocol`. See the
+    // note above `Progress` in latte.js and lanes/W6.md.
+
+    say('');
+    say('=== 8. uploads: the POST, and progress clamped as UploadProgress clamps it');
+
+    var progWrong = 0;
+    var firstProg = '';
+    for (var pr = 0; pr < LATTE_PROGRESS.length; pr++) {
+        var prow = LATTE_PROGRESS[pr];
+        var prog = new latte.Progress();
+        prog.report(prow[0], prow[1]);
+        var again = prog.report(prow[0], prow[1]);
+        if (prog.sent !== prow[2] || prog.total !== prow[3] ||
+            prog.percent() !== prow[4] || again !== prow[5]) {
+            progWrong += 1;
+            if (firstProg === '') {
+                firstProg = prow[0] + '/' + prow[1] + ' got ' + prog.sent + '/' +
+                    prog.total + ' ' + prog.percent() + '% changed=' + again +
+                    ' want ' + prow[2] + '/' + prow[3] + ' ' + prow[4] + '% changed=' + prow[5];
+            }
+        }
+    }
+    if (firstProg !== '') { say('   first: ' + firstProg); }
+    say('progress pairs compared: ' + LATTE_PROGRESS.length);
+    eq('every pair clamps to what UploadProgress clamps it to', progWrong, 0);
+
+    function FakeXhr() {
+        this.method = '';
+        this.url = '';
+        this.body = null;
+        this.status = 0;
+        this.upload = {};
+        this.onload = null;
+        this.onerror = null;
+    }
+    FakeXhr.prototype.open = function (method, url) { this.method = method; this.url = url; };
+    FakeXhr.prototype.send = function (body) { this.body = body; };
+
+    function control(id, maxBytes, maxFiles, field, action) {
+        var el = document.createElement('div');
+        el.setAttribute('data-latte-upload', String(id));
+        el.setAttribute('data-latte-max-bytes', String(maxBytes));
+        el.setAttribute('data-latte-max-files', String(maxFiles));
+        if (action) { el.setAttribute('data-latte-action', action); }
+        if (field !== null) {
+            var input = document.createElement('input');
+            input.setAttribute('type', 'file');
+            input.setAttribute('name', field);
+            el.appendChild(input);
+        }
+        document.body.appendChild(el);
+        return el;
+    }
+
+    function newUploader(el) {
+        var made = { sent: [], refused: [], done: [], xhrs: [] };
+        made.uploader = new latte.Uploader({
+            element: el,
+            document: document,
+            request: function () {
+                var x = new FakeXhr();
+                made.xhrs.push(x);
+                return x;
+            },
+            onprogress: function (message) { made.sent.push(message); },
+            onrefused: function (why) { made.refused.push(why); },
+            ondone: function (status) { made.done.push(status); }
+        });
+        return made;
+    }
+
+    function file(name, bytes, type) {
+        var body = [];
+        for (var i = 0; i < bytes; i++) { body.push('x'); }
+        return new File([body.join('')], name, { type: type || 'text/plain' });
+    }
+
+    // --- an ordinary POST ---
+    var up = newUploader(control(3, 100, 2, 'doc', '/upload'));
+    eq('two files inside the limits post', up.uploader.post([file('a.txt', 10), file('b.txt', 90)]), true);
+    eq('one request went out', up.xhrs.length, 1);
+    eq('as a POST', up.xhrs[0].method, 'POST');
+    eq('to the action the control names', up.xhrs[0].url, '/upload');
+    eq('carrying both parts under the input\'s name',
+       up.xhrs[0].body.getAll('doc').length, 2);
+    eq('with the submitted filenames on them',
+       up.xhrs[0].body.getAll('doc').map(function (f) { return f.name; }).join(','),
+       'a.txt,b.txt');
+    eq('and nothing was refused', up.refused.length, 0);
+
+    // --- no action means the page's own url, which is what Upload.action means ---
+    var own = newUploader(control(4, 100, 2, 'doc', null));
+    own.uploader.post([file('a.txt', 10)]);
+    eq('a control with no action posts to the page itself',
+       own.xhrs[0].url, location.pathname + location.search);
+
+    // --- progress, clamped, and reported once per change ---
+    var prg = newUploader(control(5, 1000, 2, 'doc', '/u'));
+    prg.uploader.post([file('a.txt', 100)]);
+    prg.xhrs[0].upload.onprogress({ loaded: 0, total: 100, lengthComputable: true });
+    prg.xhrs[0].upload.onprogress({ loaded: 50, total: 100, lengthComputable: true });
+    prg.xhrs[0].upload.onprogress({ loaded: 50, total: 100, lengthComputable: true });
+    prg.xhrs[0].upload.onprogress({ loaded: 100, total: 100, lengthComputable: true });
+    eqJson('the reports that changed something',
+           prg.sent, [{ t: 'progress', h: 5, s: 0, c: 100 },
+                      { t: 'progress', h: 5, s: 50, c: 100 },
+                      { t: 'progress', h: 5, s: 100, c: 100 }]);
+    eq('and the percentage at the end', prg.uploader.progress.percent(), 100);
+    // A browser that does not know the length says so, and a bar that jumped
+    // to 100 because the total was missing would be a lie.
+    prg.xhrs[0].upload.onprogress({ loaded: 90, total: 0, lengthComputable: false });
+    eq('an unknown length is 0 of 0', prg.uploader.progress.total, 0);
+    eq('which is nought per cent, not a hundred', prg.uploader.progress.percent(), 0);
+    prg.xhrs[0].onload();
+    eq('the request finishing marks it done', prg.uploader.progress.done, true);
+    eq('and hands the status on', prg.done.join(','), '0');
+
+    // --- what the control will not even attempt ---
+    var big = newUploader(control(6, 100, 2, 'doc', '/u'));
+    eq('a file over the advertised limit does not post',
+       big.uploader.post([file('huge.bin', 101)]), false);
+    eq('and no request went out', big.xhrs.length, 0);
+    eq('and it says which file and by how much', big.refused.join('\n'),
+       '"huge.bin" is 101 bytes, over the 100 this control offers');
+
+    var many = newUploader(control(7, 100, 2, 'doc', '/u'));
+    eq('more files than the control takes does not post',
+       many.uploader.post([file('a', 1), file('b', 1), file('c', 1)]), false);
+    eq('and says how many were offered and how many came',
+       many.refused.join('\n'), 'this control takes 2 file(s) and 3 were chosen');
+
+    // A set with ONE bad file in it posts nothing at all. A control that took
+    // three of four and mentioned the fourth in a corner is a control that
+    // silently lost a file.
+    var mixed = newUploader(control(8, 100, 4, 'doc', '/u'));
+    eq('one bad file refuses the whole set',
+       mixed.uploader.post([file('a', 1), file('huge', 500), file('c', 1)]), false);
+    eq('and nothing was posted', mixed.xhrs.length, 0);
+
+    // The positive controls, so every refusal above is the rule it names and
+    // not a control that refuses everything.
+    var edge = newUploader(control(9, 100, 2, 'doc', '/u'));
+    eq('exactly at both limits posts',
+       edge.uploader.post([file('a', 100), file('b', 100)]), true);
+    eq('and the request carries both', edge.xhrs[0].body.getAll('doc').length, 2);
+
+    var handless = newUploader(control(10, 100, 2, null, '/u'));
+    eq('a control with no file input posts nothing',
+       handless.uploader.post([file('a', 1)]), false);
+    eq('and says so', handless.refused.join('\n'), 'this control has no file input to post');
+
+    // =============================================== § 9 the observer itself
+    //
+    // Everything in § 6 called `sweep()` by hand, which proves what a sweep
+    // does and nothing about whether anything ever calls one. This is the
+    // other half: `start()` puts a MutationObserver on the document and
+    // NOTHING here sweeps.
+    //
+    // A MutationObserver callback is a microtask, queued when the mutation
+    // happens. The writes below queue it, then this queues its own microtask
+    // behind it, and microtasks run in the order they were queued — so by the
+    // time `finish` runs the observer has run, deterministically, with no
+    // timer and nothing to wait for. `emit()` is at the end of that chain
+    // rather than at the end of the file: if the chain never runs, the page
+    // prints no verdict at all and test.sh fails on an empty extraction,
+    // which is the correct answer to "the observer never fired".
+
+    function observerCheck(finish) {
+        // Its own iframe, so nothing § 6 left attached can be what lands the
+        // chunk. See the note beside `lateStream.stop()` above.
+        var solo = document.createElement('iframe');
+        solo.setAttribute('title', 'observer');
+        document.body.appendChild(solo);
+        var doc = solo.contentDocument;
+        doc.open();
+        var watcher = new latte.Stream({ document: doc });
+        var text = LATTE_STREAM.docs[0].doc;
+        var cut = Math.floor(text.length / 2);
+        doc.write(text.slice(0, cut));
+        var started = watcher.start();
+        doc.write(text.slice(cut));
+        doc.close();
+        Promise.resolve().then(function () {
+            try {
+                eq('start() attaches an observer', started, true);
+                // NOTHING above called sweep. If the observer is not wired,
+                // the chunk is still in a wrapper and this is the line that
+                // says so.
+                eq('the observer landed the chunk with nobody sweeping',
+                   watcher.landed.join(','), 's0');
+                eq('and left the document assemble_chunks describes',
+                   normalize(doc.body.innerHTML),
+                   normalize(LATTE_STREAM.docs[0].want));
+                eq('with no wrapper and no placeholder left',
+                   doc.querySelectorAll('latte-slot,latte-chunk,latte-seal').length, 0);
+                watcher.stop();
+                // The positive control for `stop()`: a write after it is not
+                // landed, so the observer really was the thing doing the work.
+                doc.body.insertAdjacentHTML('beforeend',
+                    '<latte-slot id="s1"></latte-slot><latte-chunk for="s1"><b>x</b></latte-chunk>' +
+                    '<latte-seal for="s1"></latte-seal>');
+            } catch (err) {
+                say('FAIL the observer check threw: ' + err);
+                bad += 1;
+            }
+            Promise.resolve().then(function () {
+                try {
+                    eq('a stopped observer lands nothing', watcher.landed.join(','), 's0');
+                    eq('and the second chunk is still in its wrapper',
+                       doc.querySelectorAll('latte-chunk[for="s1"]').length, 1);
+                } catch (err2) {
+                    say('FAIL the observer control threw: ' + err2);
+                    bad += 1;
+                }
+                finish();
+            });
+        });
+    }
+
+    observerCheck(function () {
+        say('');
+        say(checks + ' checks, ' + bad + ' bad');
+        emit();
+    });
 })();
