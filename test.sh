@@ -519,7 +519,7 @@ run_examples_leg() {
                 failed=1
                 continue
             fi
-            echo "ok examples/markup — ${generated#"$ROOT"/} is what latte-bx makes of ${bx#examples/}"
+            echo "ok examples/markup — ${generated#"$ROOT"/} is what latte-bx makes of ${bx#"$ROOT"/}"
         done < <(find "$ROOT/examples" -name '*.bx' -type f 2>/dev/null | LC_ALL=C sort)
     fi
 

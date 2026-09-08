@@ -1,0 +1,26 @@
+== GET /todo/all ==
+<section class="todo"><div class="card"><h3>all — 3 open of 4</h3><ul><li class="done">buy beans</li><li class="open">grind beans</li><li class="open">boil water</li><li class="open">pour</li></ul></div></section>
+components mounted: 6 — the page, the card and 4 items
+
+== clicking the third item ==
+the click found its handler: true
+renders this pass: 3 of 6 mounted components
+<section class="todo"><div class="card"><h3>all — 2 open of 4</h3><ul><li class="done">buy beans</li><li class="open">grind beans</li><li class="done">boil water</li><li class="open">pour</li></ul></div></section>
+
+== clicking it again puts it back ==
+renders this pass: 3
+<section class="todo"><div class="card"><h3>all — 3 open of 4</h3><ul><li class="done">buy beans</li><li class="open">grind beans</li><li class="open">boil water</li><li class="open">pour</li></ul></div></section>
+
+== dropping a task, from outside any event ==
+renders this pass: 2
+items still mounted: 3
+<section class="todo"><div class="card"><h3>all — 2 open of 3</h3><ul><li class="done">buy beans</li><li class="open">boil water</li><li class="open">pour</li></ul></div></section>
+
+== GET /todo/open — the same page, a different parameter ==
+<section class="todo"><div class="card"><h3>open — 3 open of 4</h3><ul><li class="open">grind beans</li><li class="open">boil water</li><li class="open">pour</li></ul></div></section>
+
+== GET /todo/done ==
+<section class="todo"><div class="card"><h3>done — 3 open of 4</h3><ul><li class="done">buy beans</li></ul></div></section>
+
+== GET /todo — no {filter} in the path ==
+no page is routed there — the host answers 404

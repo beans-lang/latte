@@ -1,0 +1,20 @@
+== GET /counter/3 ==
+<main class="page"><section class="counter"><h2>Count: 3</h2><button class="primary">Add one</button><input value="" placeholder="A note"><p class="hint">Keep going</p><ul><li>write the page</li><li>click the button</li></ul></section></main>
+
+== the page bound 2 handler(s) ==
+
+== one click on the button ==
+the click found its handler: true
+renders this pass: 2
+<main class="page"><section class="counter"><h2>Count: 4</h2><button class="primary">Add one</button><input value="" placeholder="A note"><p class="hint">Keep going</p><ul><li>write the page</li><li>click the button</li></ul></section></main>
+
+== typing, then eight more clicks ==
+the input found its handler: true
+renders this pass: 1
+<main class="page"><section class="counter"><h2>Count: 12</h2><button class="primary">Add one</button><input value="tea" placeholder="A note"><p class="warn">That is a lot, tea</p><ul><li>write the page</li><li>click the button</li></ul></section></main>
+
+== GET /counter/40 ==
+<main class="page"><section class="counter"><h2>Count: 40</h2><button class="primary">Add one</button><input value="" placeholder="A note"><p class="warn">That is a lot, </p><ul><li>write the page</li><li>click the button</li></ul></section></main>
+
+== GET /counter (no {start} in the path) ==
+no page is routed there — the host answers 404
