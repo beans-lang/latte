@@ -18,7 +18,7 @@
 // gated suite (leading `_`, like `tests/_wasm_core.b`): it has no golden,
 // because a server that stays up until a browser tells it to stop cannot
 // print a fixed number of lines before it does. Its output is read by
-// `w8b_smoke.sh`, which starts it, reads the port off stdout, runs
+// `w8b_smoke.sh`, which starts it, reads the port off stderr, runs
 // `tests/w8b_smoke.js` in Chromium against it, and then asserts the summary
 // this program prints on the way out.
 //
@@ -45,8 +45,16 @@
 //      in after `bind`, because the port is the kernel's to choose.
 //
 // The port is printed, once, on a line of its own, because a harness outside
-// this process has to find it and a fixed port is a false green when
-// something else is listening.
+// this process has to find it and a fixed port is a false green when something
+// else is listening.
+//
+// **Every `W8B-SMOKE-*` line goes to stderr, and that is not a style choice.**
+// `std.io` is a builtin package whose whole surface is println / eprintln /
+// print / eprint / read_line / read_all — there is no `flush`. On this host
+// `rt_write` is `fwrite(..., stdout)`, and stdout to a pipe is fully buffered,
+// so the port line would sit in a 64 KiB buffer until the process exits — that
+// is, until after the harness gave up waiting for it. stderr is unbuffered, so
+// the harness sees the port the moment `bind` returns.
 package main
 
 import espresso
@@ -149,6 +157,11 @@ pub class Wiring {
     pub scripts_served: int = 0
     pub circuits_opened: int = 0
     pub adopted_id: string = ""
+    /// Filled in after `bind`, because a `ServerControl` does not exist before
+    /// one. `/_stop` uses it so the harness can end the run cleanly and read
+    /// the summary; killing the process would lose every server-side fact.
+    pub stopper: Option<espresso.ServerControl> = none
+    pub stops: int = 0
     pub fn init() {}
 }
 
@@ -168,16 +181,17 @@ fn main() {
         // first waits for the one before it and this program would hang with
         // nothing printed. Say so and leave; the harness treats a missing
         // PORT line as a failure, and this line tells it why.
-        io.println("W8B-SMOKE-UNAVAILABLE {NO_POLLER_MESSAGE}")
+        io.eprintln("W8B-SMOKE-UNAVAILABLE {NO_POLLER_MESSAGE}")
         return
     }
 
-    let applier: string = match fs.read("js/latte.js") {
-        ok(text) => text,
+    var applier: string = ""
+    match fs.read("js/latte.js") {
+        ok(text) => { applier = text }
         err(problem) => {
-            io.println("W8B-SMOKE-UNAVAILABLE cannot read js/latte.js: {problem.kind}")
+            io.eprintln("W8B-SMOKE-UNAVAILABLE cannot read js/latte.js: {problem.kind}")
             return
-        },
+        }
     }
 
     let wiring: Wiring = new Wiring()
@@ -185,7 +199,7 @@ fn main() {
     options.idle_ms = 600000
     options.retention_ms = 600000
     let set: CircuitSet = new CircuitSet(options,
-        fn(url: string) -> Option<Component> {
+        fn(facts: Map<string, string>, url: string) -> Option<Component> {
             if url != "/" { return none }
             wiring.pages_served += 1
             return some(new Board())
@@ -239,6 +253,24 @@ fn main() {
             context.response.text_body(200, "OK", shell(id), "text/html; charset=utf-8")
             return ok(true)
         }
+        // Chrome asks for this on every navigation with no prompting, and a
+        // 404 for it would land in the console assertion as noise that has
+        // nothing to do with latte.
+        if path == "/favicon.ico" {
+            context.response.text_body(204, "No Content", "",
+                                       "image/x-icon")
+            return ok(true)
+        }
+        if path == "/_stop" {
+            wiring.stops += 1
+            match wiring.stopper {
+                some(control) => { let asked: bool = control.stop().or(false) }
+                none => {}
+            }
+            context.response.text_body(200, "OK", "stopping\n",
+                                       "text/plain; charset=utf-8")
+            return ok(true)
+        }
         if path == "/latte.js" {
             wiring.scripts_served += 1
             context.response.text_body(200, "OK", applier,
@@ -262,20 +294,22 @@ fn main() {
     // `127.0.0.1` are different origins.
     endpoint.origins = ["http://127.0.0.1:{port}", "http://localhost:{port}"]
 
-    // One line, first, flushed: the harness blocks on it.
-    io.println("W8B-SMOKE-PORT {port}")
-    io.flush()
+    wiring.stopper = some(server.control())
+
+    // One line, first, on the unbuffered stream: the harness blocks on it.
+    io.eprintln("W8B-SMOKE-PORT {port}")
 
     let stats: espresso.ServerStats = server.run().expect("run")
 
     // The summary. Everything here is a server-side fact the browser could
     // not have faked, and the harness asserts on it.
-    io.println("W8B-SMOKE-UPGRADES {stats.upgrades}")
-    io.println("W8B-SMOKE-PAGES {wiring.pages_served}")
-    io.println("W8B-SMOKE-SCRIPTS {wiring.scripts_served}")
-    io.println("W8B-SMOKE-CIRCUITS {wiring.circuits_opened}")
-    io.println("W8B-SMOKE-HELD {set.count()}")
-    io.println("W8B-SMOKE-FAULTS {set.faults.len()}")
-    for fault: string in set.faults { io.println("W8B-SMOKE-FAULT {fault}") }
-    io.println("W8B-SMOKE-DONE")
+    io.eprintln("W8B-SMOKE-UPGRADES {stats.upgrades}")
+    io.eprintln("W8B-SMOKE-PAGES {wiring.pages_served}")
+    io.eprintln("W8B-SMOKE-SCRIPTS {wiring.scripts_served}")
+    io.eprintln("W8B-SMOKE-CIRCUITS {wiring.circuits_opened}")
+    io.eprintln("W8B-SMOKE-STOPS {wiring.stops}")
+    io.eprintln("W8B-SMOKE-HELD {set.count()}")
+    io.eprintln("W8B-SMOKE-FAULTS {set.faults.len()}")
+    for fault: string in set.faults { io.eprintln("W8B-SMOKE-FAULT {fault}") }
+    io.eprintln("W8B-SMOKE-DONE")
 }
