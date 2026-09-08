@@ -1,0 +1,45 @@
+-- 1. the default policy
+ok 1.1 the whole policy, in a fixed directive order
+ok 1.2 scripts may load from the page's own origin
+ok 1.3 and the socket may open to it
+ok 1.4 no 'unsafe-inline'
+ok 1.5 no 'unsafe-eval'
+ok 1.6 and framing is refused outright
+
+-- 2. espresso's security_headers, run and read
+ok 2.1 espresso still sends what PLAN.md found
+ok 2.2 it names no script source at all
+ok 2.3 and no connect source
+ok 2.4 so every fetch falls back to a default that refuses everything
+
+-- 3. the four headers, through the real pipeline
+ok 3.1 the page is served
+ok 3.2 the policy
+ok 3.3 nosniff
+ok 3.4 the older framing header goes out beside frame-ancestors
+ok 3.5 and a referrer policy
+ok 3.6 a 404 is the pipeline's own answer
+ok 3.7 and it carries the policy too
+
+-- 3b. a handler's own policy is not overwritten
+ok 3.8 the handler's policy stands
+ok 3.9 and the other three still go out
+
+-- 4. js/latte.js needs no 'unsafe-inline' and no 'unsafe-eval'
+ok 4.0 js/latte.js is readable
+ok 4.1 no eval(
+ok 4.2 no new Function(
+ok 4.3 no dynamic import()
+ok 4.4 no setTimeout with a string body
+ok 4.5 no document.write
+ok 4.6 no javascript: URL
+ok 4.7 it opens a WebSocket, which is why connect-src is named
+ok 4.8 and an XMLHttpRequest for enhanced navigation
+
+-- 5. the options are the escape, and they are scoped
+ok 5.1 both lists land in their own directive
+ok 5.2 a page that IS meant to be framed says so in the policy
+ok 5.3 the legacy header stays DENY, having no way to say it
+ok 5.4 and the referrer policy is the one asked for
+
+32 checks, 0 bad
