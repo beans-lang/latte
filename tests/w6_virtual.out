@@ -1,0 +1,211 @@
+== 1 the sweep: 50,000 rows, to the end and back ==
+down, one row at a time:  positions=49981 unsound=0 uncovered=0 oversized=0 gaps=0 reversals=0 rows=0..49999 union=0..49999 breaks=0
+back, one row at a time:  positions=49981 unsound=0 uncovered=0 oversized=0 gaps=0 reversals=0 rows=0..49999 union=0..49999 breaks=0
+every pixel, first 100 rows: positions=3201 unsound=0 uncovered=0 oversized=0 gaps=0 reversals=0 rows=0..123 union=0..123 breaks=0
+every pixel, last 100 rows:  positions=3201 unsound=0 uncovered=0 oversized=0 gaps=0 reversals=0 rows=49876..49999 union=49876..49999 breaks=0
+every pixel past the end:    positions=321 unsound=0 uncovered=0 oversized=0 gaps=0 reversals=0 rows=49996..49999 union=49996..49999 breaks=0
+scroll positions exercised: 106685
+ok down: every position is sound
+ok down: every visible row is in the window
+ok down: no window is over the cap
+ok down: no gap between consecutive windows
+ok down: the window never goes backwards
+ok down: it starts at row 0
+ok down: and reaches the last row
+ok back: every position is sound
+ok back: every visible row is in the window
+ok back: no window is over the cap
+ok back: no gap between consecutive windows
+ok back: the window never goes forwards
+ok back: it returns to row 0
+ok back: having started at the last row
+ok down: the windows are one unbroken run
+ok down: covering row 0
+ok down: through the last row
+ok back: the windows are one unbroken run
+ok back: covering row 0
+ok back: through the last row
+ok first 100 rows, every pixel: sound
+ok first 100 rows, every pixel: covered
+ok first 100 rows, every pixel: no gap
+ok last 100 rows, every pixel: sound
+ok last 100 rows, every pixel: covered
+ok last 100 rows, every pixel: no gap
+ok past the end: sound
+ok past the end: no gap
+ok the sweep is the whole table, one row at a time, both ways
+ok and it exercised six figures of positions
+at the top:    start=0 shown=24 top=0 bottom=1599232
+at the bottom: start=49976 shown=24 top=1599232 bottom=0
+ok the top window
+ok the bottom window
+ok the list is the same height at both ends
+
+== 2 the render: keys, order and spacers ==
+static window: start=0 shown=20 top=0 bottom=1599360
+static keys:   20 rows, 0..19
+static spacers: height:0px/height:1599360px
+ok the static window is the initial row count
+ok and it starts at the top
+ok and the spacers size the rest of the list
+renders: 2002, rows rendered: 56000
+ok every render's keys are exactly its window
+ok no row is rendered twice in one window
+ok and they are in index order
+ok the spacers match every window
+ok every window is the one the geometry requires
+ok and the window never travels further than the scroll
+ok the sweep rendered both ways over the whole table
+ok and rendered five figures of rows
+html at row 1000, three rows:
+  <div class="sheet" data-latte-virtual="0" data-latte-rows="50000" data-latte-row-height="32"><div data-latte-spacer="top" style="height:32000px"></div><div class="row">row 1000</div><div class="row">row 1001</div><div class="row">row 1002</div><div data-latte-spacer="bottom" style="height:1567904px"></div></div>
+ok the html
+ok and the serializer raised nothing
+ok the same range again moves nothing
+ok and marks nothing dirty
+ok a different range does move
+ok and marks exactly one component
+
+== 3 the clamp: a range is never believed ==
+-- a range is clamped, never trusted
+   negative start: start=0 shown=10 top=0 bottom=1599680
+   negative count: start=10 shown=0 top=320 bottom=1599680
+   start past the end: start=50000 shown=0 top=1600000 bottom=0
+   count past the cap: start=0 shown=200 top=0 bottom=1593600
+   count past the end: start=49997 shown=3 top=1599904 bottom=0
+   the largest int as a start: start=50000 shown=0 top=1600000 bottom=0
+   the largest int as a count: start=10 shown=200 top=320 bottom=1593280
+   both the largest int: start=50000 shown=0 top=1600000 bottom=0
+ok a negative start becomes 0
+ok a negative count becomes 0
+ok a start past the end lands on the end
+ok a count past the cap is capped
+ok a count past the end is trimmed
+ok the largest int as a start lands on the end
+ok the largest int as a count is capped
+ok and both together
+ok every clamped window is still sound
+ok the cap bounds a count the collection would have allowed
+ok and the collection bounds a count the cap would have allowed
+   an honest range: start=500 shown=30 top=16000 bottom=1583040
+ok an honest range is answered exactly
+   an empty list: start=0 shown=0 top=0 bottom=0
+   a list of one: start=0 shown=1 top=0 bottom=0
+ok an empty list
+ok a list of one
+ok an empty list is sound
+ok and so is a list of one
+ok an empty list at a hostile offset is sound
+-- a placement the arithmetic does not close
+ok the control: a placement whose arithmetic closes
+   unsound placements refused: 6 of 6
+ok every broken placement is refused
+ok and none of them was let through
+   a viewport of the largest int: start=0 shown=200 top=0 bottom=1593600
+ok a hostile viewport is capped like a hostile count
+ok and the window it answers is still sound
+ok an honest viewport is not capped
+   a negative row height, window(5,3): start=0 shown=0 top=0 bottom=0
+   a negative row height, window_at:   start=0 shown=0 top=0 bottom=0
+ok a negative row height answers no window at all
+ok and no window from a scroll either
+ok and what it answers is sound
+ok so does a negative overscan
+ok and it is sound too
+ok the control: a legal row height answers the range
+ok a range on a misconfigured list moves nothing
+ok nor does a scroll
+ok and it marks nothing dirty
+ok the control: a configured list accepts it
+ok and marks exactly itself
+   at the bottom of 50,000: start=49900 shown=50 top=1596800 bottom=1600
+   after the list shrank to 100: start=100 shown=0 top=3200 bottom=0
+ok a window is re-clamped when the collection shrinks
+ok and it is still sound
+ok and renders no rows
+ok with the spacers summing to the new height
+
+== 4 every fault site in virtual.b ==
+-- a row height of zero
+   site:    render / a misconfigured list renders nothing and says why
+   faults:  a virtual list needs a positive row height, not 0
+ok a row height of zero: the exact fault
+ok a row height of zero: the control raises nothing
+ok a row height of zero: and the control rendered a list
+-- a negative row height
+   site:    render / a misconfigured list renders nothing and says why
+   faults:  a virtual list needs a positive row height, not -1
+ok a negative row height: the exact fault
+ok a negative row height: the control raises nothing
+ok a negative row height: and the control rendered a list
+-- a negative overscan
+   site:    render / a misconfigured list renders nothing and says why
+   faults:  a virtual list cannot overscan -1 rows
+ok a negative overscan: the exact fault
+ok a negative overscan: the control raises nothing
+ok a negative overscan: and the control rendered a list
+-- a window cap of zero
+   site:    render / a misconfigured list renders nothing and says why
+   faults:  a virtual list needs a positive window cap, not 0
+ok a window cap of zero: the exact fault
+ok a window cap of zero: the control raises nothing
+ok a window cap of zero: and the control rendered a list
+-- a negative row count
+   site:    render / a misconfigured list renders nothing and says why
+   faults:  a virtual list cannot hold -2 rows
+ok a negative row count: the exact fault
+ok a negative row count: the control raises nothing
+ok a negative row count: and the control rendered a list
+-- every parameter wrong at once
+   site:    render / a misconfigured list renders nothing and says why
+   faults:  a virtual list needs a positive row height, not 0 | a virtual list cannot overscan -1 rows | a virtual list needs a positive window cap, not 0 | a virtual list cannot hold -2 rows
+ok every parameter wrong at once: the exact fault
+ok every parameter wrong at once: the control raises nothing
+ok every parameter wrong at once: and the control rendered a list
+a refused list renders: <div class="latte-virtual latte-virtual-refused"></div>
+ok a refused list renders an empty marked element
+ok a zero row height answers an empty window
+ok and the geometry says it is not ok
+configurations tried: 192
+ok ok() and problems() agree on every configuration
+ok and the table turned each parameter good and bad
+-- the sites in virtual.b, and how many shapes reach each
+   6x render / a misconfigured list renders nothing and says why
+ok every fault site in virtual.b has a case
+
+== 5 the circuit hands a range to the list ==
+the list mounted at component 1
+ok the page mounted a virtual list
+ok and it starts on the static first window
+after a range of 1000+30: start=1000 shown=30 top=32000 bottom=1567040
+   the log says: range 1000+30 on list 1 -> start=1000 shown=30 top=32000 bottom=1567040
+ok an honest range moves the window
+ok and the circuit says so
+ok and one batch went out
+ok and the circuit is alive
+ok the same range again changes nothing
+ok and sends no batch
+a range past the end: start=49990 shown=10 top=1599680 bottom=0
+ok a range past the end is trimmed to what is there
+ok and the circuit is still alive
+ok and it rendered
+   a range on the page: range 0+10 on 0, which is not a virtual list
+ok a range on a component that is not a list is logged, not obeyed
+ok and the circuit survives it
+ok and nothing went out
+ok and the window did not move
+   a range on nothing: range 0+10 on 4242, which is not mounted
+ok a range on an unmounted id is logged, not obeyed
+ok and the circuit survives that too
+ok and nothing went out either
+   a range over the cap: {"t":"bye","k":"limit","m":"a range asked for 201 rows, over the 200 cap"}
+ok a range over the wire cap ends the circuit
+ok with the reason on the wire
+ok the control: a range exactly at the cap is answered
+ok and the renderer honoured all 200 rows
+   a range starting at the largest int: start=50000 shown=0 top=1600000 bottom=0
+ok the largest int as a start is clamped to the end
+ok and the circuit is alive
+ok and the window it landed on is sound
+
+137 checks, 0 bad
