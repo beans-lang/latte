@@ -1,0 +1,65 @@
+== 0. the application starts ==
+ok   the page scan refused nothing: 
+ok   the form scan refused nothing: 
+
+== 1. a GET renders the page, in its layout, with a token ==
+ok   GET /notes/hello: 200
+ok   its content type: text/html; charset=utf-8
+ok   it minted a session of 256 bits in hex
+ok   the cookie is HttpOnly
+ok   and SameSite=Lax
+ok   and path-wide
+ok   and not Secure over this plain-HTTP host
+ok   the page carries a token
+ok   issued against this clock: 1900.
+ok   the page: <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title"></p><p class="errors"></p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
+ok   a second GET in the same session: 200
+ok   sets no new cookie: 
+ok   and issues the same token for the same clock
+-- routing, and the answers that are not this page
+ok   another page on the same layout: 200
+ok   its body: <html><body><p>about</p></body></html>
+ok   a path no page answers: 404
+ok   a POST to a page that only serves GET: 405
+ok   and it says which method would work: GET
+ok   a body latte cannot read: 415
+-- authorization, before anything is activated
+ok   nobody is signed in: 401
+ok   signed in, wrong role: 403
+
+== 2. a post binds, validates and renders its errors ==
+ok   a clean post: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title">Hello</p><p class="errors"></p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
+ok   a post that fails both rules: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title">H</p><p class="errors">title: title must be 2 to 10 characters | stars: stars must be between 1 and 5</p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
+ok   a post missing a required field: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title"></p><p class="errors">title: title is required</p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
+ok   a post naming a field the author did not annotate: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title">Hello</p><p class="errors"></p><p class="ignored">owner</p><p class="owner">nobody</p></form></body></html>
+ok   a posted value is escaped where it renders
+ok   and no tag reaches the document
+
+== 3. the antiforgery refusal, with the accepted case beside it ==
+ok   the control: the page's own token is accepted: 200
+ok   and the post reached the model
+ok   no token at all: 400 latte$entry.NotePage: the form carried no antiforgery token
+ok   an empty token: 400 latte$entry.NotePage: the form carried no antiforgery token
+ok   a token that is not one: 400 latte$entry.NotePage: the antiforgery token is malformed
+ok   a token with one hex digit changed: 400 latte$entry.NotePage: the antiforgery token does not match this session and form
+ok   the second session is a different one
+ok   and so is its token
+ok   the control: the second session's own token works there: 200
+ok   another session's token, in this one: 400 latte$entry.NotePage: the antiforgery token does not match this session and form
+ok   the token at the moment it expires: 400 latte$entry.NotePage: the antiforgery token has expired
+ok   long past its expiry: 400 latte$entry.NotePage: the antiforgery token has expired
+ok   a token issued at the new time: 4900.
+ok   the control: it is accepted: 200
+ok   a GET needs no token at all: 200
+ok   a post carrying no session cookie: 400
+ok   and it is refused as a forgery, not as a missing session: latte$entry.NotePage: the antiforgery token does not match this session and form
+
+== 4. a host whose scan refused something serves nothing ==
+ok   a page a working host serves: 200
+ok   the same page, from a host whose scan refused something: 500
+ok   and it says what refused it: latte did not start: the scan refused this application | a form nobody fixed
+-- the token's lifetime is the host's, not a constant
+ok   a host with a thirty-second lifetime answers: 200
+ok   and its token expires in thirty seconds: 1030.
+
+51 checks, 0 bad
