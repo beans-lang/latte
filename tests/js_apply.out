@@ -1,0 +1,352 @@
+=== 1. every generated batch, against the Beans applier
+ok page 1 dump
+ok page 1 html
+ok page 1 beans-self
+ok page 1 faults
+ok page 2 dump
+ok page 2 html
+ok page 2 beans-self
+ok page 2 faults
+ok page 3 dump
+ok page 3 html
+ok page 3 beans-self
+ok page 3 faults
+ok page 4 dump
+ok page 4 html
+ok page 4 beans-self
+ok page 4 faults
+ok page 5 dump
+ok page 5 html
+ok page 5 beans-self
+ok page 5 faults
+ok page 6 dump
+ok page 6 html
+ok page 6 beans-self
+ok page 6 faults
+ok page 7 dump
+ok page 7 html
+ok page 7 beans-self
+ok page 7 faults
+ok page 8 dump
+ok page 8 html
+ok page 8 beans-self
+ok page 8 faults
+ok page 9 dump
+ok page 9 html
+ok page 9 beans-self
+ok page 9 faults
+ok page 10 dump
+ok page 10 html
+ok page 10 beans-self
+ok page 10 faults
+ok page 11 dump
+ok page 11 html
+ok page 11 beans-self
+ok page 11 faults
+ok keyed 1 dump
+ok keyed 1 html
+ok keyed 1 beans-self
+ok keyed 1 faults
+ok keyed 2 dump
+ok keyed 2 html
+ok keyed 2 beans-self
+ok keyed 2 faults
+ok keyed 3 dump
+ok keyed 3 html
+ok keyed 3 beans-self
+ok keyed 3 faults
+ok keyed 4 dump
+ok keyed 4 html
+ok keyed 4 beans-self
+ok keyed 4 faults
+ok keyed 5 dump
+ok keyed 5 html
+ok keyed 5 beans-self
+ok keyed 5 faults
+ok keyed 6 dump
+ok keyed 6 html
+ok keyed 6 beans-self
+ok keyed 6 faults
+ok keyed 7 dump
+ok keyed 7 html
+ok keyed 7 beans-self
+ok keyed 7 faults
+ok keyed 8 dump
+ok keyed 8 html
+ok keyed 8 beans-self
+ok keyed 8 faults
+ok boundary 1 dump
+ok boundary 1 html
+ok boundary 1 beans-self
+ok boundary 1 faults
+ok boundary 2 dump
+ok boundary 2 html
+ok boundary 2 beans-self
+ok boundary 2 faults
+ok boundary 3 dump
+ok boundary 3 html
+ok boundary 3 beans-self
+ok boundary 3 faults
+ok boundary 4 dump
+ok boundary 4 html
+ok boundary 4 beans-self
+ok boundary 4 faults
+ok hollow 1 dump
+ok hollow 1 html
+ok hollow 1 beans-self
+ok hollow 1 faults
+ok hollow 2 dump
+ok hollow 2 html
+ok hollow 2 beans-self
+ok hollow 2 faults
+ok hollow 3 dump
+ok hollow 3 html
+ok hollow 3 beans-self
+ok hollow 3 faults
+ok hollow 4 dump
+ok hollow 4 html
+ok hollow 4 beans-self
+ok hollow 4 faults
+ok hollow 5 dump
+ok hollow 5 html
+ok hollow 5 beans-self
+ok hollow 5 faults
+ok bad-step-in 1 dump
+ok bad-step-in 1 html
+ok bad-step-in 1 beans-self
+ok bad-step-in 1 faults
+ok bad-step-in 2 dump
+ok bad-step-in 2 html
+ok bad-step-in 2 beans-self
+ok bad-step-in 2 faults
+ok bad-insert-index 1 dump
+ok bad-insert-index 1 html
+ok bad-insert-index 1 beans-self
+ok bad-insert-index 1 faults
+ok bad-insert-index 2 dump
+ok bad-insert-index 2 html
+ok bad-insert-index 2 beans-self
+ok bad-insert-index 2 faults
+ok bad-remove-index 1 dump
+ok bad-remove-index 1 html
+ok bad-remove-index 1 beans-self
+ok bad-remove-index 1 faults
+ok bad-remove-index 2 dump
+ok bad-remove-index 2 html
+ok bad-remove-index 2 beans-self
+ok bad-remove-index 2 faults
+ok bad-move-from 1 dump
+ok bad-move-from 1 html
+ok bad-move-from 1 beans-self
+ok bad-move-from 1 faults
+ok bad-move-from 2 dump
+ok bad-move-from 2 html
+ok bad-move-from 2 beans-self
+ok bad-move-from 2 faults
+ok bad-move-to 1 dump
+ok bad-move-to 1 html
+ok bad-move-to 1 beans-self
+ok bad-move-to 1 faults
+ok bad-move-to 2 dump
+ok bad-move-to 2 html
+ok bad-move-to 2 beans-self
+ok bad-move-to 2 faults
+ok no-attribute-to-remove 1 dump
+ok no-attribute-to-remove 1 html
+ok no-attribute-to-remove 1 beans-self
+ok no-attribute-to-remove 1 faults
+ok no-attribute-to-remove 2 dump
+ok no-attribute-to-remove 2 html
+ok no-attribute-to-remove 2 beans-self
+ok no-attribute-to-remove 2 faults
+ok no-handler-to-remove 1 dump
+ok no-handler-to-remove 1 html
+ok no-handler-to-remove 1 beans-self
+ok no-handler-to-remove 1 faults
+ok no-handler-to-remove 2 dump
+ok no-handler-to-remove 2 html
+ok no-handler-to-remove 2 beans-self
+ok no-handler-to-remove 2 faults
+ok step-out-at-the-root 1 dump
+ok step-out-at-the-root 1 html
+ok step-out-at-the-root 1 beans-self
+ok step-out-at-the-root 1 faults
+ok step-out-at-the-root 2 dump
+ok step-out-at-the-root 2 html
+ok step-out-at-the-root 2 beans-self
+ok step-out-at-the-root 2 faults
+ok no-staged-subtree 1 dump
+ok no-staged-subtree 1 html
+ok no-staged-subtree 1 beans-self
+ok no-staged-subtree 1 faults
+ok no-staged-subtree 2 dump
+ok no-staged-subtree 2 html
+ok no-staged-subtree 2 beans-self
+ok no-staged-subtree 2 faults
+ok update-before-its-mount 1 dump
+ok update-before-its-mount 1 html
+ok update-before-its-mount 1 beans-self
+ok update-before-its-mount 1 faults
+ok update-before-its-mount 2 dump
+ok update-before-its-mount 2 html
+ok update-before-its-mount 2 beans-self
+ok update-before-its-mount 2 faults
+ok ended-one-level-deep 1 dump
+ok ended-one-level-deep 1 html
+ok ended-one-level-deep 1 beans-self
+ok ended-one-level-deep 1 faults
+ok ended-one-level-deep 2 dump
+ok ended-one-level-deep 2 html
+ok ended-one-level-deep 2 beans-self
+ok ended-one-level-deep 2 faults
+ok control-good-edits 1 dump
+ok control-good-edits 1 html
+ok control-good-edits 1 beans-self
+ok control-good-edits 1 faults
+ok control-good-edits 2 dump
+ok control-good-edits 2 html
+ok control-good-edits 2 beans-self
+ok control-good-edits 2 faults
+ok control-list-edits 1 dump
+ok control-list-edits 1 html
+ok control-list-edits 1 beans-self
+ok control-list-edits 1 faults
+ok control-list-edits 2 dump
+ok control-list-edits 2 html
+ok control-list-edits 2 beans-self
+ok control-list-edits 2 faults
+
+=== 2. the applier contract: a kind-mismatched edit is dropped
+ok set_text-at-element base clean
+ok set_text-at-element fault
+ok set_text-at-element stream continued
+ok set_text-at-markup base clean
+ok set_text-at-markup fault
+ok set_text-at-markup stream continued
+ok set_text-at-region base clean
+ok set_text-at-region fault
+ok set_text-at-region stream continued
+ok set_text-at-fragment base clean
+ok set_text-at-fragment fault
+ok set_text-at-fragment stream continued
+ok set_text-at-boundary base clean
+ok set_text-at-boundary fault
+ok set_text-at-boundary stream continued
+ok set_text-at-mount base clean
+ok set_text-at-mount fault
+ok set_text-at-mount stream continued
+ok set_markup-at-text base clean
+ok set_markup-at-text fault
+ok set_markup-at-text stream continued
+ok set_markup-at-element base clean
+ok set_markup-at-element fault
+ok set_markup-at-element stream continued
+ok set_markup-at-mount base clean
+ok set_markup-at-mount fault
+ok set_markup-at-mount stream continued
+ok step_in-at-text base clean
+ok step_in-at-text fault
+ok step_in-at-text stream continued
+ok step_in-at-markup base clean
+ok step_in-at-markup fault
+ok step_in-at-markup stream continued
+ok insert-at-text base clean
+ok insert-at-text fault
+ok insert-at-text stream continued
+ok remove-at-text base clean
+ok remove-at-text fault
+ok remove-at-text stream continued
+ok relocate-at-markup base clean
+ok relocate-at-markup fault
+ok relocate-at-markup stream continued
+ok set_attr-at-mount-root base clean
+ok set_attr-at-mount-root fault
+ok set_attr-at-mount-root stream continued
+ok set_flag-at-region base clean
+ok set_flag-at-region fault
+ok set_flag-at-region stream continued
+ok remove_attr-at-fragment base clean
+ok remove_attr-at-fragment fault
+ok remove_attr-at-fragment stream continued
+ok set_handler-at-boundary base clean
+ok set_handler-at-boundary fault
+ok set_handler-at-boundary stream continued
+ok remove_handler-at-mount base clean
+ok remove_handler-at-mount fault
+ok remove_handler-at-mount stream continued
+ok refused-attribute-name base clean
+ok refused-attribute-name fault
+ok refused-attribute-name stream continued
+ok unsafe-attribute-name base clean
+ok unsafe-attribute-name fault
+ok unsafe-attribute-name stream continued
+ok unknown-opcode base clean
+ok unknown-opcode fault
+ok unknown-opcode stream continued
+
+=== 2b. the two shapes that are XSS if the kind check is not there
+ok set_markup at a text node injected no element
+ok set_markup at a text node left the text alone
+ok set_text at a raw node injected no element
+ok set_text at a raw node left the markup alone
+ok nothing ran
+
+=== 2c. the positive controls: the same opcodes aimed at the right kind
+ok controls raised no fault
+   html <div id="e" class="ELEM" hidden="">inside</div>TEXT<i>MARKUP</i>plainfragguard
+
+=== 3. the tables latte.js reimplements from Beans
+ok event names
+ok capture-phase events
+ok the capture list latte.js registers from
+ok the navigation rule agrees on all 19 targets
+ok wireInt truncates a fractional coordinate
+ok wireInt truncates a negative one
+ok wireInt clamps past the exactly-representable range
+ok wireInt answers 0 for NaN
+ok wireInt answers 0 for Infinity
+ok wireText keeps a well-formed pair
+ok wireText repairs a high surrogate with no low
+ok wireText repairs a low surrogate with no high
+ok wireText repairs a high surrogate at the end
+
+=== 4. the circuit, against a stub socket
+ok the socket is open before hello
+ok hello is answered with attach
+ok a batch is acked
+ok the batch reached the DOM
+ok a click sends the slot id the batch bound
+ok a click inside walks up to the nearest bound element
+ok an input event carries the value and the checked flag
+ok a rebound handler sends the NEW id, not the one from the first batch
+ok a click with no handler bound sends nothing
+ok and the only thing sent was the ack
+ok focus does not bubble and is still delivered
+ok mouseenter does not bubble and is still delivered
+ok a keyboard event carries the key and the repeat flag
+ok a submit carries the successful controls only
+ok and the form post was prevented
+ok a checked box is submitted, an unchecked one is not
+ok a same-origin link becomes a nav message
+ok and the browser navigation was prevented
+ok a scheme-relative link is left to the browser
+ok and latte prevented nothing
+ok a command-click is left to the browser
+ok and latte prevented nothing there either
+ok a registered function answers its call id
+ok a throwing function answers ok:false
+ok an unregistered name answers ok:false and never evaluates anything
+ok and neither does __proto__
+ok an unknown wire version stops rather than guessing
+ok and it sent nothing
+ok a hello for a different circuit stops
+ok a bye ends the circuit
+ok and it closed the socket
+ok and a close after a bye does not reconnect
+ok two batches applied
+ok a drop is not the end
+ok a replayed batch is not applied twice
+ok but it is acked again, so retention keeps moving
+ok an oversized message is dropped by the client, not sent
+
+338 checks, 0 bad
