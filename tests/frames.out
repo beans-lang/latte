@@ -1026,7 +1026,7 @@ ok a-slot-that-holds-another-class: the pass is still balanced
    control: <p>one/3</p>
 ok a-slot-that-holds-another-class: the same class at the same seq raises nothing
 ok a-slot-that-holds-another-class: and the instance survived all three passes
--- the sites, and how many shapes reach each
+-- the sites in builder.b, and how many shapes reach each
    5x attr / attribute N carried a refused scheme
    3x attrs / attribute N carried a refused scheme
    2x attrs / refused splatted attribute name

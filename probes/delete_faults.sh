@@ -1,24 +1,32 @@
 #!/usr/bin/env bash
-# probes/delete_faults.sh — delete every refusal in builder.b, one at a time,
-# and watch the case that names it FAIL.
+# probes/delete_faults.sh — delete every refusal in latte's core, one at a
+# time, and watch the case that names it FAIL.
 #
 # RULES.md, "The refusal that never runs": a refusal test that still passes
 # when the refusal is gone is worthless, and a refusal that cannot be made to
 # fail is unreachable. Neither is visible from a green run. So this deletes
-# each of the 24 `self.faults.push(...)` sites in builder.b in turn, runs
-# `tests/frames.b`, and requires that a check naming THAT site turns red.
+# each `self.faults.push(...)` site in turn, runs the suite that owns it, and
+# requires that a check naming THAT site turns red.
 #
-# It is not part of `test.sh`. It rewrites builder.b, so it must never run
-# beside a gate, and it answers a question about the tests rather than about
-# the code. Run it after touching a refusal, and read the table it prints.
+#   builder.b     24 sites   tests/frames.b § 13
+#   apply.b       12 sites   tests/w1_faults.b § 1
+#   serialize.b    4 sites   tests/w1_faults.b § 3
+#
+# Run it with no argument for all three, or name one source file to run just
+# that one: `probes/delete_faults.sh apply.b`.
+#
+# It is not part of `test.sh`. It rewrites the source files, so it must never
+# run beside a gate, and it answers a question about the tests rather than
+# about the code. Run it after touching a refusal, and read the table it
+# prints.
 #
 # What it proves and what it does not:
 #
 #   - It runs the interpreter leg only. A refusal is Beans code with no
-#     backend-specific behaviour, and `test.sh` already runs the suite on both;
-#     what is being measured here is which ASSERTION notices, not which
-#     backend.
-#   - It runs `tests/frames.b` only, because § 13 of that file is where the
+#     backend-specific behaviour, and `test.sh` already runs both suites on
+#     both backends; what is being measured here is which ASSERTION notices,
+#     not which backend.
+#   - It runs one suite per source file, because that is where the
 #     site-by-site accounting lives. A deleted refusal will also shift other
 #     goldens; a golden diff says "something changed" and this says which rule.
 #   - "CAUGHT" means a check whose case names that site printed FAIL. A golden
@@ -30,6 +38,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/.." && pwd)
 beans=$(cd "$root/../../beans" && pwd)
 beansc="${BEANSC:-$beans/build/beansc}"
+only="${1:-}"
 
 [[ -x "$beansc" ]] || { echo "no beansc at $beansc" >&2; exit 1; }
 case "$("$beansc" --version)" in
@@ -40,7 +49,7 @@ esac
 [[ -z ${BEANS_RUNTIME:-} && -f "$beans/runtime/beans_rt.c" ]] && export BEANS_RUNTIME="$beans/runtime/beans_rt.c"
 [[ -z ${BEANS_STDLIB:-}  && -d "$beans/stdlib/std"        ]] && export BEANS_STDLIB="$beans/stdlib/std"
 
-exec python3 - "$root" "$beansc" <<'PYTHON'
+exec python3 - "$root" "$beansc" "$only" <<'PYTHON'
 import re
 import subprocess
 import sys
@@ -48,39 +57,84 @@ from pathlib import Path
 
 root = Path(sys.argv[1])
 beansc = sys.argv[2]
-source = root / "builder.b"
-suite = root / "tests" / "frames.b"
-golden = root / "tests" / "frames.out"
+only = sys.argv[3]
 
-# The site labels, in the order the report sites appear in builder.b. They are
-# the same strings § 13 of tests/frames.b prints, so the mapping is checkable
-# by eye against the golden and does not depend on a line number.
-LABELS = [
-    "note_sibling / sequence N does not follow M in this scope",
-    "take_attribute_slot / X is outside an element's attribute run",
-    "take_attribute_slot / X does not follow Y in this element's attribute run",
-    "open / refused tag name",
-    "close / close with no open element",
-    "attr / attribute N carried a refused scheme",
-    "name_is_writable / refused attribute name",
-    "name_is_writable / refused inline handler attribute",
-    "attrs / refused splatted attribute name",
-    "attrs / refused splatted inline handler",
-    "attrs / attribute N carried a refused scheme",
-    "fill_slot / slot N holds a X, not a Y",
-    "mount / X is not a Component",
-    "mount / cannot activate X",
-    "mount / X has no zero-argument initializer",
-    "mount_made / X is not a Component",
-    "region / duplicate key",
-    "end_region / end_region with no open region",
-    "fail_boundary / fail_boundary with no open boundary",
-    "end_boundary / end_boundary with no open boundary",
-    "unwind_to / an element was left open",
-    "unwind_to / a region was left open",
-    "unwind_to / a fragment was left open",
-    "unwind_to / a boundary was left open",
+# One entry per source file: the suite whose golden carries its site-by-site
+# accounting, and the site labels in the order the report sites appear in the
+# source. The labels are the same strings the suite prints on its `site:`
+# lines, so the mapping is checkable by eye against the golden and does not
+# depend on a line number.
+#
+# The mapping from a site to its cases is proven by the run itself rather than
+# asserted: if two labels were swapped, deleting one site would fail the other
+# site's cases and this would report it as unguarded.
+FILES = [
+    {
+        "source": "builder.b",
+        "suite": "tests/frames.b",
+        "labels": [
+            "note_sibling / sequence N does not follow M in this scope",
+            "take_attribute_slot / X is outside an element's attribute run",
+            "take_attribute_slot / X does not follow Y in this element's attribute run",
+            "open / refused tag name",
+            "close / close with no open element",
+            "attr / attribute N carried a refused scheme",
+            "name_is_writable / refused attribute name",
+            "name_is_writable / refused inline handler attribute",
+            "attrs / refused splatted attribute name",
+            "attrs / refused splatted inline handler",
+            "attrs / attribute N carried a refused scheme",
+            "fill_slot / slot N holds a X, not a Y",
+            "mount / X is not a Component",
+            "mount / cannot activate X",
+            "mount / X has no zero-argument initializer",
+            "mount_made / X is not a Component",
+            "region / duplicate key",
+            "end_region / end_region with no open region",
+            "fail_boundary / fail_boundary with no open boundary",
+            "end_boundary / end_boundary with no open boundary",
+            "unwind_to / an element was left open",
+            "unwind_to / a region was left open",
+            "unwind_to / a fragment was left open",
+            "unwind_to / a boundary was left open",
+        ],
+    },
+    {
+        "source": "apply.b",
+        "suite": "tests/w1_faults.b",
+        "labels": [
+            "root_for / update for component N arrived before its mount",
+            "step_in / step_in N of M",
+            "step_out / step_out at the root",
+            "insert / insert at N of M",
+            "insert / no staged subtree at N",
+            "remove / remove N of M",
+            "relocate / move from N of M",
+            "relocate / move to N of M",
+            "remove_attr / no attribute S:N to remove",
+            "remove_handler / no handler S:E to remove",
+            "run / the edit stream ended N level(s) deep",
+            "kid / WHAT N of M",
+        ],
+    },
+    {
+        "source": "serialize.b",
+        "suite": "tests/w1_faults.b",
+        "labels": [
+            "one / no frame buffer for the T mounted at slot N",
+            "one / F is not a child position",
+            "element / void element <T> was given children",
+            "content / WHAT inside <T> could close it",
+        ],
+    },
 ]
+
+if only:
+    FILES = [entry for entry in FILES if entry["source"] == only]
+    if not FILES:
+        print(f"no source file named {only}; this script knows builder.b, "
+              f"apply.b and serialize.b", file=sys.stderr)
+        sys.exit(1)
 
 
 def find_sites(text):
@@ -125,74 +179,93 @@ def cases_by_site(golden_text):
     return mapping
 
 
-original = source.read_text()
-sites = find_sites(original)
-by_site = cases_by_site(golden.read_text())
-
-if len(sites) != len(LABELS):
-    print(f"builder.b has {len(sites)} report sites, this script names "
-          f"{len(LABELS)}. Add the new one to LABELS, in file order.",
-          file=sys.stderr)
-    sys.exit(1)
-missing = [label for label in LABELS if label not in by_site]
-if missing:
-    print("no case in tests/frames.out names these sites:", file=sys.stderr)
-    for label in missing:
-        print(f"  {label}", file=sys.stderr)
-    print("the suite and this script have drifted apart", file=sys.stderr)
-    sys.exit(1)
-
-
-def run_suite():
-    done = subprocess.run([beansc, "run", str(suite)], cwd=root,
+def run_suite(suite):
+    done = subprocess.run([beansc, "run", str(root / suite)], cwd=root,
                           capture_output=True, text=True)
     return done.returncode, done.stdout, done.stderr
 
 
-code, out, err = run_suite()
-if code != 0 or "FAIL" in out:
-    print("tests/frames.b is not green before the pass starts; fix that first",
-          file=sys.stderr)
-    print(err or out, file=sys.stderr)
-    sys.exit(1)
+# Everything is checked BEFORE the first source file is touched, so a script
+# that is going to refuse does it without having rewritten anything.
+plan = []
+for entry in FILES:
+    source = root / entry["source"]
+    golden = root / (entry["suite"][:-2] + ".out")
+    sites = find_sites(source.read_text())
+    if len(sites) != len(entry["labels"]):
+        print(f"{entry['source']} has {len(sites)} report sites, this script "
+              f"names {len(entry['labels'])}. Add the new one to its LABELS, "
+              f"in file order.", file=sys.stderr)
+        sys.exit(1)
+    by_site = cases_by_site(golden.read_text())
+    missing = [label for label in entry["labels"] if label not in by_site]
+    if missing:
+        print(f"no case in {golden.name} names these {entry['source']} sites:",
+              file=sys.stderr)
+        for label in missing:
+            print(f"  {label}", file=sys.stderr)
+        print("the suite and this script have drifted apart", file=sys.stderr)
+        sys.exit(1)
+    plan.append({"entry": entry, "source": source, "sites": sites,
+                 "by_site": by_site})
 
+for suite in sorted({entry["suite"] for entry in FILES}):
+    code, out, err = run_suite(suite)
+    if code != 0 or "FAIL" in out:
+        print(f"{suite} is not green before the pass starts; fix that first",
+              file=sys.stderr)
+        print(err or out, file=sys.stderr)
+        sys.exit(1)
+
+total = sum(len(step["sites"]) for step in plan)
 failures = 0
-print(f"deleting {len(sites)} report sites in {source.name}, one at a time\n")
+guarded = 0
+print(f"deleting {total} report sites, one at a time\n")
+originals = {}
 try:
-    for index, (start, end) in enumerate(sites):
-        label = LABELS[index]
-        patched = original[:start] + "let _: bool = true" + original[end:]
-        source.write_text(patched)
-        code, out, err = run_suite()
-        source.write_text(original)
+    for step in plan:
+        entry = step["entry"]
+        source = step["source"]
+        original = source.read_text()
+        originals[source] = original
+        print(f"--- {entry['source']} ({len(step['sites'])} sites, "
+              f"{entry['suite']})")
+        for index, (start, end) in enumerate(step["sites"]):
+            label = entry["labels"][index]
+            patched = original[:start] + "let _: bool = true" + original[end:]
+            source.write_text(patched)
+            code, out, err = run_suite(entry["suite"])
+            source.write_text(original)
 
-        if code != 0:
-            print(f"?? {label}\n   the suite did not run with the site "
-                  f"deleted:\n{(err or out).strip()}")
-            failures += 1
-            continue
+            if code != 0:
+                print(f"?? {label}\n   the suite did not run with the site "
+                      f"deleted:\n{(err or out).strip()}")
+                failures += 1
+                continue
 
-        red = [line[5:].split(":", 1)[0]
-               for line in out.splitlines() if line.startswith("FAIL ")]
-        mine = [name for name in red if name in by_site[label]]
-        if mine:
-            shown = ", ".join(sorted(set(mine))[:3])
-            more = "" if len(set(mine)) <= 3 else f", +{len(set(mine)) - 3} more"
-            print(f"ok {label}\n   CAUGHT by {len(set(mine))} case(s): {shown}{more}")
-        else:
-            print(f"XX {label}\n   DELETED AND NOTHING NOTICED — the cases that "
-                  f"name it are {', '.join(by_site[label])}")
-            if red:
-                print(f"   (other cases did fail: {', '.join(sorted(set(red))[:5])})")
-            failures += 1
+            red = [line[5:].split(":", 1)[0]
+                   for line in out.splitlines() if line.startswith("FAIL ")]
+            mine = [name for name in red if name in step["by_site"][label]]
+            if mine:
+                shown = ", ".join(sorted(set(mine))[:3])
+                more = "" if len(set(mine)) <= 3 else f", +{len(set(mine)) - 3} more"
+                print(f"ok {label}\n   CAUGHT by {len(set(mine))} case(s): {shown}{more}")
+                guarded += 1
+            else:
+                print(f"XX {label}\n   DELETED AND NOTHING NOTICED — the cases "
+                      f"that name it are {', '.join(step['by_site'][label])}")
+                if red:
+                    print(f"   (other cases did fail: {', '.join(sorted(set(red))[:5])})")
+                failures += 1
 finally:
-    source.write_text(original)
+    for source, text in originals.items():
+        source.write_text(text)
 
 print()
 if failures:
-    print(f"{len(sites) - failures} of {len(sites)} report sites are guarded; "
-          f"{failures} are not", file=sys.stderr)
+    print(f"{guarded} of {total} report sites are guarded; {failures} are not",
+          file=sys.stderr)
     sys.exit(1)
-print(f"all {len(sites)} report sites are guarded: deleting each one turns a "
+print(f"all {total} report sites are guarded: deleting each one turns a "
       f"check that names it red")
 PYTHON

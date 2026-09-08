@@ -134,6 +134,13 @@ pub class Serializer {
                 self.content(html, mode, false, "constant")
                 return index + 1
             }
+            // REACHED BY AN ORDINARY RENDER, which is not obvious.
+            // `Builder.fill_slot` writes the `child` frame on BOTH of its
+            // paths, including the one where `mount` failed and nothing was
+            // ever activated — and only `render_child` creates the buffer. So
+            // every mount failure raises a builder fault AND this one, as a
+            // pair. `tests/w1_faults.b`, `a-mount-whose-activation-failed`,
+            // asserts both halves; nothing asserted the second before it.
             child(_, type_name, id) => {
                 match b.child_buffer(id) {
                     some(buffer) => { let _: int = self.siblings(buffer, 0, mode) }
@@ -147,6 +154,20 @@ pub class Serializer {
             region_open(_, _) => { return self.transparent(b, index, mode) }
             fragment_open(_) => { return self.transparent(b, index, mode) }
             boundary_open(_, _) => { return self.transparent(b, index, mode) }
+            // NO PRODUCER IN THIS REPO CAN REACH THIS, and that is measured
+            // rather than assumed. The six frames that land here — attribute,
+            // flag, splat, handler, reference, preserve — are each written by
+            // a Builder method that calls `take_attribute_slot` first, which
+            // refuses with "is outside an element's attribute run" and DROPS
+            // the frame; and `Applier.emit` writes them only immediately after
+            // an `open`. `tests/w1_faults.b` § 4 asserts all six of those
+            // upstream refusals and that the frame list stays three frames
+            // long, so the day one stops being swallowed, that section goes
+            // red rather than this site quietly becoming reachable.
+            //
+            // It is still live and still tested: `Builder.frames` is public, a
+            // hand-assembled frame list reaches it, and § 3 trips it with each
+            // of the six. Deleting it turns those six cases red.
             _ => {
                 self.faults.push("{describe_frame(frame)} is not a child position")
                 return index + 1

@@ -226,6 +226,22 @@ pub class Applier {
         }
     }
 
+    /// The child at `index`, or a fault. It checks the INDEX and not the
+    /// KIND: `set_text` addressed at an element, a markup node or a mounted
+    /// child is accepted here and does nothing, and `set_markup` addressed at
+    /// a text node lands escaped. No well-formed batch contains one —
+    /// `Differ.pair` reaches `set_text` only under `o.kind == SPAN_TEXT` and
+    /// `set_markup` only under `SPAN_MARKUP` — so this is a differ bug or a
+    /// hand-built batch and nothing else, which is why the sweep has never
+    /// produced one.
+    ///
+    /// It is a DIVERGENCE all the same, and `tests/w1_faults.b` § 2 pins every
+    /// shape of it with what each one actually does: `latte.js` applies the
+    /// same stream to a real DOM, where `textContent` on an element wipes its
+    /// children, and `set_text` at a `raw` node here rewrites it through
+    /// `Frame.raw`, unescaped. Removing it means a kind check here AND the
+    /// same refusal in `latte.js`, or the two halves disagree the other way —
+    /// a wire-contract change, which is why it is measured rather than patched.
     fn kid(parent: Node, index: int, component: int, what: string) -> Option<Node> {
         if index < 0 || index >= parent.kids.len() {
             self.faults.push("component {component}: {what} {index} of {parent.kids.len()}")
