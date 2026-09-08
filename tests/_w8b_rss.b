@@ -14,11 +14,20 @@
 // line when it has finished sampling.
 //
 //   1. build everything except the circuits, print BASE, wait
-//   2. open N circuits, each attached and rendered once, print OPEN, wait
-//   3. leave
+//   2. open N circuits on an ORDINARY page, each attached and rendered once,
+//      print OPEN, wait
+//   3. open N more on the SMALLEST page that is still a page, print TINY, wait
+//   4. leave
 //
 // (RSS(open) - RSS(base)) / N is the answer, and the shell does that division
 // because it is the one holding both numbers.
+//
+// **Why there is a third phase.** "22 KB per idle circuit" is not actionable
+// on its own: a reader cannot tell whether that is what a circuit costs or
+// what their page costs. Phase 3 opens the same number of circuits on a page
+// with three nodes instead of thirty-odd, in a second set, on top of
+// everything phase 2 is still holding. Its delta is the circuit's own floor;
+// the difference between the two is the page.
 //
 // **What "idle" means here, exactly.** A circuit that has been opened,
 // attached, has rendered its page once and has had its first batch taken off
@@ -95,10 +104,50 @@ pub class Board extends Component {
     }
 }
 
+/// The smallest thing that is still a page: one element and one text node.
+/// Phase 3 mounts this, and the difference between its delta and the Board's
+/// is what a page of ordinary size costs on top of a circuit.
+pub class Tiny extends Component {
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "div")
+        b.text(1, "tiny")
+        b.close()
+    }
+}
+
 fn make_rows() -> List<string> {
     var out: List<string> = []
     for index: int in 0..25 { out.push("row {index}") }
     return move out
+}
+
+/// Open `count` circuits on `set`, each attached and rendered once. Answers
+/// how many really opened, which is never assumed: `CircuitSet.open` refuses
+/// past `max_circuits` and records a fault, and dividing by the number asked
+/// for rather than the number opened is how a wrong answer gets printed.
+fn fill(set: CircuitSet, count: int, url: string, handles: List<int>) -> int {
+    var opened: int = 0
+    for index: int in 0..count {
+        var facts: Map<string, string> = {}
+        let id: string = fresh_id().or("")
+        if id == "" { return opened }
+        facts["id"] = id
+        facts["session"] = "session-{index}"
+        facts["origin"] = ""
+        facts["path"] = url
+        let handle: int = set.open(facts, 0)
+        if handle < 0 { continue }
+        // Attach, so the page is really mounted and really rendered once, and
+        // the first batch is taken off the outbox the way a live client's
+        // would be. A circuit that never attached holds no component tree and
+        // would answer a much smaller and much less useful number.
+        let batches: List<string> = set.accept(handle,
+            "\{\"t\":\"attach\",\"c\":\"{id}\",\"u\":\"{url}\"\}", 0)
+        handles.push(handle)
+        opened += 1
+    }
+    return opened
 }
 
 fn main() {
@@ -125,34 +174,29 @@ fn main() {
     io.eprintln("W8B-RSS-BASE circuits=0")
     let _wait: Option<string> = io.read_line()
 
-    var opened: int = 0
     var handles: List<int> = []
-    for index: int in 0..CIRCUITS {
-        var facts: Map<string, string> = {}
-        let id: string = fresh_id().or("")
-        if id == "" {
-            io.eprintln("W8B-RSS-UNAVAILABLE fresh_id failed at {index}")
-            return
-        }
-        facts["id"] = id
-        facts["session"] = "session-{index}"
-        facts["origin"] = ""
-        facts["path"] = "/"
-        let handle: int = set.open(facts, 0)
-        if handle < 0 { continue }
-        // Attach, so the page is really mounted and really rendered once, and
-        // the first batch is taken off the outbox the way a live client's
-        // would be. A circuit that never attached holds no component tree and
-        // would answer a much smaller and much less useful number.
-        let batches: List<string> = set.accept(handle,
-            "\{\"t\":\"attach\",\"c\":\"{id}\",\"u\":\"/\"\}", 0)
-        handles.push(handle)
-        opened += 1
-    }
-
+    let opened: int = fill(set, CIRCUITS, "/", handles)
     io.eprintln("W8B-RSS-OPEN circuits={opened} held={set.count()} faults={set.faults.len()}")
     let _wait2: Option<string> = io.read_line()
-    // `handles` is read here so nothing above can be dead-stored away: the
-    // circuits must still be reachable at the moment the shell sampled.
-    io.eprintln("W8B-RSS-DONE handles={handles.len()} still_held={set.count()}")
+
+    // Phase 3, in a SECOND set, on top of everything the first is still
+    // holding. Its delta is the circuit's own floor, because the only thing
+    // that changed is the size of the page.
+    var tiny_options: CircuitOptions = new CircuitOptions()
+    tiny_options.idle_ms = 100000000
+    tiny_options.retention_ms = 100000000
+    tiny_options.max_circuits = CIRCUITS + 16
+    let tiny_set: CircuitSet = new CircuitSet(tiny_options,
+        fn(facts: Map<string, string>, url: string) -> Option<Component> {
+            return some(new Tiny())
+        })
+    tiny_set.guard = run
+    var tiny_handles: List<int> = []
+    let tiny_opened: int = fill(tiny_set, CIRCUITS, "/tiny", tiny_handles)
+    io.eprintln("W8B-RSS-TINY circuits={tiny_opened} held={tiny_set.count()} faults={tiny_set.faults.len()}")
+    let _wait3: Option<string> = io.read_line()
+
+    // Both lists are read here so nothing above can be dead-stored away: every
+    // circuit must still be reachable at the moment the shell sampled.
+    io.eprintln("W8B-RSS-DONE board={handles.len()} tiny={tiny_handles.len()} held={set.count()}+{tiny_set.count()}")
 }
