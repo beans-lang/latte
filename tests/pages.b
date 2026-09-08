@@ -747,6 +747,58 @@ fn main() {
     report.check_false("ParamWatch has been fed", new ParamWatch().empty() == false)
 
     io.println("")
+    io.println("== 10. B10 — a type name inside a string interpolation loses this file's imports ==")
+    //
+    // This section asserts a COMPILER BUG, deliberately, and it is the only
+    // place in this repo that does. BLOCKERS.md **B10**: a type name written
+    // inside `"{ }"` is resolved without the file's named-import bindings and
+    // falls back to composing the asking package's own name with the simple
+    // name. `pages.b:extends_named` exists because of it, and its whole
+    // contract — "`wanted` must be produced HERE, inside latte" — is only
+    // true while this holds.
+    //
+    // So the day it is fixed, THIS GOLDEN GOES RED, and the reader is sent to
+    // B10 and to `extends_named`'s comment rather than discovering years later
+    // that a public function documents a hazard that no longer exists.
+    // `probes/p12_consumer_type_of` and `probes/p13_interpolation_scope` are
+    // the same measurement from a consumer's module and across every
+    // expression form; both backends agree on every line of both.
+    let outside: reflect.Type = type_of(Component)
+    let right: string = outside.qualified_name()
+    let wrong: string = "{type_of(Component).qualified_name()}"
+    io.println("   bound to a let, then interpolated: {right}")
+    io.println("   written inside the interpolation:  {wrong}")
+    report.check_text("outside an interpolation, type_of(Component) is right",
+                      right, "latte.Component")
+    report.check_text("inside one, it composes the asking package's own name",
+                      wrong, "latte$entry.Component")
+    report.check_true("the right name names a type", reflect.find_type(right).is_some())
+    report.check_false("the wrong one names nothing", reflect.find_type(wrong).is_some())
+
+    // The control. A type declared in THIS file needs no import binding, so it
+    // cannot be lost by one, and it must read the same both ways — without it
+    // the two assertions above could not tell "the import was dropped" from
+    // "interpolation mangles every name".
+    let local_outside: reflect.Type = type_of(Home)
+    report.check_text("control: a type declared here reads the same inside",
+                      "{type_of(Home).qualified_name()}", local_outside.qualified_name())
+    // The second control: a dot-path reference is unaffected too, which is why
+    // B10 is about named imports and not about interpolation in general.
+    let dotted: reflect.Type = type_of(reflect.Type)
+    report.check_text("control: a dot-path type reads the same inside",
+                      "{type_of(reflect.Type).qualified_name()}", dotted.qualified_name())
+
+    // What it costs, and the exact trap `extends_named` is public to avoid.
+    report.check_true("is_assignable_from is right outside an interpolation",
+                      outside.is_assignable_from(type_of(Home)))
+    report.check_false("and false inside one, for the same real subclass",
+                       "{type_of(Component).is_assignable_from(type_of(Home))}" == "true")
+    report.check_true("extends_named answers true for the name latte produced",
+                      extends_named(type_of(Home), right))
+    report.check_false("and false for the name a consumer's interpolation produces",
+                       extends_named(type_of(Home), wrong))
+
+    io.println("")
     io.println("checks failed: {report.failures}")
 }
 

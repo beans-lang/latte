@@ -93,7 +93,11 @@ tmp=$(mktemp -d)
 # that is interrupted between the two, so a Ctrl-C never leaves a .b file in
 # tests/ that nobody wrote. .gitignore lists them as well.
 W2_COMPONENT_STAGED=("$ROOT/tests/_w2_component_ok.b" "$ROOT/tests/_w2_component_bad.b")
-trap 'rm -rf "$tmp"; rm -f "${W2_COMPONENT_STAGED[@]}"' EXIT
+# The examples leg stages one file per nested module under examples/, for the
+# same reason and with the same promise: it is named here so an interrupted run
+# cannot leave a .b file inside a shipped example module.
+EXAMPLES_STAGED=()
+trap 'rm -rf "$tmp"; rm -f "${W2_COMPONENT_STAGED[@]}"; [[ ${#EXAMPLES_STAGED[@]} -eq 0 ]] || rm -f "${EXAMPLES_STAGED[@]}"' EXIT
 
 failed=0
 suites=0
@@ -457,6 +461,103 @@ compare_example_leg() {
     return $bad
 }
 
+# Every package of every nested module under examples/, compiled.
+#
+# A nested module — a directory under `examples/` with its own `beans.pot` — is
+# how a component library is shipped and how a consumer of one is written, so
+# `examples/` grows whole modules and not only files. Two of their shapes defeat
+# the plain `beansc check` above:
+#
+#   * a file deeper than the manifest (`shelf/cards/card.b`) cannot be pointed
+#     at directly — `error: entry file must sit next to beans.pot`;
+#   * a `kind library` module may hold a program entry only under `tests/` or
+#     `examples/`, so there is nowhere else to put one.
+#
+# So the leg writes one: a `package main` file under `<module>/tests/` that
+# dot-path imports **every package directory the module has**, found by looking
+# on disk and not by reading anybody's imports. An unused import still compiles
+# the package — proved by breaking `shelf/atoms/badge.b` and watching this
+# check name the line — so a package that nothing imports is compiled here and
+# nowhere else. That is the whole point: without it, adding an orphan package
+# to a shipped library is invisible, and `examples/` is the part of this repo a
+# reader copies.
+#
+# The staged file is removed on every path, including the interrupted one — the
+# EXIT trap lists it — so a Ctrl-C never leaves a .b file in a module nobody
+# wrote.
+examples_nested_modules() {
+    find "$ROOT/examples" -name beans.pot -type f 2>/dev/null | LC_ALL=C sort | while IFS= read -r pot; do
+        printf '%s\n' "$(dirname "$pot")"
+    done
+}
+
+# The package directories of one module: every directory holding a .b file,
+# except the module root itself (that is the root package, checked directly)
+# and its `tests/` and `examples/` trees (those hold entries, not packages).
+module_package_dirs() {
+    local module=$1
+    find "$module" -name '*.b' -type f 2>/dev/null | while IFS= read -r file; do
+        printf '%s\n' "$(dirname "$file")"
+    done | LC_ALL=C sort -u | while IFS= read -r dir; do
+        [[ "$dir" == "$module" ]] && continue
+        local rel=${dir#"$module"/}
+        case "$rel" in tests|tests/*|examples|examples/*) continue ;; esac
+        printf '%s\n' "$rel"
+    done
+}
+
+cover_nested_modules() {
+    local module
+    while IFS= read -r module; do
+        [[ -n "$module" ]] || continue
+        local name
+        name=$(awk '$1 == "module" { print $2; exit }' "$module/beans.pot")
+        if [[ -z "$name" ]]; then
+            echo "--- examples FAILED: ${module#"$ROOT"/}/beans.pot has no 'module' row ---" >&2
+            failed=1
+            continue
+        fi
+
+        local dirs=()
+        local rel
+        while IFS= read -r rel; do
+            [[ -n "$rel" ]] && dirs+=("$rel")
+        done < <(module_package_dirs "$module")
+
+        # A module whose only .b files sit next to its manifest has no package
+        # to reach this way; the loop above already checked them by name.
+        [[ ${#dirs[@]} -gt 0 ]] || continue
+
+        local staged="$module/tests/_examples_cover.b"
+        mkdir -p "$module/tests"
+        {
+            echo "// Written by test.sh and deleted by it. It imports every package"
+            echo "// directory $name has, so a package nothing imports is still compiled."
+            echo "package main"
+            for rel in "${dirs[@]}"; do
+                echo "import $name.${rel//\//.}"
+            done
+            echo "fn main() {}"
+        } >"$staged"
+        EXAMPLES_STAGED+=("$staged")
+
+        if ! (cd "$ROOT" && "$BEANSC" check "${staged#"$ROOT"/}") >"$tmp/cover.log" 2>&1; then
+            echo "--- examples FAILED: a package of ${module#"$ROOT"/} does not check ---" >&2
+            echo "    Every package directory of a nested module is compiled through a" >&2
+            echo "    staged entry that imports all of them, because beansc cannot be" >&2
+            echo "    pointed at a file that is not next to a beans.pot. The staged" >&2
+            echo "    file was:" >&2
+            sed -e 's/^/        /' "$staged" >&2
+            cat "$tmp/cover.log" >&2
+            failed=1
+        else
+            echo "ok examples/packages — ${#dirs[@]} package(s) of $name compile: ${dirs[*]}"
+        fi
+        rm -f "$staged"
+        rmdir "$module/tests" 2>/dev/null || true
+    done < <(examples_nested_modules)
+}
+
 run_examples_leg() {
     local entries=()
     local others=()
@@ -469,14 +570,34 @@ run_examples_leg() {
     # imports. Running the entry compiles it, so this only catches the file
     # nothing imports yet — which is exactly the file a reader is most likely
     # to copy and least likely to have compiled.
+    #
+    # **`beansc check` can only be pointed at a file that sits next to a
+    # `beans.pot`.** A file deeper inside a module answers
+    # `error: entry file must sit next to beans.pot` and never reaches type
+    # checking, so the loop below would report a nested library's every package
+    # file as broken. That is not a reason to skip them: skipping is how this
+    # guard would stop covering the files it exists for. They are covered by
+    # `cover_nested_modules` instead, which stages an entry that imports every
+    # package directory the module has — including one nothing imports.
+    # The test is the COMPILER'S OWN answer and not a guess about the layout:
+    # a file it cannot be pointed at says so in one exact sentence, and only
+    # that sentence is allowed to excuse a file from this check. Deciding it
+    # here by looking for a `beans.pot` beside the file would quietly skip
+    # every non-entry file directly under `examples/` — latte's manifest is at
+    # the repo root, not in `examples/` — and that guard would be dead the day
+    # somebody adds one.
     local other
     if [[ -z "$only" ]]; then
         for other in ${others[@]+"${others[@]}"}; do
             (cd "$ROOT" && "$BEANSC" check "${other#"$ROOT"/}") >"$tmp/example_check.log" 2>&1 && continue
+            if grep -q 'entry file must sit next to beans.pot' "$tmp/example_check.log"; then
+                continue    # a nested module's package file; cover_nested_modules has it
+            fi
             echo "--- examples FAILED: ${other#"$ROOT"/} does not check ---" >&2
             cat "$tmp/example_check.log" >&2
             failed=1
         done
+        cover_nested_modules
     fi
 
     # --- .bx sources against the .b files checked in beside them ----------
@@ -552,7 +673,7 @@ run_examples_leg() {
             echo "    golden. A missing golden is a failure and not a skip: a gate that" >&2
             echo "    skips on a missing input is green for ever after (RULES.md 5), and" >&2
             echo "    not writing the golden is the cheapest way to get there." >&2
-            echo "    Write it:   (cd \"$ROOT\" && beansc run $rel [args]) > $(basename "$want_out")" >&2
+            echo "    Write it:   (cd \"$ROOT\" && beansc run $rel [args]) > ${want_out#"$ROOT"/}" >&2
             echo "    and READ it before committing — a golden nobody read is a" >&2
             echo "    screenshot of whatever the program did that day." >&2
             failed=1
