@@ -34,6 +34,7 @@ package main
 
 import espresso
 import std.fs
+import std.http
 import std.io
 import std.os
 import {Anonymous, Antiforgery, CircuitOptions, CircuitSet, Component,
@@ -47,7 +48,7 @@ import {CircuitSeam, ClientOptions, EndpointOptions, HeaderOptions, WebRequest,
         WebReply, SESSION_COOKIE, CLIENT_PATH, SOCKET_PATH, fresh_id,
         has_fiber_poller, hmac_signer, map_asset, map_circuit, map_client,
         map_pages, same_bytes, security_headers} from latte.web
-import {Shell, Drink, Menu, Order, OrderPage} from cafe.site
+import {Shell, Drink, Menu, Basket, OrderPage} from cafe.site
 
 // ============================================================== the styling
 
@@ -58,8 +59,25 @@ import {Shell, Drink, Menu, Order, OrderPage} from cafe.site
 /// dropped by the policy latte itself sends. It is a Beans constant rather
 /// than a second file on disk so the example has exactly one path that has to
 /// exist — `js/latte.js` — instead of two.
-const STYLESHEET: string = "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#fbf7f2;color:#2b2118}\n.page{max-width:44rem;margin:0 auto;padding:2rem 1rem}\nheader{border-bottom:2px solid #e0d3c3;padding-bottom:.75rem;margin-bottom:1.5rem}\nh1{margin:0 0 .5rem;font-size:1.5rem}\nnav a{margin-right:1rem;color:#8a5a2b}\nul{list-style:none;padding:0}\n.drink button{font:inherit;padding:.5rem .75rem;border:1px solid #d8c6b0;border-radius:.4rem;background:#fff;cursor:pointer}\n.drink.chosen button{background:#8a5a2b;color:#fff;border-color:#8a5a2b}\nlabel{display:block;margin:.5rem 0}\ninput{font:inherit;padding:.3rem}\n#problems li{color:#a12b1e}\n";
-
+/// A `List` of raw literals joined, and not one string, because a `{` in an
+/// ordinary Beans string starts an interpolation — CSS is almost nothing but
+/// braces, and `r"…"` is the literal that has none.
+fn stylesheet() -> string {
+    let rules: List<string> = [
+        r"body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#fbf7f2;color:#2b2118}",
+        r".page{max-width:44rem;margin:0 auto;padding:2rem 1rem}",
+        r"header{border-bottom:2px solid #e0d3c3;padding-bottom:.75rem;margin-bottom:1.5rem}",
+        r"h1{margin:0 0 .5rem;font-size:1.5rem}",
+        r"nav a{margin-right:1rem;color:#8a5a2b}",
+        r"ul{list-style:none;padding:0}",
+        r".drink button{font:inherit;padding:.5rem .75rem;border:1px solid #d8c6b0;border-radius:.4rem;background:#fff;cursor:pointer}",
+        r".drink.chosen button{background:#8a5a2b;color:#fff;border-color:#8a5a2b}",
+        r"label{display:block;margin:.5rem 0}",
+        r"input{font:inherit;padding:.3rem}",
+        r"#problems li{color:#a12b1e}"
+    ]
+    return "{rules.join("\n")}\n"
+}
 // ============================================================== the wiring
 
 /// Everything one process holds. One accept loop serves this application —
@@ -173,7 +191,7 @@ fn mount(app: espresso.WebApplication, cafe: Cafe, secure: bool,
 
     var client: ClientOptions = new ClientOptions()
     map_client(app, client)?
-    map_asset(app, "/app.css", STYLESHEET, "text/css; charset=utf-8",
+    map_asset(app, "/app.css", stylesheet(), "text/css; charset=utf-8",
               "no-cache")?
 
     var host: PageHost = new PageHost(cafe.pages, cafe.forms,
@@ -215,9 +233,11 @@ fn mount(app: espresso.WebApplication, cafe: Cafe, secure: bool,
         return some(reply)
     }, secure)?
 
-    var endpoint: EndpointOptions = new EndpointOptions()
     endpoint.poll_ms = 100
     endpoint.socket_ms = 60000
+    // The message a handshake gets on a platform with no fiber network poller.
+    // The host sets it from latte's constant rather than spelling a second
+    // copy of the sentence.
     endpoint.no_poller_message = NO_POLLER_MESSAGE
 
     var set: CircuitSet = new CircuitSet(new CircuitOptions(),
@@ -436,55 +456,54 @@ fn is_hex(text: string, want: int) -> bool {
     return true
 }
 
-fn cookie_headers(session: string) -> espresso.http.Headers {
-    var headers: espresso.http.Headers = new espresso.http.Headers()
+fn cookie_headers(session: string) -> http.Headers {
+    var headers: http.Headers = new http.Headers()
     headers.add("Cookie", "{SESSION_COOKIE}={session}")
     return move headers
 }
 
-fn form_headers(session: string) -> espresso.http.Headers {
-    var headers: espresso.http.Headers = cookie_headers(session)
+fn form_headers(session: string) -> http.Headers {
+    var headers: http.Headers = cookie_headers(session)
     headers.add("Content-Type", "application/x-www-form-urlencoded")
     return move headers
 }
 
-/// The handler id the batch bound for `event`, or -1.
+/// Every handler id the batch bound for `event`, in wire order.
 ///
-/// A handler edit is `["h",<seq>,"click",<id>]`, so this reads the wire the
-/// same way the browser does rather than assuming the slot numbering. It is
-/// how `check` clicks without a DOM.
-fn handler_for(batch: string, event: string) -> int {
+/// A handler edit is `["h",<seq>,"click",<id>]`, so this reads the batch the
+/// way the browser does rather than assuming how slots are numbered. It is how
+/// `check` clicks with no DOM.
+fn handlers_for(batch: string, event: string) -> List<int> {
+    var found: List<int> = []
     let marker: string = "[\"h\","
+    let wanted: string = "\"{event}\","
     var at: int = 0
     for at < batch.len() {
+        var offset: int = -1
         match batch.slice(at, batch.len()).find(marker) {
-            none => { return -1 }
-            some(offset) => {
-                let start: int = at + offset + marker.len()
-                let rest: string = batch.slice(start, batch.len())
-                let wanted: string = "\"{event}\","
-                match rest.find("]") {
-                    none => { return -1 }
-                    some(close) => {
-                        let body: string = rest.slice(0, close)
-                        match body.find(wanted) {
-                            some(name_at) => {
-                                let digits: string = body.slice(
-                                    name_at + wanted.len(), body.len())
-                                match digits.to_int() {
-                                    ok(value) => { return value }
-                                    err(_) => { return -1 }
-                                }
-                            }
-                            none => {}
-                        }
-                        at = start
-                    }
+            some(where) => { offset = where }
+            none => { at = batch.len(); continue }
+        }
+        let start: int = at + offset + marker.len()
+        let rest: string = batch.slice(start, batch.len())
+        var close: int = -1
+        match rest.find("]") {
+            some(where) => { close = where }
+            none => { at = batch.len(); continue }
+        }
+        let body: string = rest.slice(0, close)
+        match body.find(wanted) {
+            some(name_at) => {
+                match body.slice(name_at + wanted.len(), body.len()).to_int() {
+                    ok(value) => { found.push(value) }
+                    err(_) => {}
                 }
             }
+            none => {}
         }
+        at = start
     }
-    return -1
+    return move found
 }
 
 fn check() {
@@ -535,5 +554,336 @@ fn drive(r: Report, cafe: Cafe) {
     match host.close() {
         ok(_) => {}
         err(problem) => { io.println("FAIL closing the host: {problem.msg}") }
+    }
+}
+
+// ---------------------------------------------------------------- § 1 shell
+
+/// The document, whole, and the four headers that make it safe.
+///
+/// The document is PRINTED, in full, into the golden. It is the artifact this
+/// lane exists to produce and the one thing a reader of this example most
+/// needs to see; an assertion that it "contains a script tag" would pass on a
+/// page that also carried an inline one.
+fn section_shell(r: Report, cafe: Cafe, host: espresso.TestHost) {
+    io.println("")
+    io.println("-- 1. GET / is a document, not a fragment")
+    match host.get("/") {
+        err(problem) => { r.eq("1.0 GET /", "err {problem.msg}", "200") }
+        ok(reply) => {
+            r.eqi("1.1 status", reply.status, 200)
+            r.eq("1.2 content type", header_of(reply, "Content-Type"),
+                 "text/html; charset=utf-8")
+            // The policy, whole. A test that checked one directive would pass
+            // a policy that had lost the other seven.
+            r.eq("1.3 the content security policy",
+                 header_of(reply, "Content-Security-Policy"),
+                 "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+            r.eq("1.4 nosniff", header_of(reply, "X-Content-Type-Options"),
+                 "nosniff")
+            r.eq("1.5 no framing", header_of(reply, "X-Frame-Options"), "DENY")
+            r.eq("1.6 referrer", header_of(reply, "Referrer-Policy"),
+                 "no-referrer")
+
+            let session: string = session_in(reply)
+            r.yes("1.7 a session cookie was minted, 256 bits of it",
+                  is_hex(session, 64))
+            let cookie: string = header_of(reply, "Set-Cookie")
+            r.yes("1.8 the cookie is HttpOnly", cookie.contains("HttpOnly"))
+            r.yes("1.9 the cookie is SameSite=Lax",
+                  cookie.contains("SameSite=Lax"))
+            // `map_pages(app, …, false)`: a TestHost is not TLS, and a browser
+            // silently drops a `Secure` cookie over http. The example chose
+            // this in the code that mounts it, and the check names the choice.
+            r.no("1.10 and NOT Secure, because this app serves plain http",
+                 cookie.contains("Secure"))
+
+            let document: string = reply.text()
+            r.yes("1.11 it is a document", document.starts_with("<!doctype html>\n"))
+            r.yes("1.12 the client is loaded from latte's own path",
+                  document.contains(
+                      "<script src=\"{SHELL_CLIENT_PATH}\" defer data-latte-boot=\"1\" data-latte-ws=\"{SHELL_SOCKET_PATH}\" data-latte-root=\"{ROOT_ID}\"></script>"))
+            // The three things `security_headers` promises the page has none
+            // of. A `script-src 'self'` with no `'unsafe-inline'` makes each of
+            // these a silently dead page.
+            r.no("1.13 no inline script", document.contains("<script>"))
+            r.no("1.14 no inline style", document.contains("<style"))
+            r.no("1.15 no on* handler attribute", document.contains(" onclick"))
+            r.no("1.16 no circuit id in the page at all",
+                 document.contains("data-latte-circuit"))
+            r.yes("1.17 the page body is inside the root element",
+                  document.contains("<div id=\"{ROOT_ID}\"><div class=\"page\">"))
+
+            io.println("")
+            io.println("--- the document ---")
+            io.println(document)
+            io.println("--- end of the document ---")
+        }
+    }
+}
+
+// --------------------------------------------------------------- § 2 client
+
+/// The route that makes `script-src 'self'` mean something.
+///
+/// The path is taken OUT OF THE DOCUMENT rather than written here, so this
+/// section proves the shell and the route agree rather than proving each of
+/// them agrees with a constant in this file.
+fn section_client(r: Report, cafe: Cafe, host: espresso.TestHost) {
+    io.println("")
+    io.println("-- 2. the client script is served, and cached honestly")
+
+    var served_from: string = ""
+    match host.get("/") {
+        err(_) => {}
+        ok(page) => { served_from = attribute_after(page.text(), "<script src=\"") }
+    }
+    r.eq("2.1 the page points at the path the asset route claims",
+         served_from, CLIENT_PATH)
+
+    var on_disk: int = -1
+    match fs.read("js/latte.js") {
+        ok(text) => { on_disk = text.len() }
+        err(problem) => { io.println("FAIL cannot read js/latte.js: {problem.kind}") }
+    }
+
+    var tag: string = ""
+    match host.get(served_from) {
+        err(problem) => { r.eq("2.2 GET the client", "err {problem.msg}", "200") }
+        ok(reply) => {
+            r.eqi("2.2 status", reply.status, 200)
+            r.eq("2.3 content type", header_of(reply, "Content-Type"),
+                 "text/javascript; charset=utf-8")
+            r.eqi("2.4 the bytes are the file's, all of them",
+                  reply.text().len(), on_disk)
+            r.eq("2.5 revalidate rather than cache blind",
+                 header_of(reply, "Cache-Control"), "no-cache")
+            tag = header_of(reply, "ETag")
+            r.yes("2.6 it carries a strong entity tag",
+                  tag.len() > 2 && tag.starts_with("\"") && tag.ends_with("\""))
+            r.eq("2.7 nosniff reaches the script too, so the type has to be right",
+                 header_of(reply, "X-Content-Type-Options"), "nosniff")
+        }
+    }
+
+    // The conditional request, with its positive control beside it: a matching
+    // tag must be 304 AND a non-matching one must be 200. Without the second,
+    // a route that answered 304 to everything would pass the first.
+    var conditional: http.Headers = new http.Headers()
+    conditional.add("If-None-Match", tag)
+    match host.send_with_headers("GET", served_from, conditional, "") {
+        err(problem) => { r.eq("2.8 a matching tag", "err {problem.msg}", "304") }
+        ok(reply) => {
+            r.eqi("2.8 a matching tag is 304", reply.status, 304)
+            r.eqi("2.9 and carries no body", reply.text().len(), 0)
+        }
+    }
+    var stale: http.Headers = new http.Headers()
+    stale.add("If-None-Match", "\"0-0\"")
+    match host.send_with_headers("GET", served_from, stale, "") {
+        err(problem) => { r.eq("2.10 a stale tag", "err {problem.msg}", "200") }
+        ok(reply) => {
+            r.eqi("2.10 a stale tag gets the whole file", reply.status, 200)
+            r.eqi("2.11 all of it", reply.text().len(), on_disk)
+        }
+    }
+
+    match host.post(served_from, "") {
+        err(problem) => { r.eq("2.12 POST", "err {problem.msg}", "405") }
+        ok(reply) => {
+            r.eqi("2.12 POST to a static asset is 405", reply.status, 405)
+            r.eq("2.13 and says what it does answer",
+                 header_of(reply, "Allow"), "GET, HEAD")
+        }
+    }
+
+    match host.get("/app.css") {
+        err(problem) => { r.eq("2.14 GET the stylesheet", "err {problem.msg}", "200") }
+        ok(reply) => {
+            r.eqi("2.14 the stylesheet is served by the same route", reply.status, 200)
+            r.eq("2.15 as css", header_of(reply, "Content-Type"),
+                 "text/css; charset=utf-8")
+        }
+    }
+}
+
+// ----------------------------------------------------------------- § 3 form
+
+/// The form, with no JavaScript anywhere: a GET, a good POST, a bad POST, and
+/// three refusals — each with the accepted case beside it in the same section.
+fn section_form(r: Report, cafe: Cafe, host: espresso.TestHost) {
+    io.println("")
+    io.println("-- 3. the order form, with JavaScript switched off")
+
+    var session: string = ""
+    var token: string = ""
+    match host.get("/order/4") {
+        err(problem) => { r.eq("3.0 GET /order/4", "err {problem.msg}", "200") }
+        ok(reply) => {
+            r.eqi("3.1 status", reply.status, 200)
+            session = session_in(reply)
+            let document: string = reply.text()
+            token = token_in(document)
+            match token.find(".") {
+                none => { r.eq("3.2 the token is expiry.mac", "no dot", "a dot") }
+                some(at) => {
+                    r.yes("3.2 the token's MAC is a SHA-256 digest",
+                          is_hex(token.slice(at + 1, token.len()), 64))
+                }
+            }
+            r.yes("3.3 the route parameter reached the page",
+                  document.contains("Order for table 4"))
+            io.println("")
+            io.println("--- /order/4, with the token masked ---")
+            io.println(mask_token(document))
+            io.println("--- end ---")
+        }
+    }
+
+    // ACCEPTED. Everything below refuses; this is the control that proves the
+    // refusals are refusing for their own reason and not for a coarser one.
+    match host.send_with_headers("POST", "/order/4", form_headers(session),
+                                 "__latte_token={token}&name=Ada&cups=2&decaf=on") {
+        err(problem) => { r.eq("3.4 a good POST", "err {problem.msg}", "200") }
+        ok(reply) => {
+            r.eqi("3.4 a good POST is accepted", reply.status, 200)
+            r.yes("3.5 and the order is placed",
+                  reply.text().contains("2 decaf for Ada at table 4"))
+        }
+    }
+
+    // A body that binds and fails a rule is NOT a refusal: it is a 200 with the
+    // page re-rendered, the message beside the field, and the text still in the
+    // box. A form that answered 400 here would lose what the user typed.
+    match host.send_with_headers("POST", "/order/4", form_headers(session),
+                                 "__latte_token={token}&name=A&cups=9") {
+        err(problem) => { r.eq("3.6 a bad POST", "err {problem.msg}", "200") }
+        ok(reply) => {
+            let document: string = reply.text()
+            r.eqi("3.6 a bad POST is still a page", reply.status, 200)
+            r.yes("3.7 the length rule is reported by name",
+                  document.contains("<li>name:"))
+            r.yes("3.8 the range rule is reported by name",
+                  document.contains("<li>cups:"))
+            r.yes("3.9 and the boxes give back what was typed",
+                  document.contains("id=\"cups\" value=\"9\""))
+            r.no("3.10 nothing was placed", document.contains("for A at table"))
+        }
+    }
+
+    match host.send_with_headers("POST", "/order/4", form_headers(session),
+                                 "name=Ada&cups=2") {
+        err(problem) => { r.eq("3.11 no token", "err {problem.msg}", "400") }
+        ok(reply) => { r.eqi("3.11 a POST with no token is refused", reply.status, 400) }
+    }
+    match host.send_with_headers("POST", "/order/4", form_headers(session),
+                                 "__latte_token=1899.deadbeef&name=Ada&cups=2") {
+        err(problem) => { r.eq("3.12 a forged token", "err {problem.msg}", "400") }
+        ok(reply) => { r.eqi("3.12 a forged token is refused", reply.status, 400) }
+    }
+    // The same token, a different session. This is the binding that makes the
+    // token worth minting: a token lifted off someone else's page is useless.
+    var other: string = ""
+    match host.get("/order/4") {
+        err(_) => {}
+        ok(reply) => { other = session_in(reply) }
+    }
+    r.no("3.13 the second visitor got a different session", other == session)
+    match host.send_with_headers("POST", "/order/4", form_headers(other),
+                                 "__latte_token={token}&name=Ada&cups=2") {
+        err(problem) => { r.eq("3.14 another session's token", "err {problem.msg}", "400") }
+        ok(reply) => {
+            r.eqi("3.14 another session's token is refused", reply.status, 400)
+        }
+    }
+
+    // A route parameter that cannot bind. `/order/4` above is the control.
+    match host.get("/order/twelve") {
+        err(problem) => { r.eq("3.15 an unbindable parameter", "err {problem.msg}", "400") }
+        ok(reply) => {
+            r.eqi("3.15 a table that is not a number is refused", reply.status, 400)
+        }
+    }
+    match host.get("/nowhere") {
+        err(problem) => { r.eq("3.16 an unrouted path", "err {problem.msg}", "404") }
+        ok(reply) => {
+            r.eqi("3.16 a path no @page claims falls through to espresso",
+                  reply.status, 404)
+        }
+    }
+}
+
+// -------------------------------------------------------------- § 4 circuit
+
+/// A click, over the seam a socket drives.
+///
+/// These are the SAME nine closures `latte.web` hands `CircuitEndpoint` — the
+/// set's own `open`, `accept` and `outbox`. What is missing here and nowhere
+/// else is the socket, and that is what `w9_smoke.sh` adds with a real Chrome.
+fn section_circuit(r: Report, cafe: Cafe) {
+    io.println("")
+    io.println("-- 4. a click, over a circuit")
+    match cafe.set {
+        none => { r.eq("4.0 the circuit set exists", "none", "some") }
+        some(set) => {
+            var facts: Map<string, string> = {}
+            var id: string = ""
+            match fresh_id() { ok(value) => { id = value } err(_) => {} }
+            facts["id"] = id
+            facts["session"] = "0123456789abcdef0123456789abcdef"
+            facts["origin"] = "http://127.0.0.1:8080"
+            facts["path"] = SOCKET_PATH
+
+            let handle: int = set.open(facts, 0)
+            r.yes("4.1 the circuit opened", handle >= 0)
+
+            let greeting: List<string> = set.outbox(handle)
+            r.eqi("4.2 one frame is queued before any message", greeting.len(), 1)
+            r.eq("4.3 and it is the hello, naming the id the SERVER minted",
+                 greeting[0],
+                 "\{\"t\":\"hello\",\"v\":1,\"c\":\"{id}\",\"mx\":65536\}")
+
+            let first: List<string> = set.accept(handle,
+                "\{\"t\":\"attach\",\"c\":\"{id}\",\"u\":\"/\"\}", 1)
+            r.eqi("4.4 attach answers exactly one batch", first.len(), 1)
+            let batch1: string = first[0]
+            r.yes("4.5 it is batch 1",
+                  batch1.starts_with("\{\"t\":\"batch\",\"b\":1,"))
+            r.yes("4.6 the whole menu is in it", batch1.contains("cortado"))
+            r.yes("4.7 including the page's own text",
+                  batch1.contains("nothing picked yet"))
+
+            let clicks: List<int> = handlers_for(batch1, "click")
+            r.eqi("4.8 three drinks bound three click handlers", clicks.len(), 3)
+            io.println("   the handler ids the batch carried: {clicks.join(", ")}")
+
+            let second: List<string> = set.accept(handle,
+                "\{\"t\":\"ev\",\"h\":{clicks[0]},\"k\":\"click\",\"p\":\{\"b\":0,\"x\":1,\"y\":2\}\}", 2)
+            r.eqi("4.9 a click answers one batch", second.len(), 1)
+            let batch2: string = second[0]
+            r.yes("4.10 it is batch 2",
+                  batch2.starts_with("\{\"t\":\"batch\",\"b\":2,"))
+            r.yes("4.11 the page says what was picked",
+                  batch2.contains("picked espresso (1)"))
+            // The claim that makes a circuit worth having: a drink whose
+            // parameters did not move sends NOTHING. `cortado` is neither the
+            // one clicked nor the one whose `chosen` changed, so its name must
+            // not be on the wire at all.
+            r.no("4.12 and an untouched row is not on the wire",
+                 batch2.contains("cortado"))
+
+            // The second click is on a handler from batch 1, deliberately: the
+            // row it belongs to did not re-render, so its slot is still the one
+            // the client holds. A framework that re-numbered every slot on
+            // every render would fail here.
+            let third: List<string> = set.accept(handle,
+                "\{\"t\":\"ev\",\"h\":{clicks[1]},\"k\":\"click\",\"p\":\{\"b\":0,\"x\":1,\"y\":2\}\}", 3)
+            r.eqi("4.13 a click on a stale-looking slot still lands", third.len(), 1)
+            r.yes("4.14 on the row it belongs to",
+                  third[0].contains("picked flat white (2)"))
+
+            r.eqi("4.15 one circuit is held", set.count(), 1)
+            r.eqi("4.16 and the set recorded no faults", set.faults.len(), 0)
+        }
     }
 }
