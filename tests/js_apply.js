@@ -843,6 +843,35 @@
        dropfence.stalls.length ? dropfence.stalls[0].t : '(nothing stalled)',
        'resume');
 
+    // --- the same reconnect, for a circuit that never attached, is refused ---
+    //
+    // The control that says the narrowing is `attached`-shaped and not "ignore
+    // the id on any second hello". A circuit whose attach went out and whose
+    // socket died before the first batch has nothing to resume: server-side
+    // `CircuitSet.adopt` requires the retained circuit to be ATTACHED and
+    // answers the handle unchanged otherwise, so the resume lands on the fresh
+    // circuit and `Circuit.on_resume` ends it with
+    // `forbidden: the circuit id does not match this connection`. This end
+    // reaches the same ending with the same word, one round trip earlier, and
+    // re-attaching to a circuit this page was not issued is not something to
+    // invent here.
+    var unattached = newCircuit({ answerMs: 5000 });
+    hello(unattached);
+    eq('the attach went out and nothing came back',
+       unattached.circuit.attached, false);
+    unattached.circuit.backoff = [0];
+    unattached.socket.onclose();
+    unattached.advance(1);
+    eq('it reconnects like any other drop', unattached.sockets.length, 2);
+    var beforeReconnect = unattached.current().sent.length;
+    unattached.current().onmessage({ data: JSON.stringify({
+        t: 'hello', v: 1, c: RECONNECT_ID, mx: 65536 }) });
+    eq('but a circuit that never attached still refuses a different id',
+       unattached.circuit.ended, true);
+    eq('with the forbidden ending', unattached.circuit.endKind, 'forbidden');
+    eq('and it sent nothing on the new socket',
+       unattached.current().sent.length, beforeReconnect);
+
     // --- an unsendable message owes nothing ---
     var unsent = newCircuit({ answerMs: 5000 });
     hello(unsent);

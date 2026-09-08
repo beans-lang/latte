@@ -386,6 +386,11 @@ ok and the resume it sends names the OLD circuit, with a NEW sequence
 ok and this end still holds the id it is resuming, not the fresh one
 ok the dropped attach never stalls the reconnected circuit
 ok and the stall that did happen is the RESUME, not the dead attach
+ok the attach went out and nothing came back
+ok it reconnects like any other drop
+ok but a circuit that never attached still refuses a different id
+ok with the forbidden ending
+ok and it sent nothing on the new socket
 ok a message that could not be sent returns false
 ok and is not outstanding
 ok so it can never stall
@@ -517,4 +522,4 @@ ok an answered fence never fires a second time
 ok and no third socket was opened
 ok the circuit is still live
 
-491 checks, 0 bad
+496 checks, 0 bad
