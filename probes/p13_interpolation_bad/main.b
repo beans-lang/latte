@@ -9,7 +9,7 @@
 package main
 
 import std.io
-import {Widget, Fancy, make, twice} from p13_interp_bad.kit
+import {Widget, Fancy, make, twice, Tone, Shop, apply} from p13_interp_bad.kit
 
 fn main() {
     let w: Widget = new Widget()
@@ -26,4 +26,19 @@ fn main() {
 
     // A cast in the other direction, for completeness.
     io.println("as inside:       {(w as Widget).button}")
+}
+
+// Three more positions, added after the first four were recorded, because
+// B10 asks which OTHER contexts re-resolve a name late. Two of them are
+// ACCEPTED and stay here as the boundary: a name used as a value namespace is
+// fine, and only a name used as a TYPE is lost.
+fn more() {
+    // ACCEPTED — an enum variant path through a named import.
+    io.println("enum variant inside: {Tone.loud}")
+    // ACCEPTED — a static call on a named-imported class.
+    io.println("static call inside:  {Shop.tally()}")
+    // REFUSED — a closure PARAMETER TYPE, which is a type annotation and not
+    // an expression at all. That is what says the rule is "a type name inside
+    // an interpolation" and not "an expression inside an interpolation".
+    io.println("closure param type:  {apply(fn(x: Widget) -> int { return x.button })}")
 }

@@ -159,7 +159,7 @@ pub class Storefront extends Component {
 /// `type_of(Component)` bound to a `let` and interpolated afterwards answers
 /// `latte.Component`. Written inline inside the quotes it answers
 /// `shop.Component`, a type that does not exist, and every check built on it
-/// reads false. BLOCKERS.md **B10**; `tests/pages.b` § 12 gates the split.
+/// reads false. BLOCKERS.md **B10**; `tests/pages.b` § 10 gates the split.
 fn identity() {
     let base: reflect.Type = type_of(Component)
     let name: string = base.qualified_name()
