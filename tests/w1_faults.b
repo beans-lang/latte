@@ -9,7 +9,7 @@
 //   * a refusal that cannot be made to fail is unreachable, and neither shows
 //     up in a green run.
 //
-// `apply.b`'s 12 sites arrived here asserted EMPTY by the 10,000-case sweep in
+// `apply.b`'s 14 sites arrived here asserted EMPTY by the 10,000-case sweep in
 // `tests/apply.b` § 4. A sweep that asserts "no fault was raised" over ten
 // thousand cases says nothing at all about whether a fault CAN be raised, which
 // is the opposite of exercising the site. `serialize.b`'s 4 had nothing.
@@ -49,7 +49,8 @@ package main
 
 import std.io
 import {Applier, Batch, Builder, Component, ComponentUpdate, Differ, Edit,
-        Frame, Frames, MouseEvent, Reference, Serializer} from latte
+        Frame, Frames, MouseEvent, Node, Reference, Serializer,
+        SPAN_TEXT} from latte
 
 pub class Report {
     pub checks: int = 0
@@ -147,6 +148,50 @@ fn stage_b(pool: Frames) {
     pool.push(Frame.open(9, "b"))
     pool.push(Frame.text(0, "new"))
     pool.push(Frame.close)
+}
+
+// One subtree per NODE KIND, each staged at offset 0. The kind cases in § 1
+// are all "the same edit at the same index with a node of the right kind
+// there", so what varies between a trip and its control is which of these was
+// staged — and the kind rule's whole subject is the difference between them.
+
+fn stage_b_with_class(pool: Frames) {
+    pool.push(Frame.open(9, "b"))
+    pool.push(Frame.attribute(1, "class", "x"))
+    pool.push(Frame.text(0, "new"))
+    pool.push(Frame.close)
+}
+
+fn stage_b_with_handler(pool: Frames) {
+    pool.push(Frame.open(9, "b"))
+    pool.push(Frame.handler(2, "click", 7))
+    pool.push(Frame.text(0, "new"))
+    pool.push(Frame.close)
+}
+
+/// A text node — the kind `set_text` needs.
+fn stage_text(pool: Frames) { pool.push(Frame.text(9, "INS")) }
+
+/// A markup node — the kind `set_markup` needs. `constant` rather than `raw`
+/// so the control does not also depend on the author-bypass flag.
+fn stage_markup(pool: Frames) { pool.push(Frame.constant(9, "<i>mk</i>")) }
+
+fn stage_region(pool: Frames) {
+    pool.push(Frame.region_open(9, "k"))
+    pool.push(Frame.text(0, "row"))
+    pool.push(Frame.region_close)
+}
+
+fn stage_fragment(pool: Frames) {
+    pool.push(Frame.fragment_open(9))
+    pool.push(Frame.text(0, "slot"))
+    pool.push(Frame.fragment_close)
+}
+
+fn stage_boundary(pool: Frames) {
+    pool.push(Frame.boundary_open(9, false))
+    pool.push(Frame.text(0, "body"))
+    pool.push(Frame.boundary_close)
 }
 
 // ---------------------------------------------------------------- fixtures
@@ -270,6 +315,8 @@ const A_REMOVE_ATTR: string = "remove_attr / no attribute S:N to remove"
 const A_REMOVE_HANDLER: string = "remove_handler / no handler S:E to remove"
 const A_DEEP: string = "run / the edit stream ended N level(s) deep"
 const A_KID: string = "kid / WHAT N of M"
+const A_KIND_AT: string = "wrong_kind_at / OP N needs a WANT node, not a GOT node"
+const A_KIND: string = "wrong_kind / OP needs a WANT node, not a GOT node"
 
 fn apply_sites() -> List<ASite> {
     var out: List<ASite> = []
@@ -316,13 +363,23 @@ fn apply_sites() -> List<ASite> {
                                     Edit.step_out, Edit.step_out])
         },
         "component 0: step_in 4 of 4", "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
-        // The boundary: `index >= len` refuses, so `len - 1` must be accepted.
-        // The edit after it is what proves the descent was real rather than
-        // silently swallowed.
+        // The boundary: `index >= len` refuses, so the SAME index must be
+        // accepted the moment a child is there. It appends `<b>new</b>` first
+        // and steps into index 4 — legal now because `len` grew, not because
+        // the number changed, which is a tighter neighbour than `len - 1`
+        // would have been. It also has to be: the div's last child is a markup
+        // node and the kind rule refuses a descent into one, so the old
+        // `step_in(3)` control is no longer legal at all.
+        //
+        // The edit inside is what proves the descent was real. A swallowed
+        // step_in would leave `set_text(0, …)` on the div's own child 0 and
+        // rewrite "head" instead, which is a different tree.
         fn(batch: Batch) {
-            at_component(batch, 0, [Edit.step_in(0), Edit.step_in(3), Edit.step_out,
-                                    Edit.set_text(2, "TAIL"), Edit.step_out])
-        }, "<div id=\"root\">head<p class=\"row\">one</p>TAIL<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+            stage_b(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0),
+                                    Edit.step_in(4), Edit.set_text(0, "NEW"),
+                                    Edit.step_out, Edit.step_out])
+        }, "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em><b>NEW</b></div> roots= 0 attrs=2 binds=1 sfaults=0"))
 
     out.push(new ASite(A_STEP_IN, "step-in-a-negative-index",
         fn(batch: Batch) {
@@ -330,11 +387,18 @@ fn apply_sites() -> List<ASite> {
                                     Edit.step_out, Edit.step_out])
         },
         "component 0: step_in -1 of 4", "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        // `index < 0` refuses, so index 0 — the smallest legal one — must be
+        // accepted. It is a text node in the seed and the kind rule refuses a
+        // descent into one, so the control puts a container there first and
+        // steps into the same index. A swallowed step_in leaves
+        // `set_text(0, …)` on the `<b>` element and raises the kind fault this
+        // control asserts is absent, so the descent cannot be faked.
         fn(batch: Batch) {
-            at_component(batch, 0, [Edit.step_in(0), Edit.step_in(0), Edit.step_out,
-                                    Edit.step_in(1), Edit.set_text(0, "ONE"),
+            stage_b(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(0, 0),
+                                    Edit.step_in(0), Edit.set_text(0, "NEW"),
                                     Edit.step_out, Edit.step_out])
-        }, "<div id=\"root\">head<p class=\"row\">ONE</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+        }, "<div id=\"root\"><b>NEW</b>head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
 
     // -- step_out ---------------------------------------------------------
     out.push(new ASite(A_STEP_OUT, "step-out-at-the-root",
@@ -582,9 +646,12 @@ fn apply_sites() -> List<ASite> {
                                     Edit.step_out])
         }, "<div id=\"root\">head<p class=\"row\">one</p>TAIL<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
 
+    // Two LEGAL descents, div then `<p>`. `step_in(0)` twice would land on the
+    // div's text child, which the kind rule refuses, and the case would then
+    // assert two faults and stop isolating this one.
     out.push(new ASite(A_DEEP, "the-stream-ended-two-levels-deep",
         fn(batch: Batch) {
-            at_component(batch, 0, [Edit.step_in(0), Edit.step_in(0)])
+            at_component(batch, 0, [Edit.step_in(0), Edit.step_in(1)])
         },
         "component 0: the edit stream ended 2 level(s) deep", "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
         fn(batch: Batch) {
@@ -642,6 +709,232 @@ fn apply_sites() -> List<ASite> {
                                     Edit.step_out])
         }, "<div id=\"root\">head<p class=\"row\">one</p>tail<b>mk</b></div> roots= 0 attrs=2 binds=1 sfaults=0"))
 
+    // -- wrong_kind_at, reached by set_text, set_markup and step_in --------
+    //
+    // THE KIND RULE, for the three edits that name a CHILD. Every control here
+    // is the same edit at the SAME index with a node of the right kind put
+    // there first, so the only thing that moved between the refusal and the
+    // acceptance is the kind — which is the rule being measured. A control at
+    // a different index would also be testing the index.
+    out.push(new ASite(A_KIND_AT, "set-text-at-an-element",
+        fn(batch: Batch) {
+            at_component(batch, 0, [Edit.step_in(0), Edit.set_text(1, "wiped"),
+                                    Edit.step_out])
+        },
+        "component 0: set_text 1 needs a text node, not a element node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            stage_text(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(1, 0),
+                                    Edit.set_text(1, "INS"), Edit.step_out])
+        }, "<div id=\"root\">headINS<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
+    // The sharp one, and the reason this rule exists. A `raw` markup node
+    // keeps `raw = true`, so before the check `Applier.emit` wrote whatever
+    // `set_text` had put there back out through `Frame.raw` — UNESCAPED, and
+    // `<img src=x onerror=alert(1)>` landed in the page with nothing raised.
+    // The control sends the SAME bytes to the SAME index with a text node
+    // there, and they come out escaped: the refusal is about the escaping
+    // context changing under the value, not about a no-op.
+    out.push(new ASite(A_KIND_AT, "set-text-at-a-markup-node",
+        fn(batch: Batch) {
+            at_component(batch, 0, [Edit.step_in(0),
+                                    Edit.set_text(3, "<img src=x onerror=alert(1)>"),
+                                    Edit.step_out])
+        },
+        "component 0: set_text 3 needs a text node, not a markup node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            stage_text(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(3, 0),
+                                    Edit.set_text(3, "<img src=x onerror=alert(1)>"),
+                                    Edit.step_out])
+        }, "<div id=\"root\">head<p class=\"row\">one</p>tail&lt;img src=x onerror=alert(1)&gt;<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
+    // The one that would cost the most in a browser: `textContent` on the
+    // element a component is mounted into removes everything that child
+    // rendered, and the child's next update carries only what CHANGED, so the
+    // page never comes back. Two updates in ONE batch — the applier runs them
+    // in order, so the second addresses the mount the first put there.
+    out.push(new ASite(A_KIND_AT, "set-text-at-a-mounted-child",
+        fn(batch: Batch) {
+            batch.reference.push(Frame.child(6, "Badge", 3))
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0), Edit.step_out])
+            at_component(batch, 0, [Edit.step_in(0), Edit.set_text(4, "wiped"),
+                                    Edit.step_out])
+        },
+        "component 0: set_text 4 needs a text node, not a mount node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 3 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            stage_text(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0),
+                                    Edit.set_text(4, "INS"), Edit.step_out])
+        }, "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em>INS</div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
+    out.push(new ASite(A_KIND_AT, "set-markup-at-a-text-node",
+        fn(batch: Batch) {
+            at_component(batch, 0, [Edit.step_in(0), Edit.set_markup(0, "<b>x</b>"),
+                                    Edit.step_out])
+        },
+        "component 0: set_markup 0 needs a markup node, not a text node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        // The mirror of the case above: the same bytes at a markup node are
+        // written verbatim. Before the rule this landed on the text node and
+        // came out escaped — accepted, and silently meaning something else.
+        fn(batch: Batch) {
+            stage_markup(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(0, 0),
+                                    Edit.set_markup(0, "<b>x</b>"), Edit.step_out])
+        }, "<div id=\"root\"><b>x</b>head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
+    out.push(new ASite(A_KIND_AT, "set-markup-at-an-element",
+        fn(batch: Batch) {
+            at_component(batch, 0, [Edit.step_in(0), Edit.set_markup(1, "<b>x</b>"),
+                                    Edit.step_out])
+        },
+        "component 0: set_markup 1 needs a markup node, not a element node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            stage_markup(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(1, 0),
+                                    Edit.set_markup(1, "<b>x</b>"), Edit.step_out])
+        }, "<div id=\"root\">head<b>x</b><p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
+    // `step_in` refuses the descent and pushes the same placeholder the
+    // out-of-range case does, so the matching `step_out` still balances.
+    //
+    // Both trips carry an edit BELOW the refused descent, and the second fault
+    // — `set_text 0 of 0` — is the positive evidence that the placeholder is
+    // what caught it: an empty node has no child 0. Drop the placeholder and
+    // the `step_out` pops the DIV instead, so `set_text(0, …)` rewrites the
+    // div's "head" to "wiped", the html changes, the second fault becomes
+    // "step_out at the root", and both of those are asserted here. One
+    // refused descent must not reinterpret the rest of the stream.
+    out.push(new ASite(A_KIND_AT, "step-into-a-text-node",
+        fn(batch: Batch) {
+            at_component(batch, 0, [Edit.step_in(0), Edit.step_in(0),
+                                    Edit.set_text(0, "wiped"),
+                                    Edit.step_out, Edit.step_out])
+        },
+        "component 0: step_in 0 needs a container node, not a text node | component 0: set_text 0 of 0",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            stage_b(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(0, 0),
+                                    Edit.step_in(0), Edit.set_text(0, "NEW"),
+                                    Edit.step_out, Edit.step_out])
+        }, "<div id=\"root\"><b>NEW</b>head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
+    out.push(new ASite(A_KIND_AT, "step-into-a-markup-node",
+        fn(batch: Batch) {
+            at_component(batch, 0, [Edit.step_in(0), Edit.step_in(3),
+                                    Edit.set_text(0, "wiped"),
+                                    Edit.step_out, Edit.step_out])
+        },
+        "component 0: step_in 3 needs a container node, not a markup node | component 0: set_text 0 of 0",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            stage_b(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(3, 0),
+                                    Edit.step_in(3), Edit.set_text(0, "NEW"),
+                                    Edit.step_out, Edit.step_out])
+        }, "<div id=\"root\">head<p class=\"row\">one</p>tail<b>NEW</b><em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
+    // -- wrong_kind, reached by the five attribute and handler edits -------
+    //
+    // These act on the CURRENT node, which has to be an element: `Applier.emit`
+    // writes an attribute run for `SPAN_ELEMENT` and for nothing else, so a
+    // slot stored anywhere else was written and then dropped. One shape per
+    // op, and one per container kind that is not an element — a mount, a
+    // region, a fragment and a boundary — because the message names the kind
+    // and a site that answered "mount" for a region would look covered.
+    //
+    // The first is the shape a stream reaches with no `step_in` at all: the
+    // cursor at the top of a component's edits is that component's root, and a
+    // root is always a mount.
+    out.push(new ASite(A_KIND, "set-attr-at-the-component-root",
+        fn(batch: Batch) {
+            at_component(batch, 0, [Edit.set_attr(1, "class", "x")])
+        },
+        "component 0: set_attr needs a element node, not a mount node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            at_component(batch, 0, [Edit.step_in(0), Edit.set_attr(9, "lang", "en"),
+                                    Edit.step_out])
+        }, "<div id=\"root\" lang=\"en\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=3 binds=1 sfaults=0"))
+
+    out.push(new ASite(A_KIND, "set-flag-with-the-cursor-on-a-region",
+        fn(batch: Batch) {
+            stage_region(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0),
+                                    Edit.step_in(4), Edit.set_flag(1, "hidden", true),
+                                    Edit.step_out, Edit.step_out])
+        },
+        "component 0: set_flag needs a element node, not a region node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em>row</div> roots= 0 attrs=2 binds=1 sfaults=0",
+        // The same edit at the same place with an ELEMENT there instead of a
+        // region: only the kind moved.
+        fn(batch: Batch) {
+            stage_b(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0),
+                                    Edit.step_in(4), Edit.set_flag(1, "hidden", true),
+                                    Edit.step_out, Edit.step_out])
+        }, "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em><b hidden=\"\">new</b></div> roots= 0 attrs=3 binds=1 sfaults=0"))
+
+    out.push(new ASite(A_KIND, "remove-attr-with-the-cursor-on-a-fragment",
+        fn(batch: Batch) {
+            stage_fragment(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0),
+                                    Edit.step_in(4), Edit.remove_attr(1, "class"),
+                                    Edit.step_out, Edit.step_out])
+        },
+        "component 0: remove_attr needs a element node, not a fragment node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em>slot</div> roots= 0 attrs=2 binds=1 sfaults=0",
+        // The control removes a slot that IS there. `remove_attr` on an
+        // element with no such slot raises the OTHER refusal, so a control
+        // that skipped the attribute would fail for a second reason and prove
+        // nothing about this one.
+        fn(batch: Batch) {
+            stage_b_with_class(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0),
+                                    Edit.step_in(4), Edit.remove_attr(1, "class"),
+                                    Edit.step_out, Edit.step_out])
+        }, "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em><b>new</b></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
+    out.push(new ASite(A_KIND, "set-handler-with-the-cursor-on-a-boundary",
+        fn(batch: Batch) {
+            stage_boundary(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0),
+                                    Edit.step_in(4), Edit.set_handler(2, "click", 41),
+                                    Edit.step_out, Edit.step_out])
+        },
+        "component 0: set_handler needs a element node, not a boundary node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em>body</div> roots= 0 attrs=2 binds=1 sfaults=0",
+        // A handler writes no HTML, so `binds=` is the only thing that can
+        // tell the control's acceptance from a quiet discard.
+        fn(batch: Batch) {
+            stage_b(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0),
+                                    Edit.step_in(4), Edit.set_handler(2, "click", 41),
+                                    Edit.step_out, Edit.step_out])
+        }, "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em><b>new</b></div> roots= 0 attrs=2 binds=2 sfaults=0"))
+
+    out.push(new ASite(A_KIND, "remove-handler-with-the-cursor-on-a-mount",
+        fn(batch: Batch) {
+            batch.reference.push(Frame.child(6, "Badge", 3))
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0),
+                                    Edit.step_in(4), Edit.remove_handler(2, "click"),
+                                    Edit.step_out, Edit.step_out])
+        },
+        "component 0: remove_handler needs a element node, not a mount node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 3 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            stage_b_with_handler(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(4, 0),
+                                    Edit.step_in(4), Edit.remove_handler(2, "click"),
+                                    Edit.step_out, Edit.step_out])
+        }, "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em><b>new</b></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
     return move out
 }
 
@@ -697,83 +990,115 @@ fn apply_fault_sites(r: Report) {
             none => {}
         }
     }
-    r.eqi("every fault site in apply.b has a case", names.len(), 12)
+    r.eqi("every fault site in apply.b has a case", names.len(), 14)
 }
 
-/// What the applier takes WITHOUT a fault, and what it does with it.
+/// A planted root's shape. `applier_state` serializes component 0 and nothing
+/// else, so a root planted at another id is invisible to it — and "the insert
+/// was refused" and "the insert landed somewhere the html cannot show" read
+/// identically without this.
+fn root_shape(a: Applier, id: int) -> string {
+    match a.roots.get(id) {
+        some(node) => {
+            var kids: string = ""
+            for kid: Node in node.kids { kids = "{kids} {kid.html}" }
+            return "kind={node.kind} kids={node.kids.len()}{kids}"
+        }
+        none => { return "no root" }
+    }
+}
+
+/// THE KIND RULE, shape by shape — the seven edits this applier used to TAKE.
 ///
-/// `Applier.kid` checks the index and hands back whatever node is there — it
-/// never asks what KIND of node it is. So `set_text` addressed at an element,
-/// a markup node or a mounted child is accepted, silently, and changes
-/// nothing; `set_markup` addressed at a text node is accepted and lands
-/// ESCAPED; and `set_attr` / `set_handler` addressed while the cursor is on a
-/// text node are stored on that node and dropped again by `Applier.emit`.
+/// This section was the record of a divergence and is now the record of its
+/// closing. `Applier.kid` checked the INDEX and never the KIND, so `set_text`
+/// addressed at an element, a markup node or a mounted child was accepted
+/// silently, `set_markup` addressed at a text node landed escaped, and an
+/// attribute or handler edit with the cursor on a text node was stored on that
+/// node and dropped again by `Applier.emit`. `latte.js` applies the same
+/// stream to a real DOM, where `node.textContent = body` on an element WIPES
+/// its children — two appliers, two answers to one batch, and gate 3 blind to
+/// it because gate 3 only ever feeds the applier batches the differ made.
 ///
-/// Six shapes, all pinned rather than refused, and that is a decision:
+/// Every one of the seven is refused now, in both halves, with the same
+/// sentence byte for byte (lanes/W5.md, THE APPLIER CONTRACT). What is pinned
+/// here is the sentence and the state afterwards, and the state is the seed
+/// every time — a refusal that reports and then does the thing anyway is not a
+/// refusal.
 ///
-///   * NO WELL-FORMED BATCH CONTAINS ONE. `Differ.pair` reaches `set_text`
-///     only under `o.kind == SPAN_TEXT` and `set_markup` only under
-///     `o.kind == SPAN_MARKUP`, and attribute and handler edits are pushed
-///     only from `diff_element`, after a `step_in` onto an element. So this is
-///     reachable from a differ bug or a hand-built batch and from nothing else,
-///     which is why the 10,000-case sweep has never produced one.
-///   * IT IS STILL A DIVERGENCE, and that is why it is measured here rather
-///     than left unwritten. `latte.js` applies the same edit stream to a real
-///     DOM, where `node.textContent = body` on an element WIPES its children.
-///     Beans does nothing; the browser destroys a subtree. Gate 3 cannot see
-///     it, because gate 3 only ever feeds the applier batches the differ made.
+/// The sharpest one is the second: `set_text` at a `raw` markup node rewrote
+/// `node.html` while `node.raw` stayed true, so `Applier.emit` wrote the new
+/// bytes back out through `Frame.raw` — UNESCAPED — and
+/// `<img src=x onerror=alert(1)>` reached the page with nothing raised. The
+/// expected html below is the seed, `<em>raw</em>` intact. The escaping
+/// context changing under a value is what this rule is for; § 1's control for
+/// the same shape sends those same bytes to a text node at the same index and
+/// they come out escaped.
 ///
-/// What would remove it: a kind check inside `Applier.kid`, refusing with the
-/// node's kind in the message — and the SAME refusal in `latte.js`, or the two
-/// halves disagree in the other direction. That is a wire-contract change and
-/// belongs to whoever owns both halves, so this section states the behaviour
-/// exactly and W5 can decide. Until then, a change to it is a diff here.
-fn edits_the_applier_takes_silently(r: Report) {
-    io.println("== 2 what the applier takes without a fault")
+/// Three of the seven now answer with the `step_in` refusal rather than the
+/// attribute one, and that is the rule working rather than a gap. The cursor
+/// can only BE a text node if a `step_in` descended into one, and that descent
+/// is the earlier refusal — RULES.md's "a coarser refusal standing in front of
+/// a finer one", seen from the side where the coarser one is the correct
+/// answer. The element rule is reached instead through the four container
+/// kinds that are not elements, and § 1 carries a shape for each: a mount, a
+/// region, a fragment and a boundary.
+fn the_kind_rule(r: Report) {
+    io.println("== 2 the kind rule, shape by shape")
     let start: string = applier_state(seeded())
 
     var names: List<string> = []
     var bodies: List<fn(Batch)> = []
-    // What each one actually does, recorded rather than argued. An empty
-    // entry would mean nobody looked.
+    // The sentence each shape must produce, and the tree it must leave. Both
+    // are asserted: a refusal that still rewrote the node would pass on the
+    // first alone.
+    var faults: List<string> = []
     var wants: List<string> = []
 
+    let seed_state: string = "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"
+
     names.push("set_text at an element node")
-    wants.push("<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0")
+    faults.push("component 0: set_text 1 needs a text node, not a element node")
+    wants.push(seed_state)
     bodies.push(fn(batch: Batch) {
         at_component(batch, 0, [Edit.step_in(0), Edit.set_text(1, "wiped"), Edit.step_out])
     })
-    // The sharp one: a `raw` node keeps `raw = true`, so `Applier.emit` writes
-    // whatever `set_text` put there through `Frame.raw` — UNESCAPED. A DOM
-    // applier setting `textContent` would escape the same bytes. So this is not
-    // "does nothing"; it is the escaping context changing under the value.
+    // The one that shipped an XSS. It is dead: the html below is the seed.
     names.push("set_text at a markup node")
-    wants.push("<div id=\"root\">head<p class=\"row\">one</p>tail<img src=x onerror=alert(1)></div> roots= 0 attrs=2 binds=1 sfaults=0")
+    faults.push("component 0: set_text 3 needs a text node, not a markup node")
+    wants.push(seed_state)
     bodies.push(fn(batch: Batch) {
         at_component(batch, 0, [Edit.step_in(0), Edit.set_text(3, "<img src=x onerror=alert(1)>"), Edit.step_out])
     })
     names.push("set_markup at a text node")
-    wants.push("<div id=\"root\">&lt;b&gt;x&lt;/b&gt;<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0")
+    faults.push("component 0: set_markup 0 needs a markup node, not a text node")
+    wants.push(seed_state)
     bodies.push(fn(batch: Batch) {
         at_component(batch, 0, [Edit.step_in(0), Edit.set_markup(0, "<b>x</b>"),
                                 Edit.step_out])
     })
+    // The three that a `step_in` refusal now answers first. The batch is
+    // unchanged from when this section recorded them as ACCEPTED; only the
+    // answer moved.
     names.push("set_attr with the cursor on a text node")
-    wants.push("<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0")
+    faults.push("component 0: step_in 0 needs a container node, not a text node")
+    wants.push(seed_state)
     bodies.push(fn(batch: Batch) {
         at_component(batch, 0, [Edit.step_in(0), Edit.step_in(0),
                                 Edit.set_attr(1, "class", "x"),
                                 Edit.step_out, Edit.step_out])
     })
     names.push("set_handler with the cursor on a text node")
-    wants.push("<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0")
+    faults.push("component 0: step_in 0 needs a container node, not a text node")
+    wants.push(seed_state)
     bodies.push(fn(batch: Batch) {
         at_component(batch, 0, [Edit.step_in(0), Edit.step_in(0),
                                 Edit.set_handler(1, "click", 99),
                                 Edit.step_out, Edit.step_out])
     })
     names.push("remove_attr with the cursor on a text node")
-    wants.push("<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0")
+    faults.push("component 0: step_in 0 needs a container node, not a text node")
+    wants.push(seed_state)
     bodies.push(fn(batch: Batch) {
         at_component(batch, 0, [Edit.step_in(0), Edit.step_in(0),
                                 Edit.set_attr(1, "class", "x"),
@@ -791,15 +1116,15 @@ fn edits_the_applier_takes_silently(r: Report) {
         io.println("-- {names[index]}")
         io.println("   faults: {joined(a.faults)}")
         io.println("   after:  {after}")
-        r.eq("{names[index]}: raises nothing", joined(a.faults), "")
-        r.eq("{names[index]}: and this is what it did", after, wants[index])
+        r.eq("{names[index]}: the exact refusal", joined(a.faults), faults[index])
+        r.eq("{names[index]}: and the tree is untouched", after, wants[index])
         index += 1
     }
 
-    // The mount is the one that would cost the most in a browser: `textContent`
-    // on the element a component is mounted into removes everything the child
-    // rendered, and the child's next update carries only what CHANGED, so the
-    // page never recovers.
+    // The seventh, and the one that would cost the most in a browser:
+    // `textContent` on the element a component is mounted into removes
+    // everything that child rendered, and the child's next update carries only
+    // what CHANGED, so the page never comes back.
     let a: Applier = seeded()
     let mount: Batch = new Batch()
     mount.reference.push(Frame.child(6, "Badge", 3))
@@ -818,9 +1143,96 @@ fn edits_the_applier_takes_silently(r: Report) {
     io.println("-- set_text at a mounted child")
     io.println("   faults: {joined(a.faults)}")
     io.println("   after:  {applier_state(a)}")
-    r.eq("set_text at a mount raises nothing", joined(a.faults), "")
-    r.eq("and the child's subtree is untouched here", applier_state(a), mounted)
+    r.eq("set_text at a mount is refused", joined(a.faults),
+        "component 0: set_text 4 needs a text node, not a mount node")
+    r.eq("and the child's subtree is untouched", applier_state(a), mounted)
     r.no("the seed is not what any of this produced", mounted == start)
+
+    // ---- the CURSOR rule, and the one route left to it -------------------
+    //
+    // `insert`, `remove` and `relocate` need a node that can hold children.
+    // Through `apply()` alone the cursor is never a leaf: it starts at the
+    // component's root, which `root_for` and `build` only ever make a MOUNT,
+    // and it moves only where `step_in` allows — a container, or the
+    // placeholder a refused `step_in` pushes, which is an element. So no edit
+    // stream reaches this refusal, well-formed or not, and recording it as
+    // "covered" without saying that would be the lie RULES.md calls "the
+    // refusal that never runs".
+    //
+    // It is reachable and it is not dead. `Applier.roots` is `pub` and so is
+    // every field of `Node`, so a host that plants one — or a future path that
+    // lets a leaf become a cursor — arrives here, exactly the way
+    // `serialize.b`'s "is not a child position" is reached through the public
+    // `Builder.frames`. The rule is ONE rule: a node that cannot hold children
+    // never gains any, however the applier got there. Before it, an `insert`
+    // at a leaf appended a child that `Applier.emit` then dropped on the way
+    // out — content accepted, and silently lost.
+    io.println("-- a leaf planted as a component root")
+    var ops: List<string> = ["insert", "remove", "relocate"]
+    var trips: List<fn(Batch)> = [
+        fn(batch: Batch) {
+            batch.reference.push(Frame.text(0, "one"))
+            at_component(batch, 7, [Edit.insert(0, 0)])
+        },
+        fn(batch: Batch) { at_component(batch, 7, [Edit.remove(0)]) },
+        fn(batch: Batch) { at_component(batch, 7, [Edit.relocate(0, 1)]) }]
+    // The nearest legal neighbour: the same edits at a root that CAN hold
+    // children. `remove` and `relocate` need something to act on, so each
+    // control fills the node first — and the shape afterwards is what tells
+    // an accepted edit from a quietly discarded one.
+    var controls: List<fn(Batch)> = [
+        fn(batch: Batch) {
+            batch.reference.push(Frame.text(0, "one"))
+            at_component(batch, 8, [Edit.insert(0, 0)])
+        },
+        fn(batch: Batch) {
+            batch.reference.push(Frame.text(0, "one"))
+            batch.reference.push(Frame.text(1, "two"))
+            at_component(batch, 8, [Edit.insert(0, 0), Edit.insert(1, 1),
+                                    Edit.remove(0)])
+        },
+        fn(batch: Batch) {
+            batch.reference.push(Frame.text(0, "one"))
+            batch.reference.push(Frame.text(1, "two"))
+            at_component(batch, 8, [Edit.insert(0, 0), Edit.insert(1, 1),
+                                    Edit.relocate(0, 1)])
+        }]
+    var shapes: List<string> = ["kind=0 kids=1 one", "kind=0 kids=1 two",
+                                "kind=0 kids=2 two one"]
+
+    var op: int = 0
+    for op < ops.len() {
+        let bad: Applier = seeded()
+        let leaf: Node = new Node()
+        leaf.kind = SPAN_TEXT
+        leaf.html = "leaf"
+        bad.roots[7] = leaf
+        let trip: Batch = new Batch()
+        trips[op](trip)
+        bad.apply(trip)
+        io.println("   {ops[op]} at a text root: {joined(bad.faults)} / {root_shape(bad, 7)}")
+        r.eq("{ops[op]} at a leaf cursor is refused", joined(bad.faults),
+            "component 7: {ops[op]} needs a container node, not a text node")
+        // The leaf gained nothing. `emit` writes a text node's html and never
+        // its children, so a child that landed here would be invisible in the
+        // page and present in the tree — which is what "silently lost" was.
+        r.eq("{ops[op]} at a leaf cursor left it alone", root_shape(bad, 7),
+            "kind=1 kids=0")
+        // Component 0's page is untouched; the only difference from the seed
+        // is the planted root itself, which this test put there.
+        r.eq("{ops[op]} at a leaf cursor touched nothing else", applier_state(bad),
+            "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 7 attrs=2 binds=1 sfaults=0")
+
+        let good: Applier = seeded()
+        good.roots[8] = new Node()
+        let control: Batch = new Batch()
+        controls[op](control)
+        good.apply(control)
+        io.println("   {ops[op]} at an element root: {joined(good.faults)} / {root_shape(good, 8)}")
+        r.eq("{ops[op]} at a container cursor raises nothing", joined(good.faults), "")
+        r.eq("{ops[op]} at a container cursor applied", root_shape(good, 8), shapes[op])
+        op += 1
+    }
 }
 
 // --------------------------------------- 3 every fault site in serialize.b
@@ -1225,7 +1637,7 @@ fn swallowed_upstream(r: Report) {
 fn main() {
     let r: Report = new Report()
     apply_fault_sites(r)
-    edits_the_applier_takes_silently(r)
+    the_kind_rule(r)
     serializer_fault_sites(r)
     swallowed_upstream(r)
     io.println("== summary")

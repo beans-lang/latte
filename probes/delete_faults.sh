@@ -9,7 +9,7 @@
 # requires that a check naming THAT site turns red.
 #
 #   builder.b     24 sites   tests/frames.b § 13
-#   apply.b       12 sites   tests/w1_faults.b § 1
+#   apply.b       14 sites   tests/w1_faults.b § 1
 #   serialize.b    4 sites   tests/w1_faults.b § 3
 #
 # Run it with no argument for all three, or name one source file to run just
@@ -115,6 +115,8 @@ FILES = [
             "remove_handler / no handler S:E to remove",
             "run / the edit stream ended N level(s) deep",
             "kid / WHAT N of M",
+            "wrong_kind_at / OP N needs a WANT node, not a GOT node",
+            "wrong_kind / OP needs a WANT node, not a GOT node",
         ],
     },
     {
