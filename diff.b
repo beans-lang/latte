@@ -402,6 +402,17 @@ fn group_units(spans: List<Span>) -> List<Unit> {
 // ---------------------------------------------------------------- the differ
 
 pub class Differ {
+    /// NOTHING WRITES TO THIS TODAY. The differ has no refusals: it reads two
+    /// frame lists the builder has already validated and answers edits, and
+    /// every shape it cannot match it REPLACES rather than reporting. So every
+    /// `differ.faults.len() == 0` in the suites is a tautology, and a reader
+    /// should not take the field for evidence that the differ validates.
+    ///
+    /// It is kept because `batch()` clears it and callers read it, so a first
+    /// refusal is a one-line change here rather than an API change everywhere.
+    /// The day one lands, `test.sh`'s refusal-coverage leg fails and asks for
+    /// the audit — `refusal_coverage_none diff.b` is what makes that true, and
+    /// it is the only reason this is a checked fact rather than a comment.
     pub faults: List<string> = []
     out: Batch = new Batch()
     current: ComponentUpdate = new ComponentUpdate(0)

@@ -706,55 +706,145 @@ run_examples_leg
 
 # --- the refusal-coverage leg --------------------------------------------
 #
-# Every `self.faults.push(...)` in builder.b must have a case in tests/frames.b
-# § 13 — a trip with the exact fault text, a positive control that must be
-# accepted, and a name the deletion pass can map back to the site.
+# Every `self.faults.push(...)` in latte's core must have a case in the suite
+# that audits that file — a trip with the exact fault text, a positive control
+# that must be accepted, and a name the deletion pass can map back to the site:
 #
-# § 13 already asserts that IT reached 24 distinct sites. What it cannot see is
-# builder.b growing a 25th, because a refusal nothing feeds raises nothing and
-# is counted by nobody. So this compares the two numbers, and it is the whole
-# reason a new refusal cannot be added here and quietly go untested — the
-# failure mode RULES.md calls "the refusal that never runs", which in this repo
-# has already produced one control that could not fire and one that never ran.
+#   builder.b     tests/frames.b    § 13
+#   apply.b       tests/w1_faults.b § 1
+#   serialize.b   tests/w1_faults.b § 3
 #
-# Nothing here SKIPs. Both inputs are files in this repo; if either is missing
-# or shaped differently, the audit has moved and that is a failure, not a shrug.
-run_refusal_coverage_leg() {
-    local source="$ROOT/builder.b"
-    local recorded="$ROOT/tests/frames.out"
+# Each of those sections already asserts that IT reached N distinct sites. What
+# none of them can see is its source file growing one MORE, because a refusal
+# nothing feeds raises nothing and is counted by nobody. So this compares the
+# two numbers, per file, and it is the whole reason a new refusal cannot be
+# added and quietly go untested — the failure mode RULES.md calls "the refusal
+# that never runs", which in this repo has already produced one control that
+# could not fire and one that never ran.
+#
+# Nothing here SKIPs. Every input is a file in this repo; if one is missing or
+# shaped differently, the audit has moved and that is a failure, not a shrug.
+refusal_coverage_for() {
+    local file="$1" golden="$2" suite="$3"
+    local source="$ROOT/$file"
+    local recorded="$ROOT/$golden"
     if [[ ! -f "$source" || ! -f "$recorded" ]]; then
-        echo "--- refusal-coverage FAILED: builder.b or tests/frames.out is missing ---" >&2
+        echo "--- refusal-coverage FAILED: $file or $golden is missing ---" >&2
         failed=1
+        uncovered=$((uncovered + 1))
         return 0
     fi
 
     local sites listed
     sites=$(grep -c 'self\.faults\.push' "$source" || true)
-    # The tally § 13 prints, one line per distinct site, between its header and
-    # the assertion that closes it.
-    listed=$(awk '/^-- the sites, and how many shapes reach each$/ {on=1; next}
-                  /^ok every fault site in builder\.b has a case$/ {on=0}
-                  on && /^   [0-9]+x /  {n++}
-                  END {print n + 0}' "$recorded")
+    # The tally the audit prints, one line per distinct site, from its header
+    # until the first line that is not a tally row.
+    listed=$(awk -v want="-- the sites in $file, and how many shapes reach each" '
+                  $0 == want { on = 1; n = 0; next }
+                  on && /^   [0-9]+x / { n++; next }
+                  on { on = 0 }
+                  END { print n + 0 }' "$recorded")
 
     if [[ "$listed" -eq 0 ]]; then
-        echo "--- refusal-coverage FAILED: tests/frames.out has no site tally ---" >&2
-        echo "    § 13 of tests/frames.b prints one line per fault site it reached." >&2
+        echo "--- refusal-coverage FAILED: $golden has no site tally for $file ---" >&2
+        echo "    $suite prints one line per fault site it reached, under" >&2
+        echo "    \"-- the sites in $file, and how many shapes reach each\"." >&2
         echo "    An empty tally means the audit moved and this leg is now blind." >&2
         failed=1
+        uncovered=$((uncovered + 1))
         return 0
     fi
     if [[ "$sites" -ne "$listed" ]]; then
-        echo "--- refusal-coverage FAILED: builder.b has $sites report sites, the audit covers $listed ---" >&2
-        echo "    A new refusal needs a case in tests/frames.b § 13: an input that trips" >&2
-        echo "    it with the exact fault text, and a positive control beside it that must" >&2
-        echo "    be ACCEPTED. Then add its label to probes/delete_faults.sh, in file" >&2
-        echo "    order, and run that script — a refusal whose deletion changes nothing is" >&2
-        echo "    either untested or unreachable, and neither shows up in a green run." >&2
+        echo "--- refusal-coverage FAILED: $file has $sites report sites, the audit covers $listed ---" >&2
+        echo "    A new refusal needs a case in $suite: an input that trips it with the" >&2
+        echo "    exact fault text, and a positive control beside it that must be" >&2
+        echo "    ACCEPTED. Then add its label to probes/delete_faults.sh, in file order," >&2
+        echo "    and run that script — a refusal whose deletion changes nothing is either" >&2
+        echo "    untested or unreachable, and neither shows up in a green run." >&2
         failed=1
+        uncovered=$((uncovered + 1))
         return 0
     fi
-    echo "ok refusal-coverage — all $sites report sites in builder.b have a case and a control"
+    covered=$((covered + sites))
+    return 0
+}
+
+# A source file that is supposed to have NO report sites at all. `frames.b` is
+# pure functions and `diff.b` has a `faults` field it never writes to, so every
+# `differ.faults.len() == 0` in the suites is a tautology today. That is fine
+# and it is also invisible: the day one of them grows a refusal, nothing above
+# would notice, because a file with no tally has nothing to compare against.
+# This is what notices.
+refusal_coverage_none() {
+    local file="$1"
+    local source="$ROOT/$file"
+    if [[ ! -f "$source" ]]; then
+        echo "--- refusal-coverage FAILED: $file is missing ---" >&2
+        failed=1
+        uncovered=$((uncovered + 1))
+        return 0
+    fi
+    local sites
+    sites=$(grep -c 'self\.faults\.push' "$source" || true)
+    if [[ "$sites" -ne 0 ]]; then
+        echo "--- refusal-coverage FAILED: $file has $sites report site(s) and no audit ---" >&2
+        echo "    $file had none when this leg was written, so it has no tally to" >&2
+        echo "    compare against. A refusal needs a trip case with the exact fault" >&2
+        echo "    text, a positive control beside it, and a label in" >&2
+        echo "    probes/delete_faults.sh — then give $file a row in" >&2
+        echo "    run_refusal_coverage_leg instead of this one." >&2
+        failed=1
+        uncovered=$((uncovered + 1))
+    fi
+}
+
+# A file whose report sites are known and NOT audited yet. It cannot get worse
+# quietly: the count is recorded here, and a new site fails the gate with the
+# same instructions as everywhere else. `render.b` is W4's, and its two sites
+# are the only ones in latte's core with no case — lanes/W1.md, SIXTH AGENT.
+refusal_coverage_pending() {
+    local file="$1" recorded="$2"
+    local source="$ROOT/$file"
+    if [[ ! -f "$source" ]]; then
+        echo "--- refusal-coverage FAILED: $file is missing ---" >&2
+        failed=1
+        uncovered=$((uncovered + 1))
+        return 0
+    fi
+    local sites
+    sites=$(grep -c 'self\.faults\.push' "$source" || true)
+    if [[ "$sites" -ne "$recorded" ]]; then
+        echo "--- refusal-coverage FAILED: $file has $sites report sites, $recorded were recorded and none are audited ---" >&2
+        echo "    Add a trip case with the exact fault text and a positive control" >&2
+        echo "    beside it, a label in probes/delete_faults.sh, and a row in" >&2
+        echo "    run_refusal_coverage_leg — or update the recorded count here. Do" >&2
+        echo "    not add a refusal nobody exercises." >&2
+        failed=1
+        uncovered=$((uncovered + 1))
+        return 0
+    fi
+    pending=$((pending + sites))
+}
+
+run_refusal_coverage_leg() {
+    local covered=0
+    local uncovered=0
+    local pending=0
+    refusal_coverage_for builder.b   tests/frames.out    "tests/frames.b § 13"
+    refusal_coverage_for apply.b     tests/w1_faults.out "tests/w1_faults.b § 1"
+    refusal_coverage_for serialize.b tests/w1_faults.out "tests/w1_faults.b § 3"
+    refusal_coverage_none frames.b
+    refusal_coverage_none diff.b
+    refusal_coverage_pending render.b 2
+    # One line, and only when all three files passed. A partial "ok … all 16"
+    # printed beside a FAILED line for a fourth file is exactly the shape
+    # RULES.md calls out under "a green count can mean two different things":
+    # a reader grepping for `ok refusal-coverage` would find one either way.
+    if [[ $uncovered -eq 0 ]]; then
+        echo "ok refusal-coverage — all $covered report sites in builder.b, apply.b and serialize.b have a case and a control; frames.b and diff.b still have none; render.b's $pending are recorded and NOT audited (lanes/W1.md)"
+    else
+        echo "--- refusal-coverage FAILED: $uncovered of the 6 core source files are not covered ---" >&2
+    fi
 }
 
 # latte-bx generates, beansc refuses. Run before the suite loop, because the leg
