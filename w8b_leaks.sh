@@ -73,6 +73,16 @@ SUITES=(
     w7_live          # the same again with permessage-deflate negotiated
     components       # gate 11: "the component ... suite"
     w6_upload        # gate 11: "the upload suite"
+    # Past the three gate 11 names, because the whole sweep costs about
+    # sixteen seconds and each of these reaches a different way to lose
+    # memory. Not a shotgun: one line each says why.
+    w1_faults        # panics and unwinds — where this workspace's leaks lived
+    apply            # thousands of random trees and mutations: the densest
+                     # allocation churn in the repo
+    w6_stream        # a chunked body cut at every byte boundary
+    w6_virtual       # a window scrolled to the end and back, rows in and out
+    pages            # the routing and mount path, and every refusal on it
+    w4_forms         # binding, validation and the antiforgery refusals
 )
 
 if [[ ${1:-} == "--list" ]]; then
