@@ -15,6 +15,7 @@
 #   ./test.sh --interp     the interpreter only (fast; what an edit loop wants)
 #   ./test.sh diff         one suite, both legs
 #   ./test.sh --wasm       the core-imports-no-I/O leg, on its own
+#   ./test.sh --examples   the examples leg, on its own
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
@@ -73,11 +74,13 @@ compiler_line() {
 
 native=1
 wasm_only=0
+examples_only=0
 only=""
 for arg in "$@"; do
     case "$arg" in
         --interp) native=0 ;;
         --wasm)   wasm_only=1 ;;
+        --examples) examples_only=1 ;;
         -*) echo "unknown option: $arg" >&2; exit 2 ;;
         *) only="$arg" ;;
     esac
@@ -96,6 +99,7 @@ failed=0
 suites=0
 legs=0
 skipped=0
+examples_ran=0
 
 # --- the core-imports-no-I/O leg -----------------------------------------
 # The core (frames, builder, serializer, differ) must import nothing that
@@ -358,6 +362,311 @@ run_component_type_leg() {
     echo "ok component-type — a <Tag> that is not a Component is refused by beansc, 3 tags each; one that is checks clean ($how)"
 }
 
+# --- the examples leg ----------------------------------------------------
+#
+# Every example is BUILT, RUN on both backends, and diffed against a golden.
+#
+# It used to only `beansc check` them, and that was a hole with a name: an
+# example that compiled and printed garbage was green. The examples are the
+# one part of this repo a reader copies verbatim, and `check` says only that
+# the types line up — it says nothing about the HTML that comes out.
+#
+# **The contract, per entry.** An entry is a `.b` file anywhere under
+# `examples/` that declares `package main`. Non-entry files (a nested module's
+# packages) are reached through the entry that imports them.
+#
+#   examples/<name>.b        the entry
+#   examples/<name>.out      REQUIRED — its stdout, byte for byte
+#   examples/<name>.err      optional — its stderr; absent means stderr must be EMPTY
+#   examples/<name>.args     optional — one argument per line
+#   examples/<name>.status   optional — the expected exit status; absent means 0
+#
+# stderr is not ignored. Latte reports a refused page on stderr, so a leg that
+# watched stdout alone would call a page that printed nothing but a complaint
+# a pass, as long as the complaint was silent enough to leave stdout empty.
+#
+# `examples/latte_bx.b` is here because a `kind library` module may only hold a
+# program entry under examples/ or tests/, so latte-bx's command line has
+# nowhere else to live. Its golden is its own usage text — the one part of that
+# CLI nothing else in this gate reads. (The compile path is covered by the
+# component-type leg, which builds the binary and runs both backends through
+# it.) Its stdout golden is empty and its stderr golden is not, which is the
+# shape the empty-on-both-streams refusal above exists to distinguish from.
+#
+# **Nothing here SKIPs, and the two ways to silence a golden gate are both
+# failures:**
+#
+#   * A missing `.out` is a FAILURE, not a skip. A gate that skips on a
+#     missing input dies silently the day the layout moves and is green for
+#     ever after (RULES.md 5) — and "just don't write the golden" is the
+#     cheapest way to get there.
+#   * Goldens that are EMPTY on both streams are a FAILURE. That is the other
+#     cheap way — `touch examples/foo.out` — and an example that prints
+#     nothing cannot tell a working program from a broken one.
+#
+# **The summary names every entry and its golden's size**, so "3 examples ran"
+# can never be read the same as "3 examples ran and one of them asserted
+# nothing". RULES.md, "A green count can mean two different things".
+#
+# Both legs are diffed against the GOLDEN, never against each other. Two
+# backends agreeing on the wrong answer is the failure a golden exists for,
+# and diffing native against a fresh interpreter run would call it a pass.
+
+# Every .b file under examples/, sorted, scratch names dropped. A name
+# starting with "_" or "probe" is scratch here for the same reason it is in
+# tests/.
+examples_sources() {
+    find "$ROOT/examples" -name '*.b' -type f 2>/dev/null | LC_ALL=C sort | while IFS= read -r file; do
+        case "$(basename "$file")" in _*|probe*) continue ;; esac
+        printf '%s\n' "$file"
+    done
+}
+
+# One entry, one backend. Compares stdout, stderr and the exit status, each
+# against the golden. Returns non-zero on a mismatch and says which stream.
+compare_example_leg() {
+    local rel=$1 how=$2 got_out=$3 got_err=$4 got_status=$5
+    local want_out=$6 want_err=$7 want_status=$8
+    local bad=0
+
+    if [[ "$got_status" != "$want_status" ]]; then
+        echo "--- examples FAILED: $rel exited $got_status under $how, wanted $want_status ---" >&2
+        echo "    (an expected status other than 0 lives in $(basename "${want_out%.out}.status"))" >&2
+        sed -n '1,20p' "$got_err" >&2
+        bad=1
+    fi
+    if ! diff -u "$want_out" "$got_out" >"$tmp/example_diff" 2>&1; then
+        echo "--- examples FAILED: $rel stdout differs from the golden under $how ---" >&2
+        cat "$tmp/example_diff" >&2
+        bad=1
+    fi
+    if [[ -f "$want_err" ]]; then
+        if ! diff -u "$want_err" "$got_err" >"$tmp/example_diff" 2>&1; then
+            echo "--- examples FAILED: $rel stderr differs from the golden under $how ---" >&2
+            cat "$tmp/example_diff" >&2
+            bad=1
+        fi
+    elif [[ -s "$got_err" ]]; then
+        echo "--- examples FAILED: $rel wrote to stderr under $how, and has no .err golden ---" >&2
+        echo "    An example prints its page and nothing else. If the noise is wanted," >&2
+        echo "    record it in $(basename "${want_out%.out}.err"); if it is not, it is a bug" >&2
+        echo "    the leg just caught." >&2
+        sed -n '1,20p' "$got_err" >&2
+        bad=1
+    fi
+    return $bad
+}
+
+run_examples_leg() {
+    local entries=()
+    local others=()
+    local file
+    while IFS= read -r file; do
+        if grep -q '^package main' "$file"; then entries+=("$file"); else others+=("$file"); fi
+    done < <(examples_sources)
+
+    # A .b under examples/ that is NOT an entry belongs to a package some entry
+    # imports. Running the entry compiles it, so this only catches the file
+    # nothing imports yet — which is exactly the file a reader is most likely
+    # to copy and least likely to have compiled.
+    local other
+    if [[ -z "$only" ]]; then
+        for other in ${others[@]+"${others[@]}"}; do
+            (cd "$ROOT" && "$BEANSC" check "${other#"$ROOT"/}") >"$tmp/example_check.log" 2>&1 && continue
+            echo "--- examples FAILED: ${other#"$ROOT"/} does not check ---" >&2
+            cat "$tmp/example_check.log" >&2
+            failed=1
+        done
+    fi
+
+    # --- .bx sources against the .b files checked in beside them ----------
+    #
+    # PLAN.md, "Shipping a library": a package ships its `.bx` sources AND the
+    # Beans latte-bx generated from them, both checked in, so a consumer adds
+    # one `require` row and needs no build step and no markup compiler. The
+    # price of checking a generated file in is that it can go stale, and a
+    # stale one is invisible — it compiles, it runs, and it renders the markup
+    # somebody edited last week. So the gate regenerates and diffs.
+    #
+    # A `.bx` with no `.b` beside it is a FAILURE for the same reason a missing
+    # golden is: the check would otherwise vanish the moment the file it
+    # watches is renamed.
+    if [[ -z "$only" ]]; then
+        local bx
+        while IFS= read -r bx; do
+            local generated="${bx%.bx}.b"
+            local stem; stem=$(basename "${bx%.bx}")
+            if [[ ! -f "$generated" ]]; then
+                echo "--- examples FAILED: ${bx#"$ROOT"/} has no generated .b beside it ---" >&2
+                echo "    A .bx ships with the Beans it compiles to, checked in, so a" >&2
+                echo "    consumer needs no markup compiler:" >&2
+                echo "        beansc run examples/latte_bx.b -- build ${bx#"$ROOT"/} -o ${generated#"$ROOT"/}" >&2
+                failed=1
+                continue
+            fi
+            if ! (cd "$ROOT" && "$BEANSC" run examples/latte_bx.b -- build \
+                    "${bx#"$ROOT"/}" -o "$tmp/bxgen_$stem.b") >"$tmp/bxgen_$stem.log" 2>&1; then
+                echo "--- examples FAILED: latte-bx refused ${bx#"$ROOT"/} ---" >&2
+                cat "$tmp/bxgen_$stem.log" >&2
+                failed=1
+                continue
+            fi
+            if ! diff -u "$generated" "$tmp/bxgen_$stem.b" >"$tmp/bxgen_$stem.diff" 2>&1; then
+                echo "--- examples FAILED: ${generated#"$ROOT"/} is stale ---" >&2
+                echo "    It no longer matches what latte-bx makes of ${bx#"$ROOT"/}." >&2
+                echo "    Regenerate it and read the diff before committing." >&2
+                cat "$tmp/bxgen_$stem.diff" >&2
+                failed=1
+                continue
+            fi
+            echo "ok examples/markup — ${generated#"$ROOT"/} is what latte-bx makes of ${bx#"$ROOT"/}"
+        done < <(find "$ROOT/examples" -name '*.bx' -type f 2>/dev/null | LC_ALL=C sort)
+    fi
+
+    # An examples/ with no entry is a failure once there is anything in it at
+    # all: latte-bx's CLI lives there and so do the counter and todo examples,
+    # and a glob that quietly matches nothing is how this leg would stop
+    # running without anyone noticing.
+    if [[ ${#entries[@]} -eq 0 ]]; then
+        echo "--- examples FAILED: no .b file under examples/ declares 'package main' ---" >&2
+        echo "    The leg builds and runs every entry there. Matching nothing is not a pass." >&2
+        failed=1
+        return 0
+    fi
+
+    local ran=0
+    local summary=""
+    local entry
+    for entry in "${entries[@]}"; do
+        local rel=${entry#"$ROOT"/}
+        local name=${rel#examples/}; name=${name%.b}
+        if [[ -n "$only" && "$name" != "$only" ]]; then continue; fi
+        local slug=${name//\//_}
+        local base=${entry%.b}
+        local want_out="$base.out"
+        local want_err="$base.err"
+
+        if [[ ! -f "$want_out" ]]; then
+            echo "--- examples FAILED: $rel has no golden ($(basename "$want_out")) ---" >&2
+            echo "    Every example is RUN, on both backends, and diffed against its" >&2
+            echo "    golden. A missing golden is a failure and not a skip: a gate that" >&2
+            echo "    skips on a missing input is green for ever after (RULES.md 5), and" >&2
+            echo "    not writing the golden is the cheapest way to get there." >&2
+            echo "    Write it:   (cd \"$ROOT\" && beansc run $rel [args]) > $(basename "$want_out")" >&2
+            echo "    and READ it before committing — a golden nobody read is a" >&2
+            echo "    screenshot of whatever the program did that day." >&2
+            failed=1
+            continue
+        fi
+
+        local golden_bytes
+        golden_bytes=$(wc -c <"$want_out" | tr -d ' ')
+        if [[ -f "$want_err" ]]; then
+            golden_bytes=$(( golden_bytes + $(wc -c <"$want_err" | tr -d ' ') ))
+        fi
+        if [[ $golden_bytes -eq 0 ]]; then
+            echo "--- examples FAILED: $rel's goldens are empty on both streams ---" >&2
+            echo "    An example that prints nothing cannot tell a working program from" >&2
+            echo "    a broken one, and an empty golden is the second way to silence this" >&2
+            echo "    leg. Print the page." >&2
+            failed=1
+            continue
+        fi
+
+        local args=()
+        if [[ -f "$base.args" ]]; then
+            local line
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                [[ -z "$line" ]] && continue
+                args+=("$line")
+            done <"$base.args"
+        fi
+        local want_status=0
+        if [[ -f "$base.status" ]]; then
+            want_status=$(tr -d '[:space:]' <"$base.status")
+        fi
+
+        # Both legs always run, and a bad entry is reported by BOTH before the
+        # loop moves on. Stopping at the first mismatch would answer "the
+        # example is wrong" when the question worth answering here is "which
+        # backend is wrong" — and it would also mean a red run never proves the
+        # native leg executed at all.
+        local entry_bad=0
+
+        # --- the interpreter ---------------------------------------------
+        local run_cmd=("$BEANSC" run "$rel")
+        if [[ ${#args[@]} -gt 0 ]]; then run_cmd+=(--); run_cmd+=("${args[@]}"); fi
+        local status=0
+        (cd "$ROOT" && "${run_cmd[@]}") \
+            >"$tmp/ex_$slug.interp.out" 2>"$tmp/ex_$slug.interp.err" || status=$?
+        compare_example_leg "$rel" "the interpreter" \
+            "$tmp/ex_$slug.interp.out" "$tmp/ex_$slug.interp.err" "$status" \
+            "$want_out" "$want_err" "$want_status" || entry_bad=1
+
+        # --- the native binary -------------------------------------------
+        # Built and run from ROOT, like the suites: an example that opens a
+        # file names it relative to the module root, and a binary run from
+        # elsewhere would fail for a reason that is not the backend's.
+        if [[ $native -eq 1 ]]; then
+            if ! (cd "$ROOT" && "$BEANSC" build "$rel" -o "$tmp/ex_$slug.bin") \
+                    >"$tmp/ex_$slug.build" 2>&1; then
+                echo "--- examples FAILED: $rel does not build natively ---" >&2
+                cat "$tmp/ex_$slug.build" >&2
+                entry_bad=1
+            else
+                local native_cmd=("$tmp/ex_$slug.bin")
+                if [[ ${#args[@]} -gt 0 ]]; then native_cmd+=("${args[@]}"); fi
+                status=0
+                (cd "$ROOT" && "${native_cmd[@]}") \
+                    >"$tmp/ex_$slug.native.out" 2>"$tmp/ex_$slug.native.err" || status=$?
+                compare_example_leg "$rel" "the native binary" \
+                    "$tmp/ex_$slug.native.out" "$tmp/ex_$slug.native.err" "$status" \
+                    "$want_out" "$want_err" "$want_status" || entry_bad=1
+                # The two backends against each other, on top of the two
+                # against the golden. It is redundant while both goldens are
+                # right and it is not redundant the day someone re-records one
+                # of them from the wrong backend: this line names the split
+                # even then.
+                if ! cmp -s "$tmp/ex_$slug.interp.out" "$tmp/ex_$slug.native.out" || \
+                   ! cmp -s "$tmp/ex_$slug.interp.err" "$tmp/ex_$slug.native.err"; then
+                    echo "--- examples FAILED: $rel prints different bytes on the two backends ---" >&2
+                    echo "    That is a compiler fault until proven otherwise. See RULES.md 3." >&2
+                    diff -u "$tmp/ex_$slug.interp.out" "$tmp/ex_$slug.native.out" >&2 || true
+                    diff -u "$tmp/ex_$slug.interp.err" "$tmp/ex_$slug.native.err" >&2 || true
+                    entry_bad=1
+                fi
+            fi
+        fi
+
+        if [[ $entry_bad -ne 0 ]]; then
+            failed=1
+            continue
+        fi
+        ran=$((ran + 1))
+        summary="$summary, $name (${golden_bytes} B)"
+    done
+
+    examples_ran=$ran
+    if [[ $ran -eq 0 ]]; then
+        if [[ -n "$only" ]]; then return 0; fi
+        echo "--- examples FAILED: no example ran ---" >&2
+        failed=1
+        return 0
+    fi
+
+    local how="both backends"
+    [[ $native -eq 1 ]] || how="the interpreter only (--interp)"
+    # The sizes are in the line on purpose. "3 examples ran" reads the same
+    # whether all three asserted a page or one of them asserted a newline.
+    echo "ok examples — $ran entry(ies) built, RUN and byte-identical to their goldens on $how:${summary#,}"
+}
+
+if [[ $examples_only -eq 1 ]]; then
+    run_examples_leg
+    [[ $failed -eq 0 ]] || { echo "latte: FAILED" >&2; exit 1; }
+    exit 0
+fi
+
 if [[ $wasm_only -eq 1 ]]; then
     run_wasm_leg
     [[ $failed -eq 0 ]] || { echo "latte: FAILED" >&2; exit 1; }
@@ -391,30 +700,8 @@ else
     skipped=$((skipped + 1))
 fi
 
-# The build-time compiler must CHECK too. `examples/latte_bx.b` is latte-bx's
-# entry — a `kind library` module may only hold a program entry under
-# examples/ or tests/ — and nothing else in this gate reaches it: the suites
-# import the `latte.bx` package, not the binary's main. Without this block a
-# broken CLI is green.
 shopt -s nullglob
-example_sources=("$ROOT"/examples/*.b)
-if [[ ${#example_sources[@]} -gt 0 ]]; then
-    example_bad=0
-    for source in "${example_sources[@]}"; do
-        (cd "$ROOT" && "$BEANSC" check "$source") >"$tmp/example.log" 2>&1 && continue
-        echo "--- examples FAILED: $(basename "$source") does not check ---" >&2
-        cat "$tmp/example.log" >&2
-        example_bad=1
-    done
-    if [[ $example_bad -eq 0 ]]; then
-        echo "ok examples — all ${#example_sources[@]} .b file(s) under examples/ check"
-    else
-        failed=1
-    fi
-else
-    echo "SKIP examples: no .b files under examples/ yet"
-    skipped=$((skipped + 1))
-fi
+run_examples_leg
 
 
 # --- the refusal-coverage leg --------------------------------------------
@@ -566,8 +853,8 @@ done
 
 [[ -n "$only" ]] || run_wasm_leg
 
-if [[ $suites -eq 0 && -n "$only" ]]; then
-    echo "no suite matched \"$only\"" >&2
+if [[ $suites -eq 0 && $examples_ran -eq 0 && -n "$only" ]]; then
+    echo "no suite or example matched \"$only\"" >&2
     exit 1
 fi
 if [[ $failed -ne 0 ]]; then
