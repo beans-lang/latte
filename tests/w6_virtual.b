@@ -31,9 +31,10 @@
 package main
 
 import std.io
-import {Builder, Component, Frame, Renderer, Serializer,
+import {Builder, Circuit, CircuitOptions, Component, Frame, Renderer, Serializer,
         Placement, Virtual, VirtualGeometry,
         VIRTUAL_MAX_WINDOW, VIRTUAL_INITIAL_ROWS} from latte
+import {run} from latte.boundary
 
 const ROWS: int = 50000
 const ROW_HEIGHT: int = 32
@@ -71,6 +72,20 @@ fn joined(items: List<string>) -> string {
     return out
 }
 
+/// A `Placement` built field by field, so a suite can hand `sound()` one it
+/// must REFUSE. Nothing in `virtual.b` produces these — that is the point.
+fn hand_made(total: int, row_height: int, start: int, shown: int,
+             top: int, bottom: int) -> Placement {
+    var out: Placement = new Placement()
+    out.total = total
+    out.row_height = row_height
+    out.start = start
+    out.shown = shown
+    out.top = top
+    out.bottom = bottom
+    return out
+}
+
 fn table() -> VirtualGeometry {
     var g: VirtualGeometry = new VirtualGeometry()
     g.total = ROWS
@@ -102,11 +117,19 @@ pub class Walk {
     pub reversals: int = 0
     pub lowest: int = -1
     pub highest: int = -1
+    /// The union of every window in this walk, kept as ONE interval: a window
+    /// that neither overlaps nor abuts what has been covered so far cannot be
+    /// merged into it, and that is a break. `breaks == 0` with the interval
+    /// running 0..total-1 is the whole "no gap" sentence, said once, rather
+    /// than inferred from the pairwise check plus monotonicity.
+    pub covers_low: int = -1
+    pub covers_high: int = -1
+    pub breaks: int = 0
 
     pub fn init() {}
 
     pub fn describe() -> string {
-        return "positions={self.positions} unsound={self.unsound} uncovered={self.uncovered} oversized={self.oversized} gaps={self.gaps} reversals={self.reversals} rows={self.lowest}..{self.highest}"
+        return "positions={self.positions} unsound={self.unsound} uncovered={self.uncovered} oversized={self.oversized} gaps={self.gaps} reversals={self.reversals} rows={self.lowest}..{self.highest} union={self.covers_low}..{self.covers_high} breaks={self.breaks}"
     }
 }
 
@@ -127,13 +150,16 @@ fn walk(g: VirtualGeometry, from: int, to: int, step: int, descending: bool,
         if at.shown > g.max_window { into.oversized += 1 }
 
         // Every row the viewport shows at this offset must be in the window.
+        // Written as the two ends rather than a loop over the band: `holds` is
+        // an interval test, so asking it for the first and the last visible row
+        // is the same statement as asking it for each one, and 100,000
+        // positions times a twenty-row band is two million calls that say
+        // nothing the two ends do not.
         let first: int = offset / g.row_height
         var last: int = (offset + VIEWPORT - 1) / g.row_height
         if last > g.total - 1 { last = g.total - 1 }
-        var index: int = first
-        for index <= last {
-            if !at.holds(index) { into.uncovered += 1 }
-            index += 1
+        if first <= last {
+            if !at.holds(first) || !at.holds(last) { into.uncovered += 1 }
         }
 
         if have_previous {
@@ -152,6 +178,15 @@ fn walk(g: VirtualGeometry, from: int, to: int, step: int, descending: bool,
         if at.shown > 0 {
             let end: int = at.start + at.shown - 1
             if end > into.highest { into.highest = end }
+            if into.covers_low < 0 {
+                into.covers_low = at.start
+                into.covers_high = end
+            } else if at.start > into.covers_high + 1 || end < into.covers_low - 1 {
+                into.breaks += 1
+            } else {
+                if at.start < into.covers_low { into.covers_low = at.start }
+                if end > into.covers_high { into.covers_high = end }
+            }
         }
 
         if descending {
@@ -164,6 +199,25 @@ fn walk(g: VirtualGeometry, from: int, to: int, step: int, descending: bool,
             if offset < to { offset = to }
         }
     }
+}
+
+/// The first row a row-aligned offset must render, worked out from the
+/// geometry and not from the renderer: the viewport starts at `row`, the
+/// overscan reaches OVERSCAN rows above it, and 0 is the floor.
+fn expected_start(row: int) -> int {
+    var at: int = row - OVERSCAN
+    if at < 0 { at = 0 }
+    return at
+}
+
+/// And how many rows it must render: the band ends OVERSCAN rows past the last
+/// visible one, and the collection is the ceiling.
+fn expected_shown(row: int) -> int {
+    var stop: int = row + VIEWPORT / ROW_HEIGHT + OVERSCAN
+    if stop > ROWS { stop = ROWS }
+    let size: int = stop - expected_start(row)
+    if size < 0 { return 0 }
+    return size
 }
 
 // ---------------------------------------------------------------- the frames
@@ -221,6 +275,83 @@ fn mount_table(r: Renderer) -> Virtual {
     return list
 }
 
+// ---------------------------------------------------------- the circuit page
+
+const CID: string = "0123456789abcdef0123"
+
+/// A page whose only content is a virtual list, so the circuit has a component
+/// id to address that is NOT the page's own.
+pub class Sheet extends Component {
+    pub rows: int = ROWS
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "main")
+        b.component<Virtual>(1, fn(list: Virtual) {
+            list.count = self.rows
+            list.row_height = ROW_HEIGHT
+            list.overscan = OVERSCAN
+            list.row = fn(inner: Builder, index: int) { inner.text(0, "r{index}") }
+        })
+        b.close()
+    }
+}
+
+fn attach_message() -> string {
+    return "\{\"t\":\"attach\",\"c\":\"{CID}\",\"u\":\"/\"\}"
+}
+
+fn range_message(h: int, start: int, count: int) -> string {
+    return "\{\"t\":\"range\",\"h\":{h},\"s\":{start},\"n\":{count}\}"
+}
+
+fn sheet_circuit(page: Component) -> Circuit {
+    var options: CircuitOptions = new CircuitOptions()
+    options.idle_ms = 1000000
+    let made: Circuit = new Circuit(CID, options,
+        fn(url: string) -> Option<Component> { return some(page) })
+    made.guard = run
+    made.open(0)
+    made.accept(attach_message(), 1)
+    let _: List<string> = made.take_outbox()
+    return made
+}
+
+/// The mounted virtual list's component id, found the way the circuit finds
+/// it: by asking the renderer what it mounted, never by assuming a number.
+fn list_id(c: Circuit) -> int {
+    for id: int in c.renderer.ids() {
+        match c.renderer.component(id) {
+            some(component) => {
+                match component as? Virtual {
+                    some(_) => { return id }
+                    none => {}
+                }
+            }
+            none => {}
+        }
+    }
+    return -1
+}
+
+fn list_of(c: Circuit) -> Option<Virtual> {
+    match c.renderer.component(list_id(c)) {
+        some(component) => { return component as? Virtual }
+        none => { return none }
+    }
+}
+
+fn placement_of(c: Circuit) -> string {
+    match list_of(c) {
+        some(list) => { return list.placement.describe() }
+        none => { return "no list" }
+    }
+}
+
+fn last_log(c: Circuit) -> string {
+    if c.log.len() == 0 { return "" }
+    return c.log[c.log.len() - 1]
+}
+
 fn main() {
     var r: Report = new Report()
     io.println("== 1 the sweep: 50,000 rows, to the end and back ==")
@@ -234,6 +365,9 @@ fn main() {
     io.println("")
     io.println("== 4 every fault site in virtual.b ==")
     section_four(r)
+    io.println("")
+    io.println("== 5 the circuit hands a range to the list ==")
+    section_five(r)
     io.println("")
     io.println("{r.checks} checks, {r.bad} bad")
 }
@@ -287,6 +421,15 @@ fn section_one(r: Report) {
     r.eqi("back: the window never goes forwards", up.reversals, 0)
     r.eqi("back: it returns to row 0", up.lowest, 0)
     r.eqi("back: having started at the last row", up.highest, ROWS - 1)
+
+    // The gate sentence itself: the union of every window on the way down is
+    // one unbroken run, and it is exactly the table.
+    r.eqi("down: the windows are one unbroken run", down.breaks, 0)
+    r.eqi("down: covering row 0", down.covers_low, 0)
+    r.eqi("down: through the last row", down.covers_high, ROWS - 1)
+    r.eqi("back: the windows are one unbroken run", up.breaks, 0)
+    r.eqi("back: covering row 0", up.covers_low, 0)
+    r.eqi("back: through the last row", up.covers_high, ROWS - 1)
 
     r.eqi("first 100 rows, every pixel: sound", head.unsound, 0)
     r.eqi("first 100 rows, every pixel: covered", head.uncovered, 0)
@@ -345,7 +488,8 @@ fn section_two(r: Report) {
     var out_of_order: int = 0
     var rows_rendered: int = 0
     var previous_start: int = -1
-    var render_gaps: int = 0
+    var wrong_window: int = 0
+    var moved_too_far: int = 0
 
     var pass: int = 0
     for pass < 2 {
@@ -379,14 +523,23 @@ fn section_two(r: Report) {
                 }
             }
 
+            // The window this offset MUST produce, derived from the geometry
+            // rather than from what the renderer said. At a row-aligned offset
+            // the viewport shows rows `row .. row + VIEWPORT/ROW_HEIGHT - 1`,
+            // the overscan widens that band by OVERSCAN each way, and both
+            // ends clamp to the collection. An earlier draft of this suite
+            // asserted only that consecutive starts differed by the 50 rows
+            // the scroll moved, which is FALSE at row 0 — the window there is
+            // pinned at 0 and moves by 46 — and which a geometry that ignored
+            // the overscan entirely would still satisfy.
+            if where.start != expected_start(row) { wrong_window += 1 }
+            if where.shown != expected_shown(row) { wrong_window += 1 }
+
             if previous_start >= 0 {
                 let low: int = if where.start < previous_start { where.start } else { previous_start }
                 let high: int = if where.start < previous_start { previous_start } else { where.start }
-                // The step is 50 rows and a window is 24 rows plus overscan, so
-                // consecutive windows here do NOT abut — that is deliberate.
-                // What must hold is that the window MOVED with the scroll, and
-                // by the amount the scroll moved.
-                if high - low != 50 && high - low != 0 { render_gaps += 1 }
+                // The window never travels further than the scroll did.
+                if high - low > 50 { moved_too_far += 1 }
             }
             previous_start = where.start
             step += 50
@@ -399,7 +552,8 @@ fn section_two(r: Report) {
     r.eqi("no row is rendered twice in one window", duplicates, 0)
     r.eqi("and they are in index order", out_of_order, 0)
     r.eqi("the spacers match every window", wrong_spacers, 0)
-    r.eqi("the window follows the scroll, row for row", render_gaps, 0)
+    r.eqi("every window is the one the geometry requires", wrong_window, 0)
+    r.eqi("and the window never travels further than the scroll", moved_too_far, 0)
     r.eqi("the sweep rendered both ways over the whole table", renders, 2 * (ROWS / 50 + 1))
     r.yes("and rendered five figures of rows", rows_rendered > 10000)
 
@@ -414,7 +568,7 @@ fn section_two(r: Report) {
             io.println("html at row 1000, three rows:")
             io.println("  {html}")
             r.eq("the html", html,
-                "<div class=\"sheet\" data-latte-virtual=\"0\" data-latte-rows=\"50000\" data-latte-row-height=\"32\"><div data-latte-spacer=\"top\" style=\"height:32000px\"></div><div class=\"row\">row 1000</div><div class=\"row\">row 1001</div><div class=\"row\">row 1002</div><div data-latte-spacer=\"bottom\" style=\"height:1567360px\"></div></div>")
+                "<div class=\"sheet\" data-latte-virtual=\"0\" data-latte-rows=\"50000\" data-latte-row-height=\"32\"><div data-latte-spacer=\"top\" style=\"height:32000px\"></div><div class=\"row\">row 1000</div><div class=\"row\">row 1001</div><div class=\"row\">row 1002</div><div data-latte-spacer=\"bottom\" style=\"height:1567904px\"></div></div>")
             r.eqi("and the serializer raised nothing", writer.faults.len(), 0)
         }
     }
@@ -466,7 +620,6 @@ fn section_three(r: Report) {
     r.eq("and both together", shown[7], "start=50000 shown=0 top=1600000 bottom=0")
 
     var unsound: int = 0
-    for text: string in shown { unsound += 0 }
     let hostile: List<Placement> = [g.window(-5, 10), g.window(10, -5),
         g.window(ROWS + 1000, 10), g.window(0, 50000), g.window(ROWS - 3, 100),
         g.window(9223372036854775807, 10), g.window(10, 9223372036854775807),
@@ -474,9 +627,17 @@ fn section_three(r: Report) {
     for at: Placement in hostile { if !at.sound() { unsound += 1 } }
     r.eqi("every clamped window is still sound", unsound, 0)
 
-    // The cap comes BEFORE the collection length. Asking for the whole table
-    // from row 0 must not get the whole table.
-    r.eqi("the cap is applied before the collection length", g.window(0, ROWS).shown, VIRTUAL_MAX_WINDOW)
+    // The cap bounds a count the collection would happily have allowed. It is
+    // NOT a statement about the order of the two count-clamps: both are a
+    // `min`, so they commute, and swapping them in `virtual.b` turns nothing
+    // here red — which is how the claim that they did not commute was found
+    // to be false. The clamp whose ORDER matters is `start`, and the largest
+    // int as a start, above, is what holds it: unclamped, `total - at` goes
+    // hugely negative and the count follows it down.
+    r.eqi("the cap bounds a count the collection would have allowed",
+        g.window(0, ROWS).shown, VIRTUAL_MAX_WINDOW)
+    r.eqi("and the collection bounds a count the cap would have allowed",
+        g.window(ROWS - 3, VIRTUAL_MAX_WINDOW).shown, 3)
 
     // The positive control: an honest range is answered exactly.
     let honest: Placement = g.window(500, 30)
@@ -497,6 +658,99 @@ fn section_three(r: Report) {
     r.yes("and so is a list of one", one.window(0, 10).sound())
     r.yes("an empty list at a hostile offset is sound",
         none_at_all.window_at(9223372036854775807 / 64, VIEWPORT).sound())
+
+    // `sound()` is asserted true all over this file and NEVER ONCE asserted
+    // false, which means a `sound()` that answered true unconditionally would
+    // pass every check here. It does now: one placement per clause, built by
+    // hand, each of which must be refused, with the sound one beside them.
+    io.println("-- a placement the arithmetic does not close")
+    r.yes("the control: a placement whose arithmetic closes",
+        hand_made(10, 32, 2, 3, 64, 160).sound())
+    var wrong: List<string> = []
+    var refused: int = 0
+    let names: List<string> = ["the spacers do not add up", "a negative start",
+        "a negative count", "a window past the end of the collection",
+        "a negative top spacer", "a negative bottom spacer"]
+    var probes: List<Placement> = []
+    probes.push(hand_made(10, 32, 0, 2, 0, 0))
+    probes.push(hand_made(10, 32, -1, 3, -32, 192))
+    probes.push(hand_made(10, 32, 2, -1, 64, 288))
+    probes.push(hand_made(10, 32, 8, 5, 256, -96))
+    probes.push(hand_made(10, 32, 2, 3, -64, 288))
+    probes.push(hand_made(10, 32, 2, 3, 448, -224))
+    var index2: int = 0
+    for index2 < probes.len() {
+        if probes[index2].sound() { wrong.push(names[index2]) }
+        else { refused += 1 }
+        index2 += 1
+    }
+    io.println("   unsound placements refused: {refused} of {probes.len()}")
+    r.eqi("every broken placement is refused", refused, 6)
+    r.eq("and none of them was let through", joined(wrong), "")
+
+    // A hostile VIEWPORT is the second way to reach the cap, and it does not
+    // go through `window` from the outside — `window_at` computes a row count
+    // from the viewport and hands it on. A client that claims a window
+    // 9 quintillion pixels tall must get 200 rows, not 50,000.
+    let vast: Placement = g.window_at(0, 9223372036854775807)
+    io.println("   a viewport of the largest int: {vast.describe()}")
+    r.eqi("a hostile viewport is capped like a hostile count", vast.shown, VIRTUAL_MAX_WINDOW)
+    r.yes("and the window it answers is still sound", vast.sound())
+    // The control: an honest viewport is answered exactly, so the line above
+    // is the cap doing the work and not `window_at` refusing everything.
+    r.eqi("an honest viewport is not capped", g.window_at(0, VIEWPORT).shown, 24)
+
+    // A geometry that cannot be laid out answers NO window rather than a wrong
+    // one. A negative row height is the shape that used to escape: `place`
+    // multiplied it out and produced negative spacers, which is a placement no
+    // page can hold, from a public method, with nothing saying it had failed.
+    var upside_down: VirtualGeometry = new VirtualGeometry()
+    upside_down.total = 10
+    upside_down.row_height = -1
+    io.println("   a negative row height, window(5,3): {upside_down.window(5, 3).describe()}")
+    io.println("   a negative row height, window_at:   {upside_down.window_at(500, VIEWPORT).describe()}")
+    r.eq("a negative row height answers no window at all",
+        upside_down.window(5, 3).describe(), "start=0 shown=0 top=0 bottom=0")
+    r.eq("and no window from a scroll either",
+        upside_down.window_at(500, VIEWPORT).describe(), "start=0 shown=0 top=0 bottom=0")
+    r.yes("and what it answers is sound", upside_down.window(5, 3).sound())
+    var over_scanned: VirtualGeometry = new VirtualGeometry()
+    over_scanned.total = 10
+    over_scanned.overscan = -1
+    r.eq("so does a negative overscan", over_scanned.window(5, 3).describe(),
+        "start=0 shown=0 top=0 bottom=320")
+    r.yes("and it is sound too", over_scanned.window(5, 3).sound())
+    // The positive control: one legal parameter apart, the same request is
+    // answered exactly. Without it every line above would pass on a `window`
+    // that had simply stopped answering anything.
+    var upright: VirtualGeometry = new VirtualGeometry()
+    upright.total = 10
+    upright.row_height = 1
+    r.eq("the control: a legal row height answers the range",
+        upright.window(5, 3).describe(), "start=5 shown=3 top=5 bottom=2")
+
+    // And a misconfigured COMPONENT accepts no range: it must not mark itself
+    // dirty for a window it is not going to render.
+    let broken_renderer: Renderer = new Renderer()
+    var broken_list: Virtual = new Virtual()
+    broken_list.count = 100
+    broken_list.row_height = 0
+    broken_list.row = fn(b: Builder, index: int) { b.text(0, "{index}") }
+    broken_renderer.mount(broken_list)
+    let _b1: int = broken_renderer.flush()
+    r.no("a range on a misconfigured list moves nothing", broken_list.apply_range(10, 5))
+    r.no("nor does a scroll", broken_list.apply_scroll(320, VIEWPORT))
+    r.eqi("and it marks nothing dirty", broken_renderer.pending(), 0)
+    // The control: the same list with a row height accepts the same range.
+    let fixed_renderer: Renderer = new Renderer()
+    var fixed_list: Virtual = new Virtual()
+    fixed_list.count = 100
+    fixed_list.row_height = 32
+    fixed_list.row = fn(b: Builder, index: int) { b.text(0, "{index}") }
+    fixed_renderer.mount(fixed_list)
+    let _b2: int = fixed_renderer.flush()
+    r.yes("the control: a configured list accepts it", fixed_list.apply_range(10, 5))
+    r.eqi("and marks exactly itself", fixed_renderer.pending(), 1)
 
     // A collection that SHRANK under a window reported against the old length.
     // A filter that removed rows while the user was at the bottom is the
@@ -653,6 +907,41 @@ fn section_four(r: Report) {
         bad.window_at(500, VIEWPORT).describe(), "start=0 shown=0 top=0 bottom=0")
     r.no("and the geometry says it is not ok", bad.ok())
 
+    // `ok()` and `problems()` are two spellings of one rule — `window` asks the
+    // cheap one on every call and an author reads the sentences from the other.
+    // Two spellings drift. This is the check that they have not: over a table
+    // that turns each parameter good and bad in turn, the fast predicate must
+    // answer exactly "problems() is empty".
+    var disagreements: int = 0
+    var tried: int = 0
+    let heights: List<int> = [-1, 0, 1, 32]
+    let scans: List<int> = [-1, 0, 4]
+    let caps: List<int> = [-1, 0, 1, 200]
+    let totals: List<int> = [-1, 0, 1, 50000]
+    for height: int in heights {
+        for scan: int in scans {
+            for cap: int in caps {
+                for rows: int in totals {
+                    var probe: VirtualGeometry = new VirtualGeometry()
+                    probe.row_height = height
+                    probe.overscan = scan
+                    probe.max_window = cap
+                    probe.total = rows
+                    tried += 1
+                    if probe.ok() != (probe.problems().len() == 0) { disagreements += 1 }
+                    // And whatever it answers for a hostile range is sound,
+                    // whether the configuration is legal or not.
+                    if !probe.window(9223372036854775807, 9223372036854775807).sound() {
+                        disagreements += 1
+                    }
+                }
+            }
+        }
+    }
+    io.println("configurations tried: {tried}")
+    r.eqi("ok() and problems() agree on every configuration", disagreements, 0)
+    r.eqi("and the table turned each parameter good and bad", tried, 192)
+
     var names: List<string> = reached.keys()
     names.sort()
     io.println("-- the sites in virtual.b, and how many shapes reach each")
@@ -663,4 +952,101 @@ fn section_four(r: Report) {
         }
     }
     r.eqi("every fault site in virtual.b has a case", names.len(), 1)
+}
+
+// ============================================================== 5
+
+fn section_five(r: Report) {
+    // An honest range: the client says where it is looking and the list
+    // renders that slice. This is the seam the first agent could not close —
+    // `wire.b` decoded a range and `circuit.b` clamped it, and nothing
+    // rendered anything.
+    let c: Circuit = sheet_circuit(new Sheet())
+    let vid: int = list_id(c)
+    io.println("the list mounted at component {vid}")
+    r.yes("the page mounted a virtual list", vid > 0)
+    r.eq("and it starts on the static first window", placement_of(c),
+        "start=0 shown=20 top=0 bottom=1599360")
+
+    c.accept(range_message(vid, 1000, 30), 2)
+    io.println("after a range of 1000+30: {placement_of(c)}")
+    io.println("   the log says: {last_log(c)}")
+    r.eq("an honest range moves the window", placement_of(c),
+        "start=1000 shown=30 top=32000 bottom=1567040")
+    r.eq("and the circuit says so", last_log(c),
+        "range 1000+30 on list {vid} -> start=1000 shown=30 top=32000 bottom=1567040")
+    r.eqi("and one batch went out", c.take_outbox().len(), 1)
+    r.no("and the circuit is alive", c.ending())
+
+    // The same range again renders nothing. A trackpad reports one range per
+    // animation frame while a finger rests on it; without this the list
+    // re-renders sixty times a second and every other check here still passes.
+    c.accept(range_message(vid, 1000, 30), 3)
+    r.eq("the same range again changes nothing", last_log(c),
+        "range 1000+30 on list {vid} -> start=1000 shown=30 top=32000 bottom=1567040 (unchanged)")
+    r.eqi("and sends no batch", c.take_outbox().len(), 0)
+
+    // A range that runs off the end is TRIMMED, not refused: a list that
+    // shrank under the user is ordinary, and ending the session for it would
+    // be a framework killing connections over a race it caused.
+    c.accept(range_message(vid, 49990, 200), 4)
+    io.println("a range past the end: {placement_of(c)}")
+    r.eq("a range past the end is trimmed to what is there", placement_of(c),
+        "start=49990 shown=10 top=1599680 bottom=0")
+    r.no("and the circuit is still alive", c.ending())
+    r.eqi("and it rendered", c.take_outbox().len(), 1)
+
+    // A range naming the PAGE, which is a component but not a list.
+    c.accept(range_message(0, 0, 10), 5)
+    io.println("   a range on the page: {last_log(c)}")
+    r.eq("a range on a component that is not a list is logged, not obeyed",
+        last_log(c), "range 0+10 on 0, which is not a virtual list")
+    r.no("and the circuit survives it", c.ending())
+    r.eqi("and nothing went out", c.take_outbox().len(), 0)
+    r.eq("and the window did not move", placement_of(c),
+        "start=49990 shown=10 top=1599680 bottom=0")
+
+    // A range naming an id nothing mounted.
+    c.accept(range_message(4242, 0, 10), 6)
+    io.println("   a range on nothing: {last_log(c)}")
+    r.eq("a range on an unmounted id is logged, not obeyed", last_log(c),
+        "range 0+10 on 4242, which is not mounted")
+    r.no("and the circuit survives that too", c.ending())
+    r.eqi("and nothing went out either", c.take_outbox().len(), 0)
+
+    // Over the WIRE cap, which is the other cap and the one that ends the
+    // circuit. `CircuitOptions.max_window` is 200 and so is the renderer's, so
+    // 201 is the first row over both.
+    let over: Circuit = sheet_circuit(new Sheet())
+    let over_id: int = list_id(over)
+    over.accept(range_message(over_id, 0, 201), 2)
+    io.println("   a range over the cap: {over.take_outbox().join("")}")
+    r.yes("a range over the wire cap ends the circuit", over.ending())
+    r.eq("with the reason on the wire", over.end_reason(), "limit")
+
+    // The control beside it: one row under the cap is answered, so the line
+    // above is the cap and not the circuit refusing every range.
+    let under: Circuit = sheet_circuit(new Sheet())
+    let under_id: int = list_id(under)
+    under.accept(range_message(under_id, 0, 200), 2)
+    r.no("the control: a range exactly at the cap is answered", under.ending())
+    r.eq("and the renderer honoured all 200 rows", placement_of(under),
+        "start=0 shown=200 top=0 bottom=1593600")
+
+    // A hostile start, over the wire, through the whole path.
+    let hostile: Circuit = sheet_circuit(new Sheet())
+    let hostile_id: int = list_id(hostile)
+    hostile.accept(range_message(hostile_id, 9223372036854775807, 10), 2)
+    io.println("   a range starting at the largest int: {placement_of(hostile)}")
+    r.eq("the largest int as a start is clamped to the end", placement_of(hostile),
+        "start=50000 shown=0 top=1600000 bottom=0")
+    r.no("and the circuit is alive", hostile.ending())
+    r.yes("and the window it landed on is sound", hostile_placement_sound(hostile))
+}
+
+fn hostile_placement_sound(c: Circuit) -> bool {
+    match list_of(c) {
+        some(list) => { return list.placement.sound() }
+        none => { return false }
+    }
 }

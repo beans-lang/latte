@@ -1008,14 +1008,10 @@ run_refusal_coverage_leg() {
     refusal_coverage_for apply.b     tests/w1_faults.out "tests/w1_faults.b § 1"
     refusal_coverage_for serialize.b tests/w1_faults.out "tests/w1_faults.b § 3"
     refusal_coverage_for stream.b    tests/w6_stream.out  "tests/w6_stream.b § 4"
+    refusal_coverage_for virtual.b   tests/w6_virtual.out "tests/w6_virtual.b § 4"
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
     refusal_coverage_pending render.b 2
-    # virtual.b landed compiling but NEVER EXECUTED — W6 said so plainly and
-    # its suite is parked as tests/_w6_virtual.b until a line of it has run.
-    # Pending, not covered: the count is pinned so the file cannot grow a
-    # second unguarded site while it waits.
-    refusal_coverage_pending virtual.b 1
     refusal_coverage_pending pages.b 8
     refusal_coverage_pending circuit.b 4
     refusal_coverage_sweep

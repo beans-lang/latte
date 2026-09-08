@@ -445,14 +445,50 @@ pub class Circuit {
     }
 
     fn on_range(message: ClientMessage) {
-        // The range is untrusted input (PLAN.md, "virtual range abuse"). W6
-        // renders the slice; the clamp is here so it is applied before any
-        // consumer of this message exists, rather than after.
+        // The range is untrusted input (PLAN.md, "virtual range abuse"), and
+        // TWO different caps stand in front of it. This is the WIRE's: a
+        // message asking for more than `max_window` rows ends the circuit,
+        // because no client latte ships ever sends one. `VirtualGeometry`
+        // then trims whatever survives against the collection, silently,
+        // because a range that runs off the end of a list which shrank under
+        // the user is ordinary and must not cost a session.
         if message.count > self.options.max_window {
             self.stop("limit", "a range asked for {message.count} rows, over the {self.options.max_window} cap")
             return
         }
-        self.log.push("range {message.start}+{message.count} on region {message.handler}")
+        // `h` on a range is a COMPONENT id — the number `Virtual.render`
+        // wrote into `data-latte-virtual` — and not a handler slot. Nothing
+        // off the wire is ever a name: the client hands back a number and the
+        // renderer looks it up, so a message can only ever reach a component
+        // this page actually mounted.
+        match self.renderer.component(message.handler) {
+            some(component) => {
+                match component as? Virtual {
+                    some(list) => {
+                        let moved: bool = list.apply_range(message.start, message.count)
+                        var tail: string = " (unchanged)"
+                        if moved { tail = "" }
+                        self.log.push(
+                            "range {message.start}+{message.count} on list {message.handler} -> {list.placement.describe()}{tail}")
+                    }
+                    none => {
+                        // Not an error, and not a reason to end a session: a
+                        // page that re-rendered into a different shape between
+                        // the scroll and the message leaves the client holding
+                        // an id that now belongs to something else. It is the
+                        // rule `on_event` applies to a stale handler id, for
+                        // the same reason — a race between a scroll and a
+                        // re-render must not look like an attack.
+                        self.log.push(
+                            "range {message.start}+{message.count} on {message.handler}, which is not a virtual list")
+                    }
+                }
+            }
+            none => {
+                self.log.push(
+                    "range {message.start}+{message.count} on {message.handler}, which is not mounted")
+            }
+        }
     }
 
     // ---- the event path ---------------------------------------------------

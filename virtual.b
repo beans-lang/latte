@@ -80,7 +80,13 @@ pub class Placement {
         if self.start < 0 || self.shown < 0 { return false }
         if self.start + self.shown > self.total { return false }
         if self.top < 0 || self.bottom < 0 { return false }
-        if self.shown == 0 && self.start != 0 && self.start != self.total { return false }
+        // An EMPTY window is sound wherever it sits. `window(10, 0)` — a client
+        // reporting that nothing is visible while the user is at row 10 — is an
+        // ordinary message, and the placement it produces (top = 320,
+        // bottom = the rest) sizes the scrollbar correctly and renders no rows.
+        // An earlier draft refused an empty window whose start was neither 0
+        // nor `total`; nothing about a page needs that, and it made `sound()`
+        // answer false for a placement that was right.
         return self.top + self.shown * self.row_height + self.bottom == self.height()
     }
 
@@ -136,25 +142,48 @@ pub class VirtualGeometry {
         return move out
     }
 
-    pub fn ok() -> bool { return self.problems().len() == 0 }
+    /// Whether this configuration can be laid out at all.
+    ///
+    /// The same conditions `problems()` names, without building the sentences —
+    /// `window()` asks this on every call and the sweep in `tests/w6_virtual.b`
+    /// makes ~113,000 of them. Two spellings of one rule can drift, so § 4 of
+    /// that suite asserts `ok() == (problems().len() == 0)` over a table of
+    /// configurations rather than trusting that they were kept in step.
+    pub fn ok() -> bool {
+        return self.row_height > 0 && self.overscan >= 0 &&
+               self.max_window > 0 && self.total >= 0
+    }
 
     /// A window from an UNTRUSTED `(start, count)`.
     ///
-    /// The order of the clamps is the whole thing, and it is written in the
-    /// order that cannot overflow:
+    /// ONE of the three clamps is order-dependent, and it is not the one an
+    /// earlier draft of this comment claimed:
     ///
-    ///   1. `start` into `[0, total]` FIRST, so nothing after it can add a
-    ///      hostile number to a hostile number. A client that sends
-    ///      `start = 9223372036854775807` gets `total`, not a wrapped
-    ///      negative;
-    ///   2. `count` into `[0, max_window]`, so the cost of one message is
-    ///      bounded before the collection is consulted;
-    ///   3. `count` into what is left of the collection, so the window never
-    ///      runs past the end.
+    ///   1. `start` into `[0, total]` **first, and this is the load-bearing
+    ///      one**. Everything after it computes `total - at`, so an unclamped
+    ///      `start = 9223372036854775807` makes `room` hugely negative, the
+    ///      count clamps down to it, and `place` multiplies a nonsense size by
+    ///      the row height. `tests/w6_virtual.b` § 3 pins that with the
+    ///      largest int as a start.
+    ///   2. `count` into `[0, max_window]`;
+    ///   3. `count` into what is left of the collection.
     ///
-    /// Doing 3 before 2 would let `count = total` past the cap whenever
-    /// `start` was 0, which is the request a hostile client sends.
+    /// **2 and 3 commute.** Both are a `min`, so the result is
+    /// `min(count, max_window, room)` whichever runs first — the draft this
+    /// replaces asserted that doing 3 first would let a count past the cap,
+    /// the suite carried a check named for that claim, and swapping the two
+    /// changed no answer and turned nothing red. They are written cap-first
+    /// because the cheap bound reads better before the derived one, and that
+    /// is taste, not a rule.
     pub fn window(start: int, count: int) -> Placement {
+        // A configuration that cannot be laid out has no correct window, and
+        // the arithmetic below would answer a wrong one rather than none: a
+        // row height of -1 makes `top` and `bottom` negative, which is a
+        // placement no page can hold. `problems()` is where an author reads
+        // WHY; this is the guard that stops a broken geometry answering
+        // numbers to a caller who never asked.
+        if !self.ok() { return self.nothing() }
+
         var at: int = start
         if at < 0 { at = 0 }
         if at > self.total { at = self.total }
@@ -174,7 +203,7 @@ pub class VirtualGeometry {
     /// recomputes rather than trusting: `latte.js` sends the range it worked
     /// out, and a range is only ever a hint about where the user is looking.
     pub fn window_at(scroll_top: int, viewport: int) -> Placement {
-        if self.row_height <= 0 { return self.place(0, 0) }
+        if !self.ok() { return self.nothing() }
         var offset: int = scroll_top
         if offset < 0 { offset = 0 }
         let span: int = self.total * self.row_height
@@ -202,6 +231,22 @@ pub class VirtualGeometry {
     /// The window a page renders before any client has said anything.
     pub fn first_window(rows: int) -> Placement {
         return self.window(0, rows)
+    }
+
+    /// The placement of a geometry that cannot be laid out: no rows, and a
+    /// list whose height is the best statement still available. Clamped to
+    /// non-negative so it satisfies `Placement.sound()` — an answer that is
+    /// itself unsound would fail the caller twice.
+    fn nothing() -> Placement {
+        var rows: int = self.total
+        if rows < 0 { rows = 0 }
+        var height: int = self.row_height
+        if height < 0 { height = 0 }
+        var out: Placement = new Placement()
+        out.total = rows
+        out.row_height = height
+        out.bottom = rows * height
+        return out
     }
 
     fn place(at: int, size: int) -> Placement {
@@ -298,6 +343,12 @@ pub class Virtual extends Component {
         // the bottom is the ordinary case, not an attack. Re-clamping here is
         // what stops the next render addressing rows that no longer exist.
         let geometry: VirtualGeometry = self.geometry()
+        // A misconfigured list KEEPS the window it had rather than losing it.
+        // The placement is not rendered while the configuration is broken —
+        // `render` refuses on the same condition, `problems()` non-empty,
+        // which § 4 of the suite asserts is exactly `!ok()` — so nothing wrong
+        // reaches the page, and the user's scroll position survives a
+        // parameter that was briefly wrong.
         if !geometry.ok() { return }
         if self.attached {
             self.placement = geometry.window(self.placement.start, self.placement.shown)
@@ -321,9 +372,13 @@ pub class Virtual extends Component {
             b.close()
             return
         }
-        if !self.attached && self.placement.total != self.count {
-            self.placement = geometry.first_window(self.initial_rows)
-        }
+        // The window is NOT re-clamped here. `on_params_set` is the single
+        // place that settles it, and it runs before every render on every
+        // path: `Renderer.mount` (render.b), `Renderer.render_now` (the dirty
+        // pass) and `Builder.render_child` (a parent rendering this child) all
+        // call it immediately before `render_root`. A second clamp here would
+        // be a line no input could reach, which is worse than none — a reader
+        // would believe the case was handled twice.
         let where: Placement = self.placement
 
         b.open(0, "div")
