@@ -38,9 +38,11 @@ import std.http
 import std.io
 import std.os
 import {Anonymous, Antiforgery, CircuitOptions, CircuitSet, Component,
-        FormMap, PageHost, PageInstance, PageMap, PageMatch, PageRequest,
+        FormComponent, FormMap, FormState, PageHost, PageInstance, PageMap,
+        PageMatch, PageRequest,
         PageResponse, Principal, ShellOptions, Signer, SeamSigner,
-        NO_POLLER_MESSAGE, TOKEN_FIELD, open_page, render_shell, scan_forms,
+        NO_POLLER_MESSAGE, TOKEN_FIELD, is_safe_method, open_page,
+        render_shell, scan_forms,
         scan_pages, CLIENT_PATH as SHELL_CLIENT_PATH,
         SOCKET_PATH as SHELL_SOCKET_PATH, ROOT_ID} from latte
 import {run} from latte.boundary
@@ -87,8 +89,13 @@ pub class Cafe {
     pub pages: PageMap = new PageMap()
     pub forms: FormMap = new FormMap()
     pub host: Option<PageHost> = none
+    /// The same `Antiforgery` `PageHost` checks a post against. Held here as
+    /// well because `page_for` renders a form page too — see there.
+    pub anti: Option<Antiforgery> = none
     pub set: Option<CircuitSet> = none
     pub shell: ShellOptions = new ShellOptions()
+    /// The shell for a response a circuit could not produce. See `mount`.
+    pub static_shell: ShellOptions = new ShellOptions()
     /// `PageHost` needs a clock for the antiforgery expiry. A real deployment
     /// passes `time.unix_seconds()`; `check` passes a number it chose, so the
     /// token is a pure function of inputs this file picked and no test here
@@ -108,12 +115,48 @@ pub class Cafe {
     /// cannot skip the authorization `open_page` re-checks. `session` is the
     /// handshake's, and it is what a form rendered on a circuit mints its
     /// token against.
+    ///
+    /// **The token is minted here or the form is dead.** `PageHost.handle`
+    /// gives every safe request's form page a fresh `FormState` with a token
+    /// bound to that request's session; a circuit renders the same page
+    /// through `open_page` and never touched `PageHost`, so without this the
+    /// form the browser ends up holding carries `value=""` and the post it
+    /// makes is answered `400 the form carried no antiforgery token`. It went
+    /// unseen until the client stopped appending its render beside the
+    /// server's: two forms were in the document, the browser used the first,
+    /// and the first was the server's.
     pub fn page_for(session: string, url: string) -> Option<Component> {
         match self.pages.find("GET", path_only(url)) {
             none => { return none }
             some(found) => {
                 let instance: PageInstance = open_page(found, self.who, none)
                 if !instance.ok() { return none }
+                // `instance.component` and not `instance.root()`: the root is
+                // the outermost LAYOUT when the page has one, and the form is
+                // the page. This is the same pair of lines `PageHost.handle`
+                // runs before it renders a safe request.
+                match instance.component {
+                    some(page) => {
+                        match page as? FormComponent {
+                            some(form_page) => {
+                                match self.anti {
+                                    some(anti) => {
+                                        form_page.state = new FormState()
+                                        form_page.state.token = anti.issue(
+                                            session, form_page.form_id(), self.now)
+                                    }
+                                    // `start` sets it before a socket can
+                                    // exist. A page served with no token at
+                                    // all is a form that cannot post, so it is
+                                    // refused rather than rendered.
+                                    none => { return none }
+                                }
+                            }
+                            none => {}
+                        }
+                    }
+                    none => {}
+                }
                 return instance.root()
             }
         }
@@ -148,13 +191,21 @@ fn start() -> Result<Cafe, string> {
         err(problem) => { return err("no CSPRNG: {problem.kind}") }
     }
     let signer: Signer = new SeamSigner(hmac_signer(key), same_bytes())
-    cafe.host = some(new PageHost(cafe.pages, cafe.forms,
-                                  new Antiforgery(signer, 900)))
+    // ONE `Antiforgery`, shared. The circuit's page factory mints tokens the
+    // HTTP half will check, so a second instance would only be right for as
+    // long as nobody changed a lifetime in one of the two places.
+    let anti: Antiforgery = new Antiforgery(signer, 900)
+    cafe.anti = some(anti)
+    cafe.host = some(new PageHost(cafe.pages, cafe.forms, anti))
 
     cafe.shell.title = "The Cafe"
     cafe.shell.stylesheets = ["/app.css"]
+    cafe.static_shell.title = cafe.shell.title
+    cafe.static_shell.stylesheets = ["/app.css"]
+    cafe.static_shell.circuit = false
 
-    let faults: List<string> = cafe.shell.faults()
+    var faults: List<string> = cafe.shell.faults()
+    for problem: string in cafe.static_shell.faults() { faults.push(problem) }
     if faults.len() > 0 { return err(faults.join(" | ")) }
 
     var options: CircuitOptions = new CircuitOptions()
@@ -220,9 +271,25 @@ fn mount(app: espresso.WebApplication, cafe: Cafe, secure: bool,
             return some(reply)
         }
         cafe.pages_served += 1
+        // A page a circuit could not produce is served WITHOUT one.
+        //
+        // `Cafe.page_for` answers a URL by looking the route up as a GET and
+        // rendering a fresh page: that is all a circuit's `attach` carries —
+        // a url. This body is the answer to a POST, and it holds what the
+        // post produced: the field errors, or the receipt. A circuit that
+        // attached to it would replace all of that with the pristine form,
+        // and PLAN.md puts "persistent state across prerender and attach"
+        // outside v1, so there is nothing for it to carry the post across
+        // with. `ShellOptions.circuit = false` is exactly this case: the
+        // client script is still served — enhanced navigation and streamed
+        // chunks want it — and no socket is opened, so the answer the user
+        // is reading stays on the screen. The next navigation is a GET and
+        // gets a circuit again.
+        var used: ShellOptions = cafe.shell
+        if !is_safe_method(asked.method) { used = cafe.static_shell }
         // The one line this whole lane exists for: a page body becomes a
         // document.
-        match render_shell(cafe.shell, answer.body) {
+        match render_shell(used, answer.body) {
             ok(document) => { reply.body = document }
             err(problem) => {
                 reply.status = 500
