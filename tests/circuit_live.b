@@ -602,7 +602,13 @@ fn main() {
         set.tick_fn(), set.ending_fn(), set.disconnect_fn(), set.resume_fn(),
         set.wake_fn())
 
+    // `websocket.Connection.connect` cannot send a `Cookie` header, so no
+    // client this suite can build has a session — and since 2026-09-08 an
+    // endpoint refuses a handshake it cannot bind to one. This suite is about
+    // the circuit, not the binding; `tests/w4_upgrade.b` owns the binding and
+    // asserts, in § 5, exactly what this line costs.
     var endpoint: EndpointOptions = new EndpointOptions()
+    endpoint.anonymous_circuits = true
     endpoint.poll_ms = 100
     endpoint.socket_ms = 30000
     endpoint.no_poller_message = NO_POLLER_MESSAGE
