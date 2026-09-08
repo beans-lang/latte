@@ -168,6 +168,30 @@ pub class FormState {
     /// renders this in development is a form whose author sees a renamed input
     /// at once.
     pub fn ignored() -> string { return self.result.ignored.join(", ") }
+
+    /// What to put in an input's `value` on the way back: the text this post
+    /// carried for `name`, or `fallback` when it carried none.
+    ///
+    /// A page writes `b.attr(4, "value", self.state.value_for("age", "{self.model.age}"))`,
+    /// and the fallback is the model rather than `""` for the two cases that
+    /// are not a failed post: a GET, where the model is the whole answer, and a
+    /// field the body never carried.
+    ///
+    /// **The posted text wins over the model on purpose, including for the
+    /// fields that bound cleanly.** Mixing them — model for the fields that
+    /// parsed, typed text for the ones that did not — re-renders a form the
+    /// user never submitted: `007` binds to `7` and would come back as `7`
+    /// beside a neighbour still reading what they typed. One post, one form,
+    /// one set of values.
+    pub fn value_for(name: string, fallback: string) -> string {
+        match self.result.posted.get(name) {
+            some(text) => { return text }
+            none => { return fallback }
+        }
+    }
+
+    /// Whether a post produced this state. False for the state a GET is given.
+    pub fn posted() -> bool { return self.result.received }
 }
 
 // ============================================================== one field
@@ -223,7 +247,7 @@ pub class FormField {
                 }
             }
             integer => {
-                match parse_int(text.trim()) {
+                match parse_form_int(text.trim()) {
                     none => {
                         into.push(new FieldError(self.wire_name,
                             "{self.wire_name} must be a whole number"))
@@ -235,12 +259,12 @@ pub class FormField {
                 }
             }
             number => {
-                match text.trim().to_float() {
-                    err(_) => {
+                match parse_form_float(text.trim()) {
+                    none => {
                         into.push(new FieldError(self.wire_name,
                             "{self.wire_name} must be a number"))
                     }
-                    ok(value) => {
+                    some(value) => {
                         self.write(receiver, reflect.value(value), into)
                         // A float is range-checked on its truncation toward
                         // zero, so `@range(min: 1, max: 4)` rejects 4.5 and
@@ -332,6 +356,33 @@ pub class FormResult {
     pub errors: List<FieldError> = []
     /// Posted names that reached no `@field`, sorted.
     pub ignored: List<string> = []
+
+    /// The text this post carried for each `@field` that it carried at all,
+    /// by wire name.
+    ///
+    /// **Why the result keeps it.** Binding writes through to the model, so a
+    /// re-render after a failed post shows what the model holds — and a value
+    /// that did not PARSE was never written. `age=twelve` came back as an empty
+    /// box with "age must be a whole number" beside it, so the message pointed
+    /// at nothing the user could see, and their text was gone. The model cannot
+    /// answer this question: an `int` field has no representation for "the user
+    /// typed twelve". Only the post does, so the post is what is kept.
+    ///
+    /// It holds the value **as bound** — trimmed, exactly as `bind_one`
+    /// measured it — and not the raw bytes off the wire. A box showing
+    /// `"  a  "` under "must be at least 3 characters" is a message about a
+    /// string the user cannot see; the box shows what the server judged.
+    ///
+    /// A key that the body did not carry is absent, and absent is not `""`: an
+    /// empty text input posts `name=` and IS in this map, while an input that
+    /// is not on the form at all is not. `FormState.value_for` tells them
+    /// apart, which is why it takes a fallback rather than answering `""`.
+    pub posted: Map<string, string> = {}
+
+    /// Whether a post produced this result at all. False on the empty result a
+    /// GET is handed.
+    pub received: bool = false
+
     pub fn init() {}
     pub fn ok() -> bool { return self.errors.len() == 0 }
 }
@@ -368,6 +419,10 @@ pub class FormPlan {
     /// only ever see what arrived.
     pub fn bind(receiver: reflect.Value, posted: Map<string, string>) -> FormResult {
         var result: FormResult = new FormResult()
+        // Set before the refusal below, not after the loop: a post that could
+        // not be bound at all is still a post, and a page re-rendering one must
+        // not be told a GET happened.
+        result.received = true
         if !self.usable() {
             for fault: string in self.faults {
                 result.errors.push(new FieldError("", fault))
@@ -376,7 +431,14 @@ pub class FormPlan {
         }
         for bound: FormField in self.fields {
             match posted.get(bound.wire_name) {
-                some(text) => { bound.bind_one(receiver.copy(), text, result.errors) }
+                some(text) => {
+                    // Recorded before the bind and whatever the bind decides:
+                    // the value that must come back to the user is the one that
+                    // failed, and a bind that pushed an error returns nothing
+                    // this could be read from afterwards.
+                    result.posted[bound.wire_name] = text.trim()
+                    bound.bind_one(receiver.copy(), text, result.errors)
+                }
                 none => {
                     // A missing boolean is an unchecked box and binds false; a
                     // missing anything else is only a problem when it was
@@ -790,6 +852,113 @@ pub fn form_decode(text: string) -> string {
         index += 1
     }
     return percent_decode(out.to_string())
+}
+
+// ============================================================== typed values
+//
+// Two parsers, and they are here rather than beside `parse_int` for the reason
+// `form_decode` is not `percent_decode`: **the rules genuinely differ.** A
+// route segment is a URL, where one resource having one spelling is worth
+// having, so `parse_int` refuses `007`. A form field is text a person typed
+// into a box, and answering `007` with "age must be a whole number" tells them
+// something untrue about their own input. One function cannot hold both rules,
+// so `parse_int` is now this one plus its extra spelling check.
+
+/// A whole number as a person types it: an optional sign, then digits, leading
+/// zeros and all.
+///
+/// Overflow is refused, and by the only signal `to_int` offers — it saturates
+/// at the i64 limits, so a value that comes back spelled differently from the
+/// **canonicalised** digits did not fit. Canonicalising first is the whole
+/// difference from the old rule, which compared against the raw text and so
+/// refused every legal number a leading zero was written on.
+pub fn parse_form_int(text: string) -> Option<int> {
+    if text == "" { return none }
+    var index: int = 0
+    var negative: bool = false
+    if text.starts_with("-") { negative = true; index = 1 }
+    else if text.starts_with("+") { index = 1 }
+    if index >= text.len() { return none }
+    var at: int = index
+    for at < text.len() {
+        let byte: int = text.byte_at(at)
+        if byte < 48 || byte > 57 { return none }
+        at += 1
+    }
+    var body: string = text.slice(index, text.len())
+    var start: int = 0
+    // One digit always survives, so "000" canonicalises to "0" and not to "".
+    for start < body.len() - 1 && body.byte_at(start) == 48 { start += 1 }
+    body = body.slice(start, body.len())
+    // `-0` is `0`: a sign on a zero names no different number, and keeping it
+    // would make the round trip below disagree with itself.
+    let canonical: string = if negative && body != "0" { "-{body}" } else { body }
+    match canonical.to_int() {
+        ok(value) => {
+            if "{value}" != canonical { return none }
+            return some(value)
+        }
+        err(_) => { return none }
+    }
+}
+
+/// A decimal number as a person types it, in HTML's own shape: an optional
+/// sign, digits with an optional fractional part, and an optional exponent.
+///
+/// **`to_float` alone is not this rule**, and the difference is not cosmetic.
+/// It reads `0x10` as 16, `nan` as NaN and `inf` as infinity. A hex spelling in
+/// a form field binds a number the digits do not say; infinity is not a value
+/// any `@range` was written for; and NaN is worse than either, because
+/// `nan < min` and `nan > max` are BOTH false — so a `@range` check that is
+/// live, reached and running lets it through and reports nothing. A rule that
+/// cannot refuse the one value designed to slip past comparisons is not a rule.
+///
+/// A result that is not finite is refused for the same reason and with the same
+/// message: `1e400` is a spelling a browser will send and a number this field
+/// cannot hold, and the reader's remedy — type a number — is the same one.
+pub fn parse_form_float(text: string) -> Option<float> {
+    if text == "" { return none }
+    var index: int = 0
+    if text.starts_with("-") || text.starts_with("+") { index = 1 }
+    var digits: int = 0
+    for index < text.len() && is_digit(text, index) { index += 1; digits += 1 }
+    if index < text.len() && text.byte_at(index) == 46 {
+        index += 1
+        for index < text.len() && is_digit(text, index) { index += 1; digits += 1 }
+    }
+    if digits == 0 { return none }
+    if index < text.len() {
+        let marker: int = text.byte_at(index)
+        if marker != 101 && marker != 69 { return none }
+        index += 1
+        if index < text.len() {
+            let sign: int = text.byte_at(index)
+            if sign == 43 || sign == 45 { index += 1 }
+        }
+        var exponent: int = 0
+        for index < text.len() && is_digit(text, index) { index += 1; exponent += 1 }
+        if exponent == 0 { return none }
+    }
+    if index != text.len() { return none }
+    match text.to_float() {
+        ok(value) => {
+            // NaN is the only value that is not equal to itself, and the only
+            // one a `@range` cannot refuse.
+            if value != value { return none }
+            // Infinity, from `1e400` or from a thousand digits. `float` has no
+            // `is_finite` in 0.1.40, and comparing against a value built by
+            // overflowing needs no constant written down here.
+            let huge: float = 1.0e308 * 10.0
+            if value >= huge || value <= (0.0 - huge) { return none }
+            return some(value)
+        }
+        err(_) => { return none }
+    }
+}
+
+fn is_digit(text: string, at: int) -> bool {
+    let byte: int = text.byte_at(at)
+    return byte >= 48 && byte <= 57
 }
 
 // ============================================================== antiforgery

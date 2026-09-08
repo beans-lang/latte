@@ -1208,6 +1208,117 @@ run_browser_apply_leg() {
 # Runs even for a single named suite, like the two legs above.
 run_browser_apply_leg
 
+# ------------------------------------------------------------------ the CSP
+#
+# The other half of `tests/w4_headers.b`. That suite proves what the header
+# says, on both backends, byte for byte. It cannot prove what a browser does
+# with it, and a Content-Security-Policy that has only ever been read by the
+# code that wrote it is not a policy — it is a string.
+#
+# So: one espresso server on a kernel-chosen port, ONE page served twice, and
+# real Chrome pointed at both. `/latte` carries the policy `latte.web`'s
+# `security_headers` produces and `/espresso` carries espresso's own — same
+# HTML, same origin, same external `js/latte.js` and probe script, so the
+# header is the only difference and the two outcomes are attributable to it.
+#
+# Under latte's policy the client loads, defines its API and completes an
+# XMLHttpRequest to the same origin. Under espresso's — PLAN.md's concrete
+# finding, `default-src 'none'` with no `script-src` — nothing runs at all.
+# The negative control is the point: "the script ran" proves nothing on its own,
+# because a page with NO policy would print exactly the same line.
+#
+# The server runs under the interpreter only. What this leg measures is what
+# Chrome does with a header, and that header is proven identical on both
+# backends by `tests/w4_headers.b` § 1 and § 3.
+run_csp_browser_leg() {
+    local want="$ROOT/tests/w4_csp.out"
+    local site="$ROOT/tests/_w4_csp_site.b"
+    local probe="$ROOT/tests/w4_csp_probe.js"
+    local applier="$ROOT/js/latte.js"
+
+    # Inputs missing is a FAILURE, never a skip — the same rule as the leg
+    # above, for the same reason.
+    local f
+    for f in "$want" "$site" "$probe" "$applier"; do
+        if [[ ! -f "$f" ]]; then
+            echo "--- csp-browser FAILED: ${f#$ROOT/} is missing ---" >&2
+            failed=1
+            return
+        fi
+    done
+
+    local chrome
+    if ! chrome=$(find_chrome); then
+        echo "SKIP csp-browser: no Chrome or Chromium found (set CHROME=/path/to/chrome). The policy is NOT checked in a browser in this run."
+        skipped=$((skipped + 1))
+        return
+    fi
+
+    local d="$tmp/csp"
+    mkdir -p "$d"
+    local portfile="$ROOT/build/w4_csp_port"
+    rm -f "$portfile"
+    (cd "$ROOT" && "$BEANSC" run tests/_w4_csp_site.b) >"$d/site.log" 2>&1 &
+    local site_pid=$!
+
+    local port="" i
+    for i in $(seq 1 60); do
+        [[ -s "$portfile" ]] && { port=$(head -1 "$portfile"); break; }
+        kill -0 "$site_pid" 2>/dev/null || break
+        sleep 0.5
+    done
+    if [[ -z "$port" ]]; then
+        echo "--- csp-browser FAILED: the site never wrote build/w4_csp_port ---" >&2
+        sed -n '1,20p' "$d/site.log" >&2
+        kill "$site_pid" 2>/dev/null || true
+        wait "$site_pid" 2>/dev/null || true
+        failed=1
+        return
+    fi
+
+    stop_csp_site() {
+        curl -s -m 5 "http://127.0.0.1:$port/stop" >/dev/null 2>&1 || true
+        kill "$site_pid" 2>/dev/null || true
+        wait "$site_pid" 2>/dev/null || true
+    }
+
+    : >"$d/got.txt"
+    local label path
+    for path in latte espresso; do
+        if [[ "$path" == latte ]]; then label="-- latte's own policy"
+        else label="-- espresso's policy, the control"; fi
+        echo "$label" >>"$d/got.txt"
+        "$chrome" --headless=new --disable-gpu --no-sandbox --dump-dom \
+            "http://127.0.0.1:$port/$path" >"$d/$path.html" 2>"$d/$path.err" || true
+        # The verdict is a <pre> whose first and last lines carry the markers
+        # along with the surrounding tags, so the range is taken and its two
+        # boundary lines dropped — exactly what browser-apply does.
+        sed -n '/@@CSP-BEGIN@@/,/@@CSP-END@@/p' "$d/$path.html" \
+            | sed -e '1d' -e '$d' >"$d/$path.verdict"
+        if [[ ! -s "$d/$path.verdict" ]]; then
+            echo "--- csp-browser FAILED: /$path printed no verdict block at all ---" >&2
+            echo "    The page did not arrive, or the markers moved. Chrome: $chrome" >&2
+            sed -n '1,20p' "$d/$path.err" >&2
+            stop_csp_site
+            failed=1
+            return
+        fi
+        cat "$d/$path.verdict" >>"$d/got.txt"
+    done
+    stop_csp_site
+
+    if diff -u "$want" "$d/got.txt" >"$d/diff.txt"; then
+        echo "ok csp-browser — under latte's policy $("$chrome" --version 2>/dev/null | head -1) loads js/latte.js and reaches the origin; under espresso's it runs nothing"
+        legs=$((legs + 1))
+    else
+        echo "--- csp-browser FAILED: a real browser disagrees with the policy ---" >&2
+        head -40 "$d/diff.txt" >&2
+        failed=1
+    fi
+}
+
+run_csp_browser_leg
+
 for case in "$ROOT"/tests/*.b; do
     name=$(basename "$case" .b)
     # Scratch drivers are allowed in tests/ and are not gated: a name starting

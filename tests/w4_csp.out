@@ -1,0 +1,7 @@
+-- latte's own policy
+script: ran
+latte global: object
+latte.boot: function
+xhr: 200 pong
+-- espresso's policy, the control
+script: DID NOT RUN
