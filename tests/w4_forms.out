@@ -1,0 +1,206 @@
+== 1. the scan finds a @form and resolves its fields ==
+ok   Signup is usable
+ok   Signup's fields: age,email,name,score,subscribe
+ok   Signup's type name: latte$entry.Signup
+ok   a @field(name:) binds under the posted name: address
+ok   and it is required
+ok   and it carries no length rule
+ok   a @length is read
+ok   its floor: 3
+ok   its ceiling: 12
+ok   a @range is read
+ok   its floor: 18
+ok   its ceiling: 120
+ok   and an unannotated field is not required
+ok   a public field with no @field is not bindable: none
+ok   a @form nothing references is still planned
+
+== 2. a post binds only what the author annotated ==
+ok   a clean post: name=Ada email=ada@example.com age=36 sub=on score=99.5 admin=no ignored=[] errors=[]
+ok   a body naming a field the author did not annotate: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[is_admin] errors=[]
+ok   a plus and a percent-twenty are both spaces: name=Ada B email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[]
+ok   a value is trimmed before it is measured: name=Al email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[name: name must be 3 to 12 characters]
+ok   a missing required field: name= email= age=36 sub=off score=0 admin=no ignored=[] errors=[name: name is required | email: email is required]
+ok   a blank required field is missing too: name= email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[name: name is required]
+ok   too long: name=Bartholomew Fitzwilliam email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[name: name must be 3 to 12 characters]
+ok   a number that is not one: name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]
+ok   a number outside its range: name=Ada email=a@b.c age=7 sub=off score=0 admin=no ignored=[] errors=[age: age must be between 18 and 120]
+ok   a float outside its range: name=Ada email=a@b.c age=36 sub=off score=100.5 admin=no ignored=[] errors=[score: score must be between 0 and 100]
+ok   a float on the boundary is inside it: name=Ada email=a@b.c age=36 sub=off score=100 admin=no ignored=[] errors=[]
+ok   a checked box binds true: name=Ada email=a@b.c age=36 sub=on score=0 admin=no ignored=[] errors=[]
+ok   an unchecked box posts nothing and binds false: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[]
+ok   a checkbox value nobody's browser sends: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[subscribe: subscribe must be true or false]
+-- the body parser
+ok   an empty body has no fields: 0
+ok   a key with no value: a=
+ok   a repeated key keeps the last: a=2
+ok   an empty pair is skipped: a=1
+ok   a nameless pair is skipped: a=2
+ok   a value carrying an equals sign: a=1=2
+ok   a plus in a body is a space: a b
+ok   an encoded plus stays a plus: a+b
+
+== 3. the antiforgery token ==
+a token at t=1000: 1900.ac52c8491de8cd2bde19c700e075d0c34ca1ce6e1e123ec0972514fb83335b2b
+ok   the expiry is the head: 1900.
+ok   the mac is sha256 in hex: 64
+ok   the whole token, against Python's hmac: 1900.ac52c8491de8cd2bde19c700e075d0c34ca1ce6e1e123ec0972514fb83335b2b
+ok   the token it issued: the token is valid
+ok   one second before it expires: the token is valid
+ok   the same token in another session: the antiforgery token does not match this session and form
+ok   the same token on another form: the antiforgery token does not match this session and form
+ok   the same mac under another expiry: the antiforgery token does not match this session and form
+ok   one byte of the mac changed: the antiforgery token does not match this session and form
+ok   the moment it expires: the antiforgery token has expired
+ok   long after it expires: the antiforgery token has expired
+ok   no token at all: the form carried no antiforgery token
+ok   a token with no session: the request carried no session, so no token could belong to it
+ok   a token with no separator: the antiforgery token is malformed
+ok   a token whose expiry is not a number: the antiforgery token is malformed
+ok   a token with an empty mac: the antiforgery token is malformed
+ok   a forged token carrying an expiry in the past: the antiforgery token does not match this session and form
+ok   a five-second lifetime expires in five seconds: 1005.
+ok   and it is valid until then: the token is valid
+ok   and not one tick past: the antiforgery token has expired
+ok   two triples that would collide without length prefixes do not
+-- the safe methods
+ok   GET is safe
+ok   HEAD is safe
+ok   OPTIONS is safe
+ok   POST is not
+ok   DELETE is not
+ok   a method nobody has heard of is not
+
+== 4. a page refused by the form scan is unroutable ==
+ok   the form scan refused this application
+ok   and said so in the page map too
+ok   a POST to a page with no form: none
+ok   and its GET is gone with it: none
+ok   a form page no POST can reach: none
+ok   the control: a form page that serves POST: latte$entry.OkPostPage
+ok   and its GET: latte$entry.OkPostPage
+ok   and the healthy signup page: latte$entry.SignupPage
+-- the method that is not allowed
+ok   a path that answers other methods: GET,POST
+ok   a path nothing answers: 
+ok   a refused page allows nothing: 
+
+== 5. what a page reads off its form state ==
+ok   a fresh state is clean
+ok   and has nothing to say: 
+ok   and nothing was ignored: 
+ok   and no field has an error: 
+ok   a state carrying errors is not clean
+ok   and counts them: 2
+ok   a field's own message: age must be between 18 and 120
+ok   a field with no message: 
+ok   the whole summary: name: name is required | age: age must be between 18 and 120
+ok   what was ignored: is_admin
+
+== 6. every refusal forms.b makes, with a control beside it ==
+-- a @field nothing scans
+   site:    scan / a @field on a type that is not a @form
+   faults:  latte$entry.LooseField.a is a @field but latte$entry.LooseField is not a @form, so nothing would ever bind it
+ok   a @field nothing scans: the exact fault: latte$entry.LooseField.a is a @field but latte$entry.LooseField is not a @form, so nothing would ever bind it
+ok   a @field nothing scans: the control raises nothing: 
+-- a rule nothing scans
+   site:    scan / a rule on a type that is not a @form
+   faults:  latte$entry.LooseRule.a carries @required but not @field, so the rule would never run
+ok   a rule nothing scans: the exact fault: latte$entry.LooseRule.a carries @required but not @field, so the rule would never run
+ok   a rule nothing scans: the control raises nothing: 
+-- a form page with no POST
+   site:    check_form_pages / a form page no unsafe method reaches
+   faults:  latte$entry.NoPostPage is a form page but @page(methods:) is GET; nothing could ever submit its form
+ok   a form page with no POST: the exact fault: latte$entry.NoPostPage is a form page but @page(methods:) is GET; nothing could ever submit its form
+ok   a form page with no POST: the control raises nothing: 
+-- a POST page that is not a form
+   site:    check_form_pages / an unsafe method with no form
+   faults:  latte$entry.RawPostPage serves POST but does not extend latte.FormComponent, so latte has no form id to bind an antiforgery token to
+ok   a POST page that is not a form: the exact fault: latte$entry.RawPostPage serves POST but does not extend latte.FormComponent, so latte has no form id to bind an antiforgery token to
+ok   a POST page that is not a form: the control raises nothing: 
+-- a @form that binds nothing
+   site:    plan_for_form / a @form that declares no @field
+   faults:  latte$entry.EmptyForm is a @form but declares no @field, so a post would bind nothing
+ok   a @form that binds nothing: the exact fault: latte$entry.EmptyForm is a @form but declares no @field, so a post would bind nothing
+ok   a @form that binds nothing: the control raises nothing: 
+-- a rule on a plain field of a @form
+   site:    bind_fields / a rule on a field that is not a @field
+   faults:  latte$entry.RuleNoField.b carries @length but not @field, so the rule would never run
+ok   a rule on a plain field of a @form: the exact fault: latte$entry.RuleNoField.b carries @length but not @field, so the rule would never run
+ok   a rule on a plain field of a @form: the control raises nothing: 
+-- two fields claiming one name
+   site:    bind_fields / two @fields with one posted name
+   faults:  latte$entry.TwoNames: "x" names both a and b
+ok   two fields claiming one name: the exact fault: latte$entry.TwoNames: "x" names both a and b
+ok   two fields claiming one name: the control raises nothing: 
+-- a @field reflection cannot write
+   site:    bind_fields / a @field that is not public
+   faults:  latte$entry.HiddenField.a is a @field but is not public, and reflection does not bypass visibility
+ok   a @field reflection cannot write: the exact fault: latte$entry.HiddenField.a is a @field but is not public, and reflection does not bypass visibility
+ok   a @field reflection cannot write: the control raises nothing: 
+-- BLOCKERS.md B1a
+   site:    bind_fields / a @field declared by a generic type
+   faults:  latte$entry.OrderForm.caption is a @field declared by latte$entry.Rows<int>; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time
+ok   BLOCKERS.md B1a: the exact fault: latte$entry.OrderForm.caption is a @field declared by latte$entry.Rows<int>; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time
+ok   BLOCKERS.md B1a: the control raises nothing: 
+-- a field of a type no body carries
+   site:    bind_fields / a @field a form cannot bind
+   faults:  latte$entry.BadKind.items is a @field but is a List<string>; a form can bind string, int, bool and float
+ok   a field of a type no body carries: the exact fault: latte$entry.BadKind.items is a @field but is a List<string>; a form can bind string, int, bool and float
+ok   a field of a type no body carries: the control raises nothing: 
+-- @required on a bool
+   site:    read_rules / @required on a checkbox
+   faults:  latte$entry.RequiredBool.flag is a bool carrying @required; an unchecked box posts nothing at all, so a required bool would refuse every unchecked form
+ok   @required on a bool: the exact fault: latte$entry.RequiredBool.flag is a bool carrying @required; an unchecked box posts nothing at all, so a required bool would refuse every unchecked form
+ok   @required on a bool: the control raises nothing: 
+-- a negative length
+   site:    read_rules / a negative @length floor
+   faults:  latte$entry.LengthNegative.s carries @length(min: -1); a length is never negative
+ok   a negative length: the exact fault: latte$entry.LengthNegative.s carries @length(min: -1); a length is never negative
+ok   a negative length: the control raises nothing: 
+-- a backwards length window
+   site:    read_rules / a @length no value can satisfy
+   faults:  latte$entry.LengthBackwards.s carries @length(min: 5, max: 2), which no value can satisfy
+ok   a backwards length window: the exact fault: latte$entry.LengthBackwards.s carries @length(min: 5, max: 2), which no value can satisfy
+ok   a backwards length window: the control raises nothing: 
+-- a @length with no bounds
+   site:    read_rules / a @length that bounds nothing
+   faults:  latte$entry.LengthOpen.s carries a @length that bounds nothing; no value could fail it
+ok   a @length with no bounds: the exact fault: latte$entry.LengthOpen.s carries a @length that bounds nothing; no value could fail it
+ok   a @length with no bounds: the control raises nothing: 
+-- @length on an int
+   site:    read_rules / @length on something that is not a string
+   faults:  latte$entry.LengthOnInt.n carries @length but is a int; @length measures a string
+ok   @length on an int: the exact fault: latte$entry.LengthOnInt.n carries @length but is a int; @length measures a string
+ok   @length on an int: the control raises nothing: 
+-- @range on a string
+   site:    read_rules / @range on something that is not a number
+   faults:  latte$entry.RangeOnText.s carries @range but is a string; @range bounds an int or a float
+ok   @range on a string: the exact fault: latte$entry.RangeOnText.s carries @range but is a string; @range bounds an int or a float
+ok   @range on a string: the control raises nothing: 
+-- a backwards numeric window
+   site:    adopt_range / a @range no value can satisfy
+   faults:  latte$entry.RangeBackwards.n carries @range(min: 9, max: 2), which no value can satisfy
+ok   a backwards numeric window: the exact fault: latte$entry.RangeBackwards.n carries @range(min: 9, max: 2), which no value can satisfy
+ok   a backwards numeric window: the control raises nothing: 
+-- the sites in forms.b, and how many shapes reach each
+   1x adopt_range / a @range no value can satisfy
+   1x bind_fields / a @field a form cannot bind
+   1x bind_fields / a @field declared by a generic type
+   1x bind_fields / a @field that is not public
+   1x bind_fields / a rule on a field that is not a @field
+   1x bind_fields / two @fields with one posted name
+   1x check_form_pages / a form page no unsafe method reaches
+   1x check_form_pages / an unsafe method with no form
+   1x plan_for_form / a @form that declares no @field
+   1x read_rules / @length on something that is not a string
+   1x read_rules / @range on something that is not a number
+   1x read_rules / @required on a checkbox
+   1x read_rules / a @length no value can satisfy
+   1x read_rules / a @length that bounds nothing
+   1x read_rules / a negative @length floor
+   1x scan / a @field on a type that is not a @form
+   1x scan / a rule on a type that is not a @form
+ok   every fault site in forms.b has a case: 17
+
+120 checks, 0 bad
