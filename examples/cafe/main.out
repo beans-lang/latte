@@ -1,0 +1,117 @@
+== the cafe ==
+
+-- 0. the application starts
+ok 0.1 the page scan refused nothing
+ok 0.2 the form scan refused nothing
+ok 0.3 the shell options have no faults
+ok 0.4 latte and latte.web agree where the client is served
+ok 0.5 latte and latte.web agree where the socket is
+
+-- 1. GET / is a document, not a fragment
+ok 1.1 status
+ok 1.2 content type
+ok 1.3 the content security policy
+ok 1.4 nosniff
+ok 1.5 no framing
+ok 1.6 referrer
+ok 1.7 a session cookie was minted, 256 bits of it
+ok 1.8 the cookie is HttpOnly
+ok 1.9 the cookie is SameSite=Lax
+ok 1.10 and NOT Secure, because this app serves plain http
+ok 1.11 it is a document
+ok 1.12 the client is loaded from latte's own path
+ok 1.13 no inline script
+ok 1.14 no inline style
+ok 1.15 no on* handler attribute
+ok 1.16 no circuit id in the page at all
+ok 1.17 the page body is inside the root element
+
+--- the document ---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Cafe</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/_latte/latte.js" defer data-latte-boot="1" data-latte-ws="/_latte/ws" data-latte-root="latte-root"></script>
+</head>
+<body>
+<div id="latte-root"><div class="page"><header><h1>The Cafe</h1><nav><a href="/">menu</a><a href="/order/4">order for table 4</a></nav></header><main><section class="menu"><h2>Menu</h2><ul id="drinks"><li class="drink"><button type="button" data-drink="espresso">espresso — 190p</button></li><li class="drink"><button type="button" data-drink="flat white">flat white — 320p</button></li><li class="drink"><button type="button" data-drink="cortado">cortado — 280p</button></li></ul><p id="picked">nothing picked yet</p></section></main></div></div>
+</body>
+</html>
+
+--- end of the document ---
+
+-- 2. the client script is served, and cached honestly
+ok 2.1 the page points at the path the asset route claims
+ok 2.2 status
+ok 2.3 content type
+ok 2.4 the bytes are the file's, all of them
+ok 2.5 revalidate rather than cache blind
+ok 2.6 it carries a strong entity tag
+ok 2.7 nosniff reaches the script too, so the type has to be right
+ok 2.8 a matching tag is 304
+ok 2.9 and carries no body
+ok 2.10 a stale tag gets the whole file
+ok 2.11 all of it
+ok 2.12 POST to a static asset is 405
+ok 2.13 and says what it does answer
+ok 2.14 the stylesheet is served by the same route
+ok 2.15 as css
+
+-- 3. the order form, with JavaScript switched off
+ok 3.1 status
+ok 3.2 the token's MAC is a SHA-256 digest
+ok 3.3 the route parameter reached the page
+
+--- /order/4, with the token masked ---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Cafe</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/_latte/latte.js" defer data-latte-boot="1" data-latte-ws="/_latte/ws" data-latte-root="latte-root"></script>
+</head>
+<body>
+<div id="latte-root"><div class="page"><header><h1>The Cafe</h1><nav><a href="/">menu</a><a href="/order/4">order for table 4</a></nav></header><main><section class="order"><h2>Order for table 4</h2><form method="post" action="/order/4"><input type="hidden" name="__latte_token" value="TOKEN"><label>name <input name="name" id="name" value=""></label><label>cups <input name="cups" id="cups" value="0"></label><label>decaf <input type="checkbox" name="decaf" id="decaf"></label><button type="submit" id="place">place the order</button></form><ul id="problems"></ul><p id="placed">no order placed</p></section></main></div></div>
+</body>
+</html>
+
+--- end ---
+ok 3.4 a good POST is accepted
+ok 3.5 and the order is placed
+ok 3.6 a bad POST is still a page
+ok 3.7 the length rule is reported by name
+ok 3.8 the range rule is reported by name
+ok 3.9 and the boxes give back what was typed
+ok 3.10 nothing was placed
+ok 3.11 a POST with no token is refused
+ok 3.12 a forged token is refused
+ok 3.13 the second visitor got a different session
+ok 3.14 another session's token is refused
+ok 3.15 a table that is not a number is refused
+ok 3.16 a path no @page claims falls through to espresso
+
+-- 4. a click, over a circuit
+ok 4.1 the circuit opened
+ok 4.2 one frame is queued before any message
+ok 4.3 and it is the hello, naming the id the SERVER minted
+ok 4.4 attach answers exactly one batch
+ok 4.5 it is batch 1
+ok 4.6 the whole menu is in it
+ok 4.7 including the page's own text
+ok 4.8 three drinks bound three click handlers
+   the handler ids the batch carried: 3, 5, 7
+ok 4.9 a click answers one batch
+ok 4.10 it is batch 2
+ok 4.11 the page says what was picked
+ok 4.12 and an untouched row is not on the wire
+ok 4.13 a click on a stale-looking slot still lands
+ok 4.14 on the row it belongs to
+ok 4.15 one circuit is held
+ok 4.16 and the set recorded no faults
+
+69 checks, 0 bad

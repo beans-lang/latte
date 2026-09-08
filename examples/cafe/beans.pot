@@ -1,0 +1,13 @@
+module cafe
+kind application
+
+# A whole latte application, in the shape a person would write one: pages in
+# their own package, the wiring in `main.b`, and nothing that reaches into
+# latte's internals.
+#
+# Both rows are relative to THIS manifest, and both are written so the same
+# text resolves from `community-libs/latte/examples/cafe` and from
+# `.worktrees/latte-wN/examples/cafe` — four levels up is `beans-lang/` either
+# way. latte's own manifest does the same thing for the same reason.
+require path "../.."
+require path "../../../../community-libs/espresso"

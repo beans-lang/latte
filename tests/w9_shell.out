@@ -1,0 +1,84 @@
+-- 1. the two spellings of one path
+ok 1.1 the client path
+ok 1.2 the socket path
+ok 1.3 the shell's default script src is that path
+ok 1.4 the shell's default socket is that path
+ok 1.5 the boot attribute is the one latte.js reads
+ok 1.6 the root element id
+
+-- 2. the document latte ships
+ok 2.1 the whole document
+ok 2.2 the page body is inserted raw, not escaped again
+
+-- 3. what the knobs change
+ok 3.1 no title means no <title> element at all
+ok 3.2 a title is escaped as text
+ok 3.3 stylesheets are emitted in order
+ok 3.4 a page with no circuit still loads the client
+ok 3.5 and carries no boot attribute
+ok 3.6 and names no socket
+ok 3.7 a host-decided id reaches the script tag
+ok 3.8 and latte's own default never writes one
+ok 3.9 the root element is renamed in both places it appears
+
+-- 4. the refusals, each beside the case it must accept
+ok 4a.1 ACCEPTED: a language tag with a hyphen
+ok 4a.2 a space is not a language tag
+ok 4a.3 and neither is nothing
+ok 4b.1 ACCEPTED: letters, digits, '-' and '_'
+ok 4b.2 an id may not start with a digit
+ok 4b.3 an id that would end the attribute is refused
+ok 4c.1 ACCEPTED: another path on this origin
+ok 4c.2 ACCEPTED: a CDN, because HeaderOptions exists to allow one
+ok 4c.3 a javascript: src is refused
+ok 4c.4 and the check is not fooled by case
+ok 4c.5 a data: src is refused
+ok 4c.6 a quote would end the attribute and start another
+ok 4c.6b and a space splits the value in two
+ok 4c.7 an empty src is refused
+ok 4c.8 ACCEPTED: two stylesheets
+ok 4c.9 and the message names WHICH one
+ok 4d.1 ACCEPTED: an absolute path
+ok 4d.2 an absolute URL is refused
+ok 4d.3 and so is a protocol-relative one
+ok 4d.4 and so is a relative one
+ok 4e.1 ACCEPTED: exactly the 16 characters CircuitSet.open needs
+ok 4e.2 one character fewer is an id no socket can use
+ok 4e.3 and a character that would end the attribute is refused
+ok 4e.4 an id on a page that says it wants no circuit is a contradiction
+ok 4f.1 render_shell refuses what faults() names
+ok 4f.2 and emits nothing at all
+ok 4f.3 ACCEPTED: the same options with the URL made a path
+
+-- 5. nothing in the document needs 'unsafe-inline'
+ok 5.1 no inline script
+ok 5.2 no inline style element
+ok 5.3 no style attribute
+ok 5.4 no on* attribute
+ok 5.5 no javascript: anywhere
+ok 5.6 exactly one <script, and it has a src
+ok 5.7 and the policy it holds under
+
+-- 6. the asset route
+ok 6a.1 a missing client file is refused AT STARTUP
+ok 6a.2 an asset path that is not absolute is refused
+ok 6a.3 an empty asset is refused, not served
+ok 6a.4 ACCEPTED: the shipped client at its default path
+ok 6a.5 which is read from
+ok 6b.1 status
+ok 6b.2 content type
+ok 6b.3 the body is the client, not a stub
+ok 6c.1 the tag itself is 304
+ok 6c.2 one member of a list is 304
+ok 6c.3 a weak tag is 304, which is the comparison this header uses
+ok 6c.4 '*' is 304 for anything that exists
+ok 6c.5 ACCEPTED: a tag that does not match gets the file
+ok 6c.6 all of it
+ok 6d.1 ACCEPTED: GET
+ok 6d.2 ACCEPTED: HEAD
+ok 6d.3 POST is refused
+ok 6d.4 and says what it answers
+ok 6d.5 and so is DELETE
+ok 6e.1 a path the asset route does not own falls through
+
+71 checks, 0 bad
