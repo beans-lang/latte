@@ -1,0 +1,228 @@
+-- 1. hello, then attach
+ok 1.1 nothing is queued before open
+ok 1.2 hello is the first frame, and it goes out before any render
+ok 1.3 nothing has attached yet
+ok 1.4 no batch has been numbered
+ok 1.5 attach attaches
+ok 1.6 attach publishes exactly one batch
+ok 1.7 and exactly one frame goes out
+ok 1.8 batch 1 is the whole page, built from the reference pool
+ok 1.9 and the HTML of the same tree
+ok 1.10 one batch is retained until it is acked
+ok 1.11 nothing is acked yet
+
+-- 2. one click, one text edit, and nothing else
+ok 2.1 the handler ran
+ok 2.2 one frame
+ok 2.3 one component, one edit, no reference pool and no disposals
+ok 2.4 the boundary component did not re-render
+ok 2.5 the counter rendered exactly twice: the mount and the click
+ok 2.6 the second click is the same shape with a new body
+ok 2.7 the count is 2
+ok 2.8 a wrong-family event on a real slot sends nothing
+ok 2.9 and it is not an error
+ok 2.10 nor did it run the handler
+
+-- 3. a stale slot id is a race, not an error
+ok 3.1 nothing goes out
+ok 3.2 the circuit lives
+ok 3.3 the handler did not run
+ok 3.4 it is recorded server-side and nowhere else
+ok 3.5 the control: a real slot id does run
+ok 3.6 and does send a batch
+
+-- 4. the inbox: a job posted from another OS thread
+ok 4.1 the post was taken
+ok 4.2 the slot is claimed until the job runs
+ok 4.3 the drain runs it
+ok 4.4 and releases the slot
+ok 4.5 the job ran on the circuit
+ok 4.6 a job that dirtied nothing publishes nothing
+ok 4.7 the second job ran
+ok 4.8 and what it dirtied went out
+ok 4.9 two are taken and the rest are refused, never parked
+ok 4.10 the drain empties it
+ok 4.11 and the depth is back to zero
+
+-- 5. a handler that panics, with a boundary above it
+ok 5.1 two frames: the report, then the fallback
+ok 5.2 the client is told a trace id and never the message
+ok 5.3 the nearest boundary renders its fallback, and the counter is disposed
+ok 5.4 the circuit LIVES
+ok 5.5 the message stayed server-side, with its trace id
+ok 5.6 the boundary knows which failure it is showing
+ok 5.7 the page is the fallback
+ok 5.8 the control: no err frame at all
+ok 5.9 and no trace was issued
+
+-- 5b. the same panic with NO boundary anywhere above it
+ok 5.10 the circuit ENDS, because half a handler ran
+ok 5.11 ended
+ok 5.12 with the panic kind
+ok 5.13 and the message is still only server-side
+ok 5.14 the control: a page with no boundary is fine until one panics
+
+-- 6. recover(), then a click on a slot the failure disposed
+ok 6.1 the page is on its error screen
+ok 6.2 recover() dirties the boundary and nothing has flushed yet
+ok 6.3 and nothing is queued for the wire
+ok 6.4 the recovery reaches the wire on a message that dispatched NOTHING
+ok 6.5 and it re-mounts the body
+ok 6.6 the page is the counter again
+ok 6.7 the OLD id is dead for good
+ok 6.8 the NEW id works
+ok 6.9 a tick with no job to run still settles what is pending
+ok 6.10 and the batch went out
+ok 6.11 a tick with nothing pending does nothing
+ok 6.12 and sends nothing
+
+-- 7. the render-pass cap
+ok 7.1 the mount rendered it once
+ok 7.2 it re-rendered itself exactly max_renders times
+ok 7.3 the report and the fallback
+ok 7.4 reported as a contained failure, not a hung worker
+ok 7.5 and the sentence names what actually happened
+ok 7.6 the circuit lives
+ok 7.7 the boundary shows the fallback
+ok 7.8 the control: one notify is one render
+ok 7.9 and nothing was contained
+ok 7.10 no trace was issued
+
+-- 8. acks, retention, disconnect and replay
+ok 8.1 three batches have been numbered
+ok 8.2 all three are retained
+ok 8.3 an ack retires everything at or below it
+ok 8.4 and moves the acked mark
+ok 8.5 a repeated ack is not an error and changes nothing
+ok 8.6 the circuit lives
+ok 8.7 an older ack carries no information and is ignored
+ok 8.8 and is not fatal
+ok 8.9 the socket is gone
+ok 8.10 anything queued for a socket that is gone is dropped
+ok 8.11 inside the retention window it has not expired
+ok 8.12 past it, it has
+ok 8.13 the exact boundary is one millisecond short
+ok 8.14 resume replays every un-acked batch
+ok 8.15 and the connection is up again
+ok 8.16 the replayed frames are the ones that were sent, byte for byte
+ok 8.17 a resume that acks more replays less
+ok 8.18 and retains nothing
+
+-- 9. every way a circuit ends, each with a control
+ok 9.1 protocol
+ok 9.2 the control: a well-formed message does not end it
+ok 9.3 protocol: anything but attach or resume, before attach
+ok 9.4 the control: attach is what may arrive first
+ok 9.5 protocol: attach twice
+ok 9.6 protocol: an ack from the future
+ok 9.7 the control: an ack for the batch that WAS sent
+ok 9.8 forbidden: a circuit id that is not this one
+ok 9.9 forbidden: a scheme-relative nav target
+ok 9.10 notfound
+ok 9.11 the control: a url that IS answered
+ok 9.12 and it rendered
+ok 9.13 stale: the client is behind what this end still holds
+ok 9.14 the control: a resume exactly at the acked mark
+ok 9.15 the control: two batches out is inside the window
+ok 9.16 limit: the third crosses it
+ok 9.17 the control: a range exactly at the cap
+ok 9.18 limit: one row over
+ok 9.19 the control: one millisecond short of the timeout
+ok 9.20 and it is still alive
+ok 9.21 idle
+ok 9.22 the control: a handle the set holds
+ok 9.23 gone: a handle it does not
+ok 9.24 the first stop wins and the second writes nothing
+ok 9.25 and the kind is the first one
+ok 9.26 an ended circuit ignores everything after
+
+-- 10. navigation, in both directions
+ok 10.1 a plain path
+ok 10.2 the root
+ok 10.3 a path with a query
+ok 10.4 a path with a fragment
+ok 10.5 dots that are not a segment
+ok 10.6 a single dot segment
+ok 10.7 .. inside the query, which is not the path
+ok 10.8 the empty string
+ok 10.9 a relative path
+ok 10.10 an absolute url
+ok 10.11 scheme-relative, which a browser reads as another origin
+ok 10.12 a backslash, which several browsers normalise to a slash
+ok 10.13 a newline
+ok 10.14 a nul
+ok 10.15 DEL
+ok 10.16 a .. segment
+ok 10.17 a .. segment before the query
+ok 10.18 a javascript: url
+ok 10.19 the first page
+ok 10.20 nav re-mounts and publishes the new page
+ok 10.21 and the page changed
+ok 10.22 a nav to a url nothing answers ends the circuit
+ok 10.23 the server cannot navigate off-origin either
+ok 10.24 and nothing was written
+ok 10.25 nor did it end the circuit
+ok 10.26 the control: a local target is written
+ok 10.27 as a nav frame
+
+-- 11. JS interop: a call out, and a result back
+ok 11.1 the first call id is 1
+ok 11.2 the call goes out naming a registered function, never a string to eval
+ok 11.3 it is outstanding
+ok 11.4 the continuation ran on the circuit fiber
+ok 11.5 and the call is retired
+ok 11.6 a continuation that changed nothing publishes nothing
+ok 11.7 a result for a call nobody made is not fatal
+ok 11.8 and it is recorded
+ok 11.9 a duplicate result does not run the continuation twice
+ok 11.10 a continuation that dirties the page publishes
+ok 11.11 a panicking continuation is contained too
+ok 11.12 and the circuit lives
+
+-- 12. the set: opening, evicting, resuming, sweeping
+ok 12.1 the first handle
+ok 12.2 one circuit
+ok 12.3 and it can be found by id
+ok 12.4 an id nobody opened
+ok 12.5 open() said hello
+ok 12.6 an id under 16 characters is refused
+ok 12.7 no id at all is refused
+ok 12.8 the same id twice is refused
+ok 12.9 and each says why
+ok 12.10 the factory saw this connection's facts and the url
+ok 12.11 two circuits fill it
+ok 12.12 a third is refused while both are live
+ok 12.13 and it says so
+ok 12.14 disconnecting one retains it
+ok 12.15 now the third opens
+ok 12.16 still two
+ok 12.17 and the evicted one is gone
+ok 12.18 disconnect the second
+ok 12.19 resume finds it inside the window
+ok 12.20 and not past it
+ok 12.21 which also forgot it
+ok 12.22 resume on an id nobody opened
+ok 12.23 a sweep inside the window drops nothing
+ok 12.24 past it, it drops the disconnected one
+ok 12.25 and leaves the live one
+ok 12.26 the circuit ended
+ok 12.27 disconnecting an ended circuit retains nothing
+ok 12.28 it is forgotten
+ok 12.29 and an unknown handle reads as ended
+
+-- 13. the seam: std types only, because latte.web cannot name a Circuit
+ok 13.1 open through the closure
+ok 13.2 attach through the closure comes back as a list of strings
+ok 13.3 ending through the closure
+ok 13.4 a tick with nothing to do returns nothing
+ok 13.5 the wake channel takes a marker without parking
+ok 13.6 and hands it back
+ok 13.7 disconnect through the closure
+ok 13.8 resume through the closure
+ok 13.9 an unknown handle's wake channel is a real channel
+ok 13.10 with exactly one slot
+
+-- 14. what Windows is owed
+ok 14.1 the refusal names the program, not the emitter
+
+197 checks, 0 bad
