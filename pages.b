@@ -800,6 +800,33 @@ pub class PageMap {
         if best < 0 { return none }
         return some(new PageMatch(self.pages[best], move best_values))
     }
+
+    /// Every method some usable page serves at `path`, sorted and without
+    /// repeats.
+    ///
+    /// `find` deliberately answers `none` for a path that matches a page whose
+    /// methods do not serve the request, so that two pages can share a path and
+    /// split the methods. That leaves the caller unable to tell "no such page"
+    /// from "not that method", which is a 404 where the answer is a 405 — and a
+    /// 405 is not cosmetic here: a form posting to a page that only serves GET
+    /// is one of the two ways a form silently does nothing, and a 404 sends its
+    /// author looking at the route.
+    pub fn allowed(path: string) -> List<string> {
+        var out: List<string> = []
+        for plan: PagePlan in self.pages {
+            if !plan.usable() { continue }
+            match plan.route.matches(path) {
+                some(_) => {
+                    for method: string in plan.methods {
+                        if !out.contains(method) { out.push(method) }
+                    }
+                }
+                none => {}
+            }
+        }
+        out.sort()
+        return move out
+    }
 }
 
 /// Walk every type in the executable once and turn the annotated ones into
@@ -1264,6 +1291,18 @@ pub fn argument_bool(use: reflect.Annotation, name: string) -> bool {
             }
         }
         none => { return false }
+    }
+}
+
+pub fn argument_int(use: reflect.Annotation, name: string) -> int {
+    match use.argument(name) {
+        some(argument) => {
+            match argument.value().as_int() {
+                some(value) => { return value }
+                none => { return 0 }
+            }
+        }
+        none => { return 0 }
     }
 }
 

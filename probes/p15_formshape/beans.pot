@@ -1,0 +1,2 @@
+module p15_formshape
+kind application
