@@ -736,6 +736,15 @@ pub class Circuit {
     /// The whole page as HTML — what a prerender sends, and what a suite
     /// compares an applier against.
     pub fn html() -> string { return self.renderer.html() }
+
+    /// The mounted page, or `none` before `attach`.
+    ///
+    /// A job posted from another OS thread arrives as a `send fn(Circuit)`,
+    /// and a `send` closure may capture nothing that is not itself `Send` — so
+    /// a poster cannot bring the component along. This is how the job it
+    /// posted finds the page: on the circuit's own fiber, where touching
+    /// component state is safe, and nowhere else.
+    pub fn page_component() -> Option<Component> { return self.page }
 }
 
 fn kind_name(kind: int) -> string {
@@ -804,6 +813,10 @@ pub class CircuitSet {
 
     live: Map<int, Circuit> = {}
     handles: Map<string, int> = {}
+    /// The session each circuit was opened for, from `facts["session"]`. It is
+    /// what `adopt` compares: a reconnect may only pick up a circuit its own
+    /// session opened, or one stolen id would hand a whole live page away.
+    sessions: Map<int, string> = {}
     order: List<int> = []
     next_handle: int = 1
 
@@ -852,8 +865,87 @@ pub class CircuitSet {
         made.open(now_ms)
         self.live[handle] = made
         self.handles[id] = handle
+        self.sessions[handle] = read_fact(facts, "session")
         self.order.push(handle)
         return handle
+    }
+
+    /// The session a handle belongs to, or `""` when the host named none.
+    pub fn session_of(handle: int) -> string {
+        match self.sessions.get(handle) {
+            some(name) => { return name }
+            none => { return "" }
+        }
+    }
+
+    /// Whatever is queued for the wire on `handle`, and nothing else.
+    ///
+    /// `open` queues the `hello` before any message has arrived, so the host's
+    /// writer needs a way to collect it that is not `accept` and not `tick`.
+    /// This is that way, and it is the only other reader of the outbox.
+    pub fn outbox(handle: int) -> List<string> {
+        match self.live.get(handle) {
+            some(found) => { return found.take_outbox() }
+            none => { return [] }
+        }
+    }
+
+    /// The socket's FIRST message may be a `resume` naming a circuit this
+    /// connection did not open. Answer the handle that message belongs to.
+    ///
+    /// A reconnecting client comes back on a new socket, and the host has
+    /// already opened a fresh circuit for it and announced that circuit's id
+    /// in `hello` — it could not have done otherwise, because nothing in the
+    /// handshake says which circuit the client is coming back to. So the
+    /// client's `resume` names a DIFFERENT circuit, and `Circuit.on_resume`
+    /// would refuse it as `forbidden`. This moves the socket to the retained
+    /// circuit instead and retires the fresh one, which nothing ever attached
+    /// to and which therefore has nothing worth keeping.
+    ///
+    /// It answers `handle` unchanged whenever it will not move the socket, and
+    /// then `accept` says why in a `bye` the client can read: an unknown id or
+    /// an expired one is `forbidden`, a resume of this very circuit is
+    /// `protocol`. Nothing here ends a circuit and nothing here writes.
+    ///
+    /// **Only the first message can adopt.** Once a socket's circuit is
+    /// attached, a later `resume` on it is an ordinary in-circuit resume and
+    /// belongs to the circuit it is already talking to.
+    pub fn adopt(handle: int, text: string, now_ms: int) -> int {
+        var fresh: Circuit = new Circuit("", self.options,
+            fn(url: string) -> Option<Component> { return none })
+        match self.live.get(handle) {
+            some(found) => { fresh = found }
+            none => { return handle }
+        }
+        if fresh.is_attached() { return handle }
+        let message: ClientMessage = decode_client(text, self.options.wire)
+        if message.fault != "" { return handle }
+        if message.kind != CLIENT_RESUME { return handle }
+        if message.circuit == "" { return handle }
+        if message.circuit == fresh.id { return handle }
+        var target: int = -1
+        match self.handles.get(message.circuit) {
+            some(other) => { target = other }
+            none => { return handle }
+        }
+        var retained: Circuit = fresh
+        match self.live.get(target) {
+            some(found) => { retained = found }
+            none => { return handle }
+        }
+        if retained.expired(now_ms) { self.forget(target); return handle }
+        if retained.ending() { self.forget(target); return handle }
+        if !retained.is_attached() { return handle }
+        // The control that makes a stolen id useless. Both sides come from
+        // `facts["session"]`, which the host reads from the handshake and the
+        // wire never touches.
+        if self.session_of(target) != self.session_of(handle) {
+            self.faults.push(
+                "a resume named a circuit that belongs to another session")
+            return handle
+        }
+        self.forget(handle)
+        return target
     }
 
     /// The per-circuit page factory: the set's `make` with this connection's
@@ -967,6 +1059,7 @@ pub class CircuitSet {
             none => {}
         }
         let _: bool = self.live.remove(handle)
+        let _: bool = self.sessions.remove(handle)
         var kept: List<int> = []
         for existing: int in self.order { if existing != handle { kept.push(existing) } }
         self.order = move kept
@@ -1021,6 +1114,16 @@ pub class CircuitSet {
 
     pub fn wake_fn() -> fn(int) -> Channel<string> {
         return fn(handle: int) -> Channel<string> { return self.wake_of(handle) }
+    }
+
+    pub fn outbox_fn() -> fn(int) -> List<string> {
+        return fn(handle: int) -> List<string> { return self.outbox(handle) }
+    }
+
+    pub fn adopt_fn() -> fn(int, string, int) -> int {
+        return fn(handle: int, text: string, now_ms: int) -> int {
+            return self.adopt(handle, text, now_ms)
+        }
     }
 }
 

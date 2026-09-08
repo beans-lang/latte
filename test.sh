@@ -1017,7 +1017,7 @@ run_refusal_coverage_leg() {
     # second unguarded site while it waits.
     refusal_coverage_pending virtual.b 1
     refusal_coverage_pending pages.b 8
-    refusal_coverage_pending circuit.b 3
+    refusal_coverage_pending circuit.b 4
     refusal_coverage_sweep
     # One line, and only when every file passed. A partial "ok … all 42" printed
     # beside a FAILED line for a seventh file is exactly the shape RULES.md
