@@ -203,4 +203,51 @@ ok   a backwards numeric window: the control raises nothing:
    1x scan / a rule on a type that is not a @form
 ok   every fault site in forms.b has a case: 17
 
-120 checks, 0 bad
+== 7. a failed post comes back as it was typed ==
+ok   a value that did not parse: posted=true name=[Ada] email=[a@b.c] age=[twelve] model.age=41
+ok   a value that parsed and broke a rule: posted=true name=[Ada] email=[a@b.c] age=[7] model.age=7
+ok   a value that parsed to something spelled differently: posted=true name=[Ada] email=[a@b.c] age=[007] model.age=7
+ok   a value is shown as it was judged, not as it arrived: posted=true name=[Al] email=[a@b.c] age=[36] model.age=36
+ok   a box the user emptied stays empty: posted=true name=[] email=[a@b.c] age=[36] model.age=36
+ok   a field the body did not carry falls back to the model: posted=true name=[SEED] email=[seed@example.com] age=[41] model.age=41
+ok   a state no post produced says so
+ok   and every box falls back: 41
+ok   including one whose fallback is empty: 
+ok   the posted map holds the @fields the body carried, and only those: age,email,name
+ok   and the values are the trimmed text: twelve
+ok   an unannotated name is ignored, not echoed: is_admin
+ok   the result knows a post produced it
+
+== 8. a whole number and a decimal, as a person spells them ==
+-- leading zeros and signs
+ok   a leading zero is not a syntax error: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[]
+ok   all zeros is zero, and then the range has its say: name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be between 18 and 120]
+ok   a plus sign: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[]
+ok   a minus sign binds and then breaks the range: name=Ada email=a@b.c age=-5 sub=off score=0 admin=no ignored=[] errors=[age: age must be between 18 and 120]
+-- and what is still refused
+ok   a number too large for an int: name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]
+ok   the same number written with leading zeros is still too large: name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]
+ok   digits with something after them: name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]
+ok   a sign and nothing else: name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]
+ok   a decimal is not a whole number: name=Ada email=a@b.c age=0 sub=off score=0 admin=no ignored=[] errors=[age: age must be a whole number]
+-- a route still has the stricter rule
+ok   a route accepts the canonical spelling
+ok   and refuses one with a leading zero
+ok   a form accepts both
+ok   with the same value: 7
+ok   and neither accepts an overflow
+-- decimals
+ok   a fraction: name=Ada email=a@b.c age=36 sub=off score=7.5 admin=no ignored=[] errors=[]
+ok   no digits before the point: name=Ada email=a@b.c age=36 sub=off score=0.5 admin=no ignored=[] errors=[]
+ok   no digits after it: name=Ada email=a@b.c age=36 sub=off score=5 admin=no ignored=[] errors=[]
+ok   an exponent, which is what a number input sends for a big value: name=Ada email=a@b.c age=36 sub=off score=100 admin=no ignored=[] errors=[]
+-- the three values to_float reads and no form should
+ok   nan is not a number a form takes: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]
+ok   nor is infinity: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]
+ok   nor a hexadecimal spelling of a different value: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]
+ok   and an exponent that overflows to infinity is refused with them: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]
+ok   an exponent marker with no exponent: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]
+ok   a point on its own: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]
+ok   a real number outside the range is still refused by the range: name=Ada email=a@b.c age=36 sub=off score=100.5 admin=no ignored=[] errors=[score: score must be between 0 and 100]
+
+158 checks, 0 bad
