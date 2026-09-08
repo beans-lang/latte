@@ -157,6 +157,48 @@ async function main() {
         String(sockets[0].got[0]).indexOf('"t":"hello"') >= 0);
     eq('4.5 nothing is picked yet',
        await page.textContent('#picked'), 'nothing picked yet');
+    // The shell SERVER-RENDERS the page into `#latte-root`, so `#drinks` is in
+    // the document before any socket opens. That means 4.1 does not prove the
+    // circuit did anything — these two do. The applier keeps an
+    // element -> logical-node WeakMap built as IT creates nodes, and the
+    // delegated click listener walks up from `event.target` into that map; a
+    // node the applier did not create carries no binds. So "the batch arrived
+    // AND the applier replaced the server's markup with its own" is the whole
+    // precondition for a click doing anything at all.
+    yes('4.6 the browser answered the hello with an attach',
+        sockets.length === 1 &&
+        sockets[0].sent.some(f => String(f).indexOf('"t":"attach"') >= 0));
+    yes('4.7 and the server sent a batch back',
+        sockets.length === 1 &&
+        sockets[0].got.some(f => String(f).indexOf('"t":"batch"') >= 0));
+    // D5 is "replace on attach for v1": the batch carries the whole page, so
+    // the server-rendered markup in `#latte-root` must be REPLACED by what the
+    // applier builds, not joined by it. If both survive, the document holds two
+    // copies of every element — and `#drinks` is an id selector, so it matches
+    // the FIRST, which is the server's inert copy. A user clicks that one.
+    const copies = await page.evaluate(() => ({
+        roots: document.querySelectorAll('#latte-root').length,
+        allDrinks: document.querySelectorAll('li.drink').length,
+        firstDrinks: document.querySelectorAll('#drinks li.drink').length,
+        pickedNodes: document.querySelectorAll('#picked').length,
+    }));
+    eq('4.8 the page appears ONCE in the document, not once from the shell and ' +
+       'once from the applier', copies.allDrinks, copies.firstDrinks);
+    eq('4.9 and there is one #picked, not two', copies.pickedNodes, 1);
+    yes('4.10 the applier OWNS the drink buttons it is about to be clicked on ' +
+        '(a server-rendered node it did not create carries no binds)',
+        await page.evaluate(() => {
+            var api = window.latte;
+            if (!api || !api.current || !api.current.applier) { return false; }
+            var map = api.current.applier.nodes;
+            if (!map) { return false; }
+            var buttons = document.querySelectorAll('#drinks li.drink button');
+            if (buttons.length === 0) { return false; }
+            for (var i = 0; i < buttons.length; i++) {
+                if (!map.has(buttons[i])) { return false; }
+            }
+            return true;
+        }));
 
     // ---- 5. a click on a CHILD component ---------------------------------
     //
@@ -165,6 +207,7 @@ async function main() {
     // a real click, an `ev` message on a real socket, a callback across a
     // component boundary, `notify()` marking the PARENT dirty, a re-render and
     // a diff, and markup back into a real DOM.
+    console.log('   (nodes in the document: ' + JSON.stringify(copies) + ')');
     const firstDrink = await page.getAttribute('#drinks li.drink button', 'data-drink');
     yes('5.1 the drink buttons carry the key they were rendered with',
         typeof firstDrink === 'string' && firstDrink.length > 0);
@@ -237,6 +280,13 @@ async function main() {
     // all three are a page that simply never changes, which reads exactly like
     // a server that never answered.
     eq('8.1 the page logged nothing at all', console_lines.join(' | '), '');
+
+    if (bad > 0 && sockets.length > 0) {
+        console.log('--- socket 1, as the browser saw it ---');
+        console.log('   sent: ' + JSON.stringify(sockets[0].sent.slice(0, 4)));
+        console.log('   got:  ' + JSON.stringify(
+            sockets[0].got.slice(0, 3).map(f => String(f).slice(0, 2400))));
+    }
 
     console.log('W8B-CAFE-JS-SOCKETS ' + sockets.length);
     console.log('W8B-CAFE-JS-PAGES ' + pageLoads);
