@@ -845,6 +845,23 @@ run_examples_leg
 #
 # Nothing here SKIPs. Every input is a file in this repo; if one is missing or
 # shaped differently, the audit has moved and that is a failure, not a shrug.
+#
+# A report site is ANY `<something>.faults.push(`, not only `self.faults.push(`.
+# It was `self.` until 2026-09-08 and that was a hole exactly the shape of the
+# thing this leg exists to close: a refusal written in a free function, which is
+# how a whole-program scan writes them, went uncounted. `pages.b` had 31 report
+# sites and this leg saw 8, so 23 refusals had no ratchet at all while the
+# summary line said `ok`. Every other file in the tree used `self.` and none of
+# their numbers moved, which is why the fix was one line and not a round of
+# renumbering.
+count_sites() {
+    # Comment lines are dropped first, so a file that EXPLAINS this leg is not
+    # counted by it. Everything else that pushes onto a `faults` list is a site,
+    # receiver and all: `map.pages[first].faults.push(...)` is a refusal too, and
+    # a pattern that insisted on a plain identifier in front silently dropped it.
+    grep -v '^[[:space:]]*//' "$1" | grep -c '\.faults\.push' || true
+}
+
 refusal_coverage_for() {
     local file="$1" golden="$2" suite="$3"
     classified="$classified $file"
@@ -859,7 +876,7 @@ refusal_coverage_for() {
     fi
 
     local sites listed
-    sites=$(grep -c 'self\.faults\.push' "$source" || true)
+    sites=$(count_sites "$source")
     # The tally the audit prints, one line per distinct site, from its header
     # until the first line that is not a tally row.
     listed=$(awk -v want="-- the sites in $file, and how many shapes reach each" '
@@ -910,7 +927,7 @@ refusal_coverage_none() {
         return 0
     fi
     local sites
-    sites=$(grep -c 'self\.faults\.push' "$source" || true)
+    sites=$(count_sites "$source")
     if [[ "$sites" -ne 0 ]]; then
         echo "--- refusal-coverage FAILED: $file has $sites report site(s) and no audit ---" >&2
         echo "    $file had none when this leg was written, so it has no tally to" >&2
@@ -927,6 +944,12 @@ refusal_coverage_none() {
 # quietly: the count is recorded here, and a new site fails the gate with the
 # same instructions as everywhere else. `render.b` is W4's, and its two sites
 # are the only ones in latte's core with no case — lanes/W1.md, SIXTH AGENT.
+#
+# `pages.b`'s 31 include FOUR that no program can reach: `@page`, `@layout` and
+# `@param` are not `@repeatable`, so a "carries @X more than once" refusal
+# stands behind a compile error. They are marked as such beside
+# `annotations_named` in pages.b, with the probe that measured it. A number
+# recorded here is a ratchet and not a claim that every site is reachable.
 refusal_coverage_pending() {
     local file="$1" recorded="$2"
     classified="$classified $file"
@@ -939,7 +962,7 @@ refusal_coverage_pending() {
         return 0
     fi
     local sites
-    sites=$(grep -c 'self\.faults\.push' "$source" || true)
+    sites=$(count_sites "$source")
     if [[ "$sites" -ne "$recorded" ]]; then
         echo "--- refusal-coverage FAILED: $file has $sites report sites, $recorded were recorded and none are audited ---" >&2
         echo "    Add a trip case with the exact fault text and a positive control" >&2
@@ -973,7 +996,7 @@ refusal_coverage_sweep() {
     while IFS= read -r source; do
         rel=${source#"$ROOT"/}
         case " $classified " in *" $rel "*) continue ;; esac
-        sites=$(grep -c 'self\.faults\.push' "$source" || true)
+        sites=$(count_sites "$source")
         if [[ "$sites" -ne 0 ]]; then
             echo "--- refusal-coverage FAILED: $rel has $sites report site(s) and this leg does not name it ---" >&2
             echo "    A refusal nothing exercises is invisible in a green run. Give it a" >&2
@@ -1010,10 +1033,11 @@ run_refusal_coverage_leg() {
     refusal_coverage_for stream.b    tests/w6_stream.out  "tests/w6_stream.b § 4"
     refusal_coverage_for virtual.b   tests/w6_virtual.out "tests/w6_virtual.b § 4"
     refusal_coverage_for upload.b    tests/w6_upload.out  "tests/w6_upload.b § 6"
+    refusal_coverage_for forms.b     tests/w4_forms.out   "tests/w4_forms.b § 6"
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
     refusal_coverage_pending render.b 2
-    refusal_coverage_pending pages.b 8
+    refusal_coverage_pending pages.b 31
     refusal_coverage_pending circuit.b 4
     refusal_coverage_sweep
     # One line, and only when every file passed. A partial "ok … all 42" printed
