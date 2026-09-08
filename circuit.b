@@ -736,6 +736,15 @@ pub class Circuit {
     /// The whole page as HTML — what a prerender sends, and what a suite
     /// compares an applier against.
     pub fn html() -> string { return self.renderer.html() }
+
+    /// The mounted page, or `none` before `attach`.
+    ///
+    /// A job posted from another OS thread arrives as a `send fn(Circuit)`,
+    /// and a `send` closure may capture nothing that is not itself `Send` — so
+    /// a poster cannot bring the component along. This is how the job it
+    /// posted finds the page: on the circuit's own fiber, where touching
+    /// component state is safe, and nowhere else.
+    pub fn page_component() -> Option<Component> { return self.page }
 }
 
 fn kind_name(kind: int) -> string {
