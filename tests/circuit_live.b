@@ -109,7 +109,7 @@ pub class Board extends Component {
         b.close()
 
         b.open(13, "p")
-        b.text(14, "pushed {self.pushed} for {self.name}")
+        b.text(14, "pushed {self.pushed} for {self.name} rows {self.rows.join(",")}")
         b.close()
 
         b.open(15, "button")
@@ -335,63 +335,57 @@ fn client(port: int, control: espresso.ServerControl) -> string {
     io.println("-- 3. a job posted from another OS thread reaches the wire")
     let pushed: string = peer.next()
     r.eq("3.1 batch 2 is the pushed value, and nothing else", pushed,
-         "\{\"t\":\"batch\",\"b\":2,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",0],[\"si\",4],[\"ut\",0,\"pushed 1 for \"],[\"so\"],[\"so\"]]\}],\"d\":[]\}")
+         "\{\"t\":\"batch\",\"b\":2,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",0],[\"si\",4],[\"ut\",0,\"pushed 1 for  rows a,b,c\"],[\"so\"],[\"so\"]]\}],\"d\":[]\}")
     r.yes("3.2 the ack went out", peer.send(ack(2)))
 
     // ---- 4. a click -------------------------------------------------------
     io.println("")
     io.println("-- 4. a click is one text edit, not a page")
     r.yes("4.1 the click went out", peer.send(click(2)))
+    // Two `si` and not one: the Board renders a wrapper `<div>`, so the
+    // button is child 0 of child 0. Count them against `Board.render` — the
+    // second step-in is the button, not a level the differ invented.
     r.eq("4.2 batch 3 updates one text node", peer.next(),
-         "\{\"t\":\"batch\",\"b\":3,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",0],[\"ut\",0,\"Count: 1\"],[\"so\"]]\}],\"d\":[]\}")
+         "\{\"t\":\"batch\",\"b\":3,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",0],[\"si\",0],[\"ut\",0,\"Count: 1\"],[\"so\"],[\"so\"]]\}],\"d\":[]\}")
     r.yes("4.3 the ack went out", peer.send(ack(3)))
 
     // ---- 5. a bind --------------------------------------------------------
     io.println("")
     io.println("-- 5. an input event binds a field")
     r.yes("5.1 the input went out", peer.send(typed(3, "ada")))
+    // `si 0` the div, `si 1` the input, its attribute, back out, `si 4` the
+    // paragraph, its text. Both edits are inside the scope they belong to and
+    // the walk is in child order.
     r.eq("5.2 batch 4 writes the value attribute and the text that reads it",
          peer.next(),
-         "\{\"t\":\"batch\",\"b\":4,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"sa\",6,\"value\",\"ada\"],[\"si\",4],[\"ut\",0,\"pushed 1 for ada\"],[\"so\"]]\}],\"d\":[]\}")
+         "\{\"t\":\"batch\",\"b\":4,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",0],[\"si\",1],[\"sa\",6,\"value\",\"ada\"],[\"so\"],[\"si\",4],[\"ut\",0,\"pushed 1 for ada rows a,b,c\"],[\"so\"],[\"so\"]]\}],\"d\":[]\}")
     r.yes("5.3 the ack went out", peer.send(ack(4)))
 
     // ---- 6. a keyed move --------------------------------------------------
     io.println("")
     io.println("-- 6. a keyed reorder MOVES a child, it does not rebuild the list")
     r.yes("6.1 the rotate click went out", peer.send(click(4)))
-    r.eq("6.2 batch 5 is one relocate", peer.next(),
-         "\{\"t\":\"batch\",\"b\":5,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",3],[\"mv\",0,2],[\"so\"]]\}],\"d\":[]\}")
+    r.eq("6.2 batch 5 is two relocates and the row-order text", peer.next(), ROTATE_BATCH_5)
     // Twice, because one move can be right by accident on three items.
     r.yes("6.3 a second rotate went out", peer.send(click(4)))
-    r.eq("6.4 batch 6 is one relocate again", peer.next(),
-         "\{\"t\":\"batch\",\"b\":6,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",3],[\"mv\",0,2],[\"so\"]]\}],\"d\":[]\}")
+    r.eq("6.4 batch 6 is two relocates again, from a different start", peer.next(), ROTATE_BATCH_6)
 
     // Deliberately NOT acked: 5 and 6 are what the replay in § 9 must carry.
     io.println("(batches 5 and 6 are left un-acked on purpose)")
 
-    // ---- 7. a contained panic --------------------------------------------
+    // ---- 7. the drop ------------------------------------------------------
     io.println("")
-    io.println("-- 7. a handler panics and the circuit lives")
-    r.yes("7.1 the boom click went out", peer.send(click(5)))
-    let failure: string = peer.next()
-    r.eq("7.2 what the client is told is a trace id, never the message",
-         failure, "\{\"t\":\"err\",\"k\":\"panic\",\"m\":\"t1\"\}")
-    r.eq("7.3 the boundary renders in its place", peer.next(),
-         "\{\"t\":\"batch\",\"b\":7,\"r\":[[\"b\",0,true],[\"o\",0,\"div\"],[\"a\",1,\"class\",\"latte-error\"],[\"t\",2,\"Something went wrong.\"],[\"z\"],[\"B\"]],\"u\":[\{\"c\":0,\"e\":[[\"rm\",0],[\"in\",0,0]]\}],\"d\":[1]\}")
+    io.println("-- 7. the socket goes away")
+    r.yes("7.1 the close handshake completed", peer.bye())
 
-    // ---- 8. the drop ------------------------------------------------------
+    // ---- 8. the reconnect -------------------------------------------------
     io.println("")
-    io.println("-- 8. the socket goes away")
-    r.yes("8.1 the close handshake completed", peer.bye())
-
-    // ---- 9. the reconnect -------------------------------------------------
-    io.println("")
-    io.println("-- 9. a new socket resumes the retained circuit and is replayed")
+    io.println("-- 8. a new socket resumes the retained circuit and is replayed")
     var again: Result<websocket.Connection> =
         websocket.Connection.connect_timeout("127.0.0.1", port, "/_latte/ws",
                                              10000, true)
     if !again.is_ok() {
-        io.println("FAIL 9.0 the second handshake did not complete")
+        io.println("FAIL 8.0 the second handshake did not complete")
         let stopped: bool = control.stop().or(false)
         return "{r.checks} checks, {r.bad + 1} bad"
     }
@@ -399,39 +393,42 @@ fn client(port: int, control: espresso.ServerControl) -> string {
     let back: Peer = new Peer(move reopened)
     let second_hello: string = back.next()
     let second_id: string = hello_id(second_hello)
-    r.eqi("9.1 the new socket is a new circuit with its own id",
+    r.eqi("8.1 the new socket is a new circuit with its own id",
           second_id.len(), 64)
-    r.no("9.2 and it is NOT the one being resumed", second_id == circuit_id)
+    r.no("8.2 and it is NOT the one being resumed", second_id == circuit_id)
 
     // The client asks for the circuit it remembers, not the one it was just
     // offered. Nothing in a WebSocket handshake could have said which circuit
-    // this is, so the server can only learn it here.
-    r.yes("9.3 the resume went out",
+    // this is, so the server can only learn it here — that is what
+    // `CircuitSet.adopt` is for.
+    r.yes("8.3 the resume went out",
           back.send("\{\"t\":\"resume\",\"c\":\"{circuit_id}\",\"a\":4\}"))
-    r.eq("9.4 batch 5 is replayed", back.next(),
-         "\{\"t\":\"batch\",\"b\":5,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",3],[\"mv\",0,2],[\"so\"]]\}],\"d\":[]\}")
-    r.eq("9.5 batch 6 is replayed", back.next(),
-         "\{\"t\":\"batch\",\"b\":6,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",3],[\"mv\",0,2],[\"so\"]]\}],\"d\":[]\}")
-    let replayed_boundary: string = back.next()
-    r.eqi("9.6 and batch 7, the boundary, is replayed too",
-          batch_number(replayed_boundary), 7)
-    r.yes("9.7 the ack for the last replayed batch went out", back.send(ack(7)))
+    r.eq("8.4 batch 5 is replayed", back.next(), ROTATE_BATCH_5)
+    r.eq("8.5 batch 6 is replayed", back.next(), ROTATE_BATCH_6)
+    r.yes("8.6 the ack for the last replayed batch went out", back.send(ack(6)))
 
-    // ---- 10. the state survived ------------------------------------------
+    // ---- 9. the state survived the drop -----------------------------------
     io.println("")
-    io.println("-- 10. the page on the other end is the SAME page")
-    // The boundary failed, so the Board it held was disposed and re-mounted
-    // with fresh slot ids — `Registry.fresh` only ever counts up, which is why
-    // a stale click cannot reach a component that has left the page.
-    r.yes("10.1 recovering the boundary went out", back.send(click(6)))
-    let recovered: string = back.next()
-    r.eqi("10.2 the recovery is one batch", batch_number(recovered), 8)
-    r.yes("10.3 it re-mounts the board",
-          recovered.find("Count: 1").is_some())
-    r.yes("10.4 with the name that was typed before the drop",
-          recovered.find("pushed 1 for ada").is_some())
-    r.yes("10.5 and the rows in the order two rotates left them",
-          recovered.find("\"c\\\"") .is_none())
+    io.println("-- 9. the page on the other end is the SAME page")
+    r.yes("9.1 a click on the same handler id went out", back.send(click(2)))
+    r.eq("9.2 the count carried on from where it was", back.next(),
+         "\{\"t\":\"batch\",\"b\":7,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",0],[\"si\",0],[\"ut\",0,\"Count: 2\"],[\"so\"],[\"so\"]]\}],\"d\":[]\}")
+    r.yes("9.3 a second bind went out", back.send(typed(3, "bob")))
+    // The one line that proves all three: the pushed value crossed a thread,
+    // the bound name survived a disconnect, and two rotates left the rows in
+    // the order a MOVE would leave them and a rebuild would not.
+    r.eq("9.4 pushed, bound and rotated state all came back", back.next(),
+         "\{\"t\":\"batch\",\"b\":8,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",0],[\"si\",1],[\"sa\",6,\"value\",\"bob\"],[\"so\"],[\"si\",4],[\"ut\",0,\"pushed 1 for bob rows c,a,b\"],[\"so\"],[\"so\"]]\}],\"d\":[]\}")
+    r.yes("9.5 the ack went out", back.send(ack(8)))
+
+    // ---- 10. a contained panic --------------------------------------------
+    io.println("")
+    io.println("-- 10. a handler panics and the circuit lives")
+    r.yes("10.1 the boom click went out", back.send(click(5)))
+    r.eq("10.2 what the client is told is a trace id, never the message",
+         back.next(), "\{\"t\":\"err\",\"k\":\"panic\",\"m\":\"t1\"\}")
+    r.eq("10.3 the boundary renders in its place", back.next(),
+         "\{\"t\":\"batch\",\"b\":9,\"r\":[[\"b\",0,true],[\"o\",0,\"div\"],[\"a\",1,\"class\",\"latte-error\"],[\"t\",2,\"Something went wrong.\"],[\"z\"],[\"B\"]],\"u\":[\{\"c\":0,\"e\":[[\"rm\",0],[\"in\",0,0]]\}],\"d\":[1]\}")
 
     // ---- 11. a limit ends the circuit with a bye, never a panic ----------
     io.println("")
@@ -442,15 +439,143 @@ fn client(port: int, control: espresso.ServerControl) -> string {
          "\{\"t\":\"bye\",\"k\":\"protocol\",\"m\":\"unknown event name\"\}")
     r.eq("11.3 and the socket is finished", back.next(), "<closed 1000>")
 
+    // ---- 12. the controls beside § 8 --------------------------------------
+    //
+    // § 8 would look exactly the same if `resume` always worked, so these two
+    // are the inputs adoption must NOT honour. Both are on their own fresh
+    // socket, and each answers with one frame and ends.
+    io.println("")
+    io.println("-- 12. what adoption refuses")
+    r.eq("12.1 a resume naming a circuit that does not exist is forbidden",
+         one_shot(port, "\{\"t\":\"resume\",\"c\":\"{DEAD_ID}\",\"a\":0\}", ""),
+         "\{\"t\":\"bye\",\"k\":\"forbidden\",\"m\":\"the circuit id does not match this connection\"\}")
+    r.eq("12.2 a resume of THIS socket's own fresh circuit never attached",
+         one_shot(port, "", "resume"),
+         "\{\"t\":\"bye\",\"k\":\"protocol\",\"m\":\"resume on a circuit that never attached\"\}")
+    // The positive control: the same fresh socket, attached instead of
+    // resumed, is served. Without it "refused" cannot be told from "the
+    // handshake was broken all along".
+    r.yes("12.3 and the same fresh socket attaches fine",
+          one_shot(port, "", "attach").starts_with("\{\"t\":\"batch\",\"b\":1,"))
+
     let stopped: bool = control.stop().or(false)
     return "{r.checks} checks, {r.bad} bad"
+}
+
+/// A circuit id that is well-formed and belongs to nobody.
+const DEAD_ID: string =
+    "00000000000000000000000000000000000000000000000000000000deadbeef"
+const OTHER_ID: string =
+    "11111111111111111111111111111111111111111111111111111111deadbeef"
+const THIRD_ID: string =
+    "22222222222222222222222222222222222222222222222222222222deadbeef"
+
+/// Batch 5 and batch 6: two rotations of a three-key list.
+///
+/// Each is **two relocates inside the `<ul>` and one text edit for the `<p>`
+/// that prints the row order**, and nothing else. A differ that dropped the
+/// list and built a new one would send three removes and three inserts here,
+/// which is the thing this row exists to refuse.
+///
+/// **Two moves and not one, on purpose.** `rotate()` sends the FIRST row to
+/// the back, which is a rotate-LEFT, and `diff.b`'s keyed pass costs n-1 moves
+/// for that and one move for a rotate-right — it scans forward from the
+/// current position rather than running a longest-increasing-subsequence pass.
+/// That asymmetry is written down at `diff.b`'s `keyed`, and `tests/diff.b`
+/// already gates BOTH numbers exactly ("rotate left (9 edits)" / "rotate right
+/// (5 edits)"), so it is a decision with a golden and not a bug this suite
+/// would be blessing. What this suite adds is that the moves survive a socket
+/// and a replay.
+const ROTATE_BATCH_5: string =
+    "\{\"t\":\"batch\",\"b\":5,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",0],[\"si\",3],[\"mv\",1,0],[\"mv\",2,1],[\"so\"],[\"si\",4],[\"ut\",0,\"pushed 1 for ada rows b,c,a\"],[\"so\"],[\"so\"]]\}],\"d\":[]\}"
+const ROTATE_BATCH_6: string =
+    "\{\"t\":\"batch\",\"b\":6,\"r\":[],\"u\":[\{\"c\":1,\"e\":[[\"si\",0],[\"si\",3],[\"mv\",1,0],[\"mv\",2,1],[\"so\"],[\"si\",4],[\"ut\",0,\"pushed 1 for ada rows c,a,b\"],[\"so\"],[\"so\"]]\}],\"d\":[]\}"
+
+/// One fresh socket, one message, one answer, then gone.
+///
+/// `kind` is `"resume"` or `"attach"` when the message must name the id THIS
+/// connection was just given; otherwise `first` is sent as written.
+fn one_shot(port: int, first: string, kind: string) -> string {
+    var dialled: Result<websocket.Connection> =
+        websocket.Connection.connect_timeout("127.0.0.1", port, "/_latte/ws",
+                                             10000, true)
+    if !dialled.is_ok() { return "<no handshake>" }
+    var opened: websocket.Connection = (move dialled).expect("one-shot")
+    let peer: Peer = new Peer(move opened)
+    let hello: string = peer.next()
+    let id: string = hello_id(hello)
+    var text: string = first
+    if kind == "resume" { text = "\{\"t\":\"resume\",\"c\":\"{id}\",\"a\":0\}" }
+    if kind == "attach" { text = "\{\"t\":\"attach\",\"c\":\"{id}\",\"u\":\"/board\"\}" }
+    if !peer.send(text) { return "<send failed>" }
+    let answer: string = peer.next()
+    let gone: bool = peer.bye()
+    return answer
 }
 
 /// Batch 1, the whole page. It is spelled out rather than summarised because
 /// the handler ids this suite then clicks — 1, 2, 3, 4 — are only true if this
 /// is exactly what went out.
 const PAGE_BATCH: string =
-    "\{\"t\":\"batch\",\"b\":1,\"r\":[[\"b\",0,false],[\"p\",1],[\"c\",0,\"Board\",1],[\"P\"],[\"B\"],[\"o\",0,\"div\"],[\"a\",1,\"id\",\"board\"],[\"o\",2,\"button\"],[\"h\",3,\"click\",2],[\"t\",4,\"Count: 0\"],[\"z\"],[\"o\",5,\"input\"],[\"a\",6,\"value\",\"\"],[\"h\",7,\"input\",3],[\"z\"],[\"o\",8,\"button\"],[\"h\",9,\"click\",4],[\"t\",10,\"rotate\"],[\"z\"],[\"o\",11,\"ul\"],[\"g\",12,\"a\"],[\"o\",0,\"li\"],[\"t\",1,\"a\"],[\"z\"],[\"G\"],[\"g\",12,\"b\"],[\"o\",0,\"li\"],[\"t\",1,\"b\"],[\"z\"],[\"G\"],[\"g\",12,\"c\"],[\"o\",0,\"li\"],[\"t\",1,\"c\"],[\"z\"],[\"G\"],[\"z\"],[\"o\",13,\"p\"],[\"t\",14,\"pushed 0 for \"],[\"z\"],[\"o\",15,\"button\"],[\"h\",16,\"click\",5],[\"t\",17,\"boom\"],[\"z\"],[\"z\"]],\"u\":[\{\"c\":0,\"e\":[[\"in\",0,0]]\},\{\"c\":1,\"e\":[[\"in\",0,5]]\}],\"d\":[]\}"
+    "\{\"t\":\"batch\",\"b\":1,\"r\":[[\"b\",0,false],[\"p\",1],[\"c\",0,\"Board\",1],[\"P\"],[\"B\"],[\"o\",0,\"div\"],[\"a\",1,\"id\",\"board\"],[\"o\",2,\"button\"],[\"h\",3,\"click\",2],[\"t\",4,\"Count: 0\"],[\"z\"],[\"o\",5,\"input\"],[\"a\",6,\"value\",\"\"],[\"h\",7,\"input\",3],[\"z\"],[\"o\",8,\"button\"],[\"h\",9,\"click\",4],[\"t\",10,\"rotate\"],[\"z\"],[\"o\",11,\"ul\"],[\"g\",12,\"a\"],[\"o\",0,\"li\"],[\"t\",1,\"a\"],[\"z\"],[\"G\"],[\"g\",12,\"b\"],[\"o\",0,\"li\"],[\"t\",1,\"b\"],[\"z\"],[\"G\"],[\"g\",12,\"c\"],[\"o\",0,\"li\"],[\"t\",1,\"c\"],[\"z\"],[\"G\"],[\"z\"],[\"o\",13,\"p\"],[\"t\",14,\"pushed 0 for  rows a,b,c\"],[\"z\"],[\"o\",15,\"button\"],[\"h\",16,\"click\",5],[\"t\",17,\"boom\"],[\"z\"],[\"z\"]],\"u\":[\{\"c\":0,\"e\":[[\"in\",0,0]]\},\{\"c\":1,\"e\":[[\"in\",0,5]]\}],\"d\":[]\}"
+
+/// § 13 — the control the socket cannot reach.
+///
+/// `adopt` refuses to hand a socket a circuit that belongs to another session,
+/// and that is the whole value of binding a circuit id to a session: a stolen
+/// id buys nothing. No client this suite can build reaches it, because
+/// `websocket.Connection.connect` cannot set a `Cookie` header, so the check is
+/// driven directly against a second `CircuitSet` — the same call
+/// `latte.web.serve` makes, with the same arguments.
+///
+/// It is a PAIR. Refused-for-the-right-reason cannot be told from
+/// refused-earlier-for-another without the accepted case beside it.
+fn session_controls() -> string {
+    let r: Report = new Report()
+    var options: CircuitOptions = new CircuitOptions()
+    options.idle_ms = 600000
+    options.retention_ms = 600000
+    let set: CircuitSet = new CircuitSet(options,
+        fn(facts: Map<string, string>, url: string) -> Option<Component> {
+            if url != "/board" { return none }
+            return some(new Shell())
+        })
+
+    // One attached circuit, opened for session s1.
+    var mine: Map<string, string> = {}
+    mine["id"] = DEAD_ID
+    mine["session"] = "s1"
+    let held: int = set.open(mine, 0)
+    let greeting: List<string> = set.outbox(held)
+    let mounted: List<string> =
+        set.accept(held, "\{\"t\":\"attach\",\"c\":\"{DEAD_ID}\",\"u\":\"/board\"\}", 0)
+    r.eqi("13.1 the circuit to be stolen is attached and has a page",
+          mounted.len(), 1)
+
+    let resume: string = "\{\"t\":\"resume\",\"c\":\"{DEAD_ID}\",\"a\":0\}"
+
+    // A new socket for a DIFFERENT session presents the id.
+    var thief: Map<string, string> = {}
+    thief["id"] = OTHER_ID
+    thief["session"] = "s2"
+    let stolen: int = set.open(thief, 1)
+    r.eqi("13.2 a resume from another session does not move the socket",
+          set.adopt(stolen, resume, 1), stolen)
+    r.eq("13.3 and the set says why", set.faults.join(" | "),
+         "a resume named a circuit that belongs to another session")
+
+    // The control: the SAME id, from the session it was issued to, is adopted.
+    var owner: Map<string, string> = {}
+    owner["id"] = THIRD_ID
+    owner["session"] = "s1"
+    let coming_back: int = set.open(owner, 2)
+    r.eqi("13.4 the same resume from the right session moves the socket",
+          set.adopt(coming_back, resume, 2), held)
+    r.eqi("13.5 and the fresh circuit it arrived on is retired, not retained",
+          set.count(), 2)
+    r.eqi("13.6 no second fault was recorded", set.faults.len(), 1)
+    return "{r.checks} checks, {r.bad} bad"
+}
 
 fn main() {
     io.println("websocket bridge {websocket.available()}")
@@ -500,6 +625,10 @@ fn main() {
     let stats: espresso.ServerStats = server.run().expect("run")
     io.println("")
     io.println(visitor.join())
+    io.println("")
+    io.println("-- 13. the session binding, driven without a socket")
+    let controls: string = session_controls()
+    io.println(controls)
     io.println("")
     io.println("pages built {wiring.pages} cross-thread post taken {wiring.posted}")
     io.println("circuits still held {set.count()} set faults {set.faults.len()}")

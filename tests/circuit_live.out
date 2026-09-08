@@ -1,0 +1,81 @@
+websocket bridge true
+fiber poller true
+wake alphabet ptxc same in latte.web true
+-- 1. a real socket, on a port the kernel chose
+ok 1.1 the first frame is a hello at wire v1
+ok 1.2 the circuit id is 256 bits
+ok 1.3 and hexadecimal
+
+-- 2. attach mounts the page and sends batch 1
+ok 2.1 the attach went out
+ok 2.2 batch 1 is the whole page
+ok 2.3 the ack went out
+
+-- 3. a job posted from another OS thread reaches the wire
+ok 3.1 batch 2 is the pushed value, and nothing else
+ok 3.2 the ack went out
+
+-- 4. a click is one text edit, not a page
+ok 4.1 the click went out
+ok 4.2 batch 3 updates one text node
+ok 4.3 the ack went out
+
+-- 5. an input event binds a field
+ok 5.1 the input went out
+ok 5.2 batch 4 writes the value attribute and the text that reads it
+ok 5.3 the ack went out
+
+-- 6. a keyed reorder MOVES a child, it does not rebuild the list
+ok 6.1 the rotate click went out
+ok 6.2 batch 5 is two relocates and the row-order text
+ok 6.3 a second rotate went out
+ok 6.4 batch 6 is two relocates again, from a different start
+(batches 5 and 6 are left un-acked on purpose)
+
+-- 7. the socket goes away
+ok 7.1 the close handshake completed
+
+-- 8. a new socket resumes the retained circuit and is replayed
+ok 8.1 the new socket is a new circuit with its own id
+ok 8.2 and it is NOT the one being resumed
+ok 8.3 the resume went out
+ok 8.4 batch 5 is replayed
+ok 8.5 batch 6 is replayed
+ok 8.6 the ack for the last replayed batch went out
+
+-- 9. the page on the other end is the SAME page
+ok 9.1 a click on the same handler id went out
+ok 9.2 the count carried on from where it was
+ok 9.3 a second bind went out
+ok 9.4 pushed, bound and rotated state all came back
+ok 9.5 the ack went out
+
+-- 10. a handler panics and the circuit lives
+ok 10.1 the boom click went out
+ok 10.2 what the client is told is a trace id, never the message
+ok 10.3 the boundary renders in its place
+
+-- 11. a message the wire refuses ends the circuit politely
+ok 11.1 a nonsense event name went out
+ok 11.2 the last frame is a bye
+ok 11.3 and the socket is finished
+
+-- 12. what adoption refuses
+ok 12.1 a resume naming a circuit that does not exist is forbidden
+ok 12.2 a resume of THIS socket's own fresh circuit never attached
+ok 12.3 and the same fresh socket attaches fine
+
+39 checks, 0 bad
+
+-- 13. the session binding, driven without a socket
+ok 13.1 the circuit to be stolen is attached and has a page
+ok 13.2 a resume from another session does not move the socket
+ok 13.3 and the set says why
+ok 13.4 the same resume from the right session moves the socket
+ok 13.5 and the fresh circuit it arrived on is retired, not retained
+ok 13.6 no second fault was recorded
+6 checks, 0 bad
+
+pages built 2 cross-thread post taken true
+circuits still held 3 set faults 0
+upgrades 5
