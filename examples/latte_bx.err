@@ -1,0 +1,16 @@
+usage: latte-bx <command> [options] <file.bx>...
+
+commands:
+  build       compile each file, writing <stem>_gen.b beside it
+  check       parse and emit, and write nothing
+  vocabulary  print latte's .bx surface as JSON, for an editor
+
+options:
+  -o <path>          write the generated Beans to <path> (one input only)
+  --stdout           write the generated Beans to stdout
+  --latte <module>   the module Builder comes from (default: latte)
+  --package <name>   the package the generated file declares
+
+A generated file is checked in beside its source, and a drift gate
+regenerates and diffs it, so a stale one fails the build rather than
+shipping.
