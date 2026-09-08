@@ -93,6 +93,17 @@ pub class MountHandle {
     /// does nothing, instead of marking a renderer that is gone.
     pub weak sink: Option<DirtySink> = none
 
+    /// The page this component was mounted into, which is the object a
+    /// `Signal` read has to reach to find the live expression currently being
+    /// evaluated (`signal.b`, `Cell`). Weak for the same reason `sink` is: the
+    /// page owns the Builder that owns this Registry, and this is the edge
+    /// back.
+    ///
+    /// It is on the handle rather than on `Component` because every field name
+    /// this base takes is a name no component an author writes may ever use —
+    /// the reason `MountHandle` exists at all.
+    pub weak page: Option<Registry> = none
+
     pub fn init() {}
 }
 
@@ -236,7 +247,48 @@ pub class Registry {
     /// a strong edge back would be a cycle that lives for the whole page.
     weak sink: Option<DirtySink> = none
 
+    /// The live expression being evaluated right now, or `none`.
+    ///
+    /// It lives here because it belongs to the PAGE: a `Signal` read records
+    /// itself into whatever binding is open, and both the reader and the
+    /// builder that opened it have to agree on one location. `signal.b`'s
+    /// `Cell` says why this is not a module-level singleton or a static.
+    ///
+    /// Held strongly and only for the duration of one thunk — `Builder.watch`
+    /// restores whatever it displaced — so it is never a cycle that outlives a
+    /// statement.
+    watched: Option<LiveBinding> = none
+
+    /// Live-binding ids, page-unique and separate from the slot counter so a
+    /// binding never spends a wire id.
+    next_binding: int = 1
+
     pub fn init() {}
+
+    pub fn watching() -> Option<LiveBinding> { return self.watched }
+
+    /// Open a live evaluation, answering what it displaced. Nesting is not
+    /// something latte generates, but a thunk that writes a signal reaches
+    /// another thunk through `Cell.fire`, so save-and-restore is the only
+    /// correct spelling.
+    fn watch_open(binding: LiveBinding) -> Option<LiveBinding> {
+        let previous: Option<LiveBinding> = self.watched
+        self.watched = some(binding)
+        return previous
+    }
+
+    fn watch_close(previous: Option<LiveBinding>) { self.watched = previous }
+
+    /// No live evaluation is open. Called when a pass is torn down or unwound,
+    /// so a binding cannot survive as "currently evaluating" past the render
+    /// that opened it.
+    fn watch_clear() { self.watched = none }
+
+    fn fresh_binding() -> int {
+        let value: int = self.next_binding
+        self.next_binding += 1
+        return value
+    }
 
     fn note_disposed(id: int) { self.disposed.push(id) }
 
@@ -395,6 +447,35 @@ pub class Builder {
     /// sets it. A buffer that has never rendered starts settled, because an
     /// empty buffer has nothing anybody is waiting for.
     pub diffed: bool = true
+
+    /// The live expressions this pass created, in document order. Retired and
+    /// emptied by `reset`, so a binding never outlives the frame list it was
+    /// measured against.
+    pub bindings: List<LiveBinding> = []
+
+    /// Edits a signal write produced since the last render, ready to send: no
+    /// render ran and no diff ran, so nothing else in the pipeline knows about
+    /// them. `Renderer.batch` is what drains this.
+    pub pending: List<Edit> = []
+
+    /// Signal edits that were queued BEFORE the render that is now waiting to
+    /// be diffed, and that must therefore go out ahead of that render's edits.
+    ///
+    /// They cannot simply stay in `pending`, and they cannot be dropped
+    /// either — dropping them loses the write, which is the bug gate 6 § 10b
+    /// caught. `reset()` assigns `previous = frames`, and a signal write
+    /// rewrote a body inside `frames` in place, so the mutation ends up on
+    /// BOTH sides of the next diff and the differ is blind to it. The client
+    /// is still at the value before the write.
+    ///
+    /// The order is what makes them valid: a queued edit's child indices were
+    /// measured against a frame list whose STRUCTURE is the one the client
+    /// holds — a signal changes a text body and never the shape — so applying
+    /// it first walks the client from what it has to `previous`, and the diff
+    /// then walks it from `previous` to `frames`. That composition is only
+    /// sound because a buffer is never rendered twice between two batches,
+    /// which is `Renderer.flush` rule 1.
+    pub carry: List<Edit> = []
 
     slots: Map<string, int> = {}
     live: Map<int, bool> = {}
@@ -625,6 +706,115 @@ pub class Builder {
         self.frames.push(Frame.text(seq, body))
     }
 
+    /// Interpolated text inside a `live` subtree: a thunk instead of a value.
+    ///
+    /// It writes the same `Frame.text` `text` does — the serializer, the
+    /// differ and the applier are told nothing new, and a page that never
+    /// writes a signal behaves exactly as if `live` had not been written. What
+    /// it adds is the binding: the thunk is evaluated with this expression
+    /// open, so every `Signal.get()` inside it records itself, and a later
+    /// write re-invokes THIS thunk and rewrites THIS frame.
+    ///
+    /// A live expression that recorded no signal is a fault, and it is the
+    /// only new refusal this tier needs. Without it, `live` on a subtree with
+    /// no signal in it — or a signal whose `own(self)` was forgotten — renders
+    /// once, correctly, and then never moves again, and nothing anywhere says
+    /// so. That is the exact failure RULES.md calls the fallback happy path,
+    /// and it would be invisible in a green run.
+    pub fn live_text(seq: int, body: fn() -> string) {
+        self.note_sibling(seq, false)
+        let binding: LiveBinding = new LiveBinding(
+            self.registry.fresh_binding(), self, self.frames.len(), seq, body)
+        self.bindings.push(binding)
+        let rendered: string = self.watch(binding)
+        if binding.dependencies() == 0 {
+            self.faults.push("live expression {seq} read no signal")
+        }
+        self.frames.push(Frame.text(seq, rendered))
+    }
+
+    /// Evaluate a binding's thunk with that binding open, so reads record.
+    fn watch(binding: LiveBinding) -> string {
+        binding.unsubscribe()
+        let displaced: Option<LiveBinding> = self.registry.watch_open(binding)
+        let rendered: string = binding.body()
+        self.registry.watch_close(displaced)
+        return rendered
+    }
+
+    /// A signal one of this buffer's live expressions read has changed.
+    ///
+    /// Called from `LiveBinding.refresh`, which `Cell.fire` calls, which
+    /// `Signal.set` calls. Nothing on this path touches the dirty set, so
+    /// `Renderer.flush` has nothing to do and `render_count` cannot move —
+    /// that is gate 6's signal row, and it is a property of there being no
+    /// call to `mark` on this path rather than of a counter being left alone.
+    fn refresh_binding(binding: LiveBinding) {
+        if binding.index < 0 || binding.index >= self.frames.len() {
+            binding.retire()
+            return
+        }
+        var was: string = ""
+        var matched: bool = false
+        match self.frames.at(binding.index) {
+            text(seq, body) => {
+                if seq == binding.seq { was = body; matched = true }
+            }
+            _ => {}
+        }
+        if !matched {
+            // The frame this binding was measured against is not there any
+            // more. Only an unbalanced hand-assembled buffer reaches this;
+            // retiring is the answer that cannot write into someone else's
+            // frame.
+            binding.retire()
+            return
+        }
+        let rendered: string = self.watch(binding)
+        if rendered == was { return }
+        self.frames.set(binding.index, Frame.text(binding.seq, rendered))
+        if binding.pending_at >= 0 && binding.pending_at < self.pending.len() {
+            self.pending[binding.pending_at] = Edit.set_text(
+                self.live_index(binding), rendered)
+            return
+        }
+        binding.pending_at = binding.emit(self.frames, rendered, self.pending)
+    }
+
+    /// The child index a binding's `set_text` names, for rewriting an edit
+    /// that is already queued.
+    fn live_index(binding: LiveBinding) -> int {
+        match self.pending[binding.pending_at] {
+            set_text(index, _) => { return index }
+            _ => { return -1 }
+        }
+    }
+
+    /// Take the signal edits queued before the pending render. They lead the
+    /// batch; see `carry`.
+    pub fn take_carry(out: List<Edit>) {
+        for edit: Edit in self.carry { out.push(edit) }
+        self.carry.clear()
+    }
+
+    /// Take the signal edits this buffer has queued since its last render. The
+    /// renderer calls it once per batch, so a queued edit crosses the wire
+    /// exactly once.
+    pub fn take_pending(out: List<Edit>) {
+        for edit: Edit in self.pending { out.push(edit) }
+        self.drop_pending()
+    }
+
+    /// Forget the queue without sending it. `Renderer.batch` does this for a
+    /// buffer that re-rendered AFTER the write: the mutation is in `frames`
+    /// and `previous` is the list from before the render, so the diff carries
+    /// it already — and the queued edit's child indices were measured against
+    /// a frame list the client has not reached yet.
+    pub fn drop_pending() {
+        self.pending.clear()
+        for binding: LiveBinding in self.bindings { binding.pending_at = -1 }
+    }
+
     /// `$html(expr)` — unescaped, and the only bypass there is.
     pub fn raw(seq: int, html: string) {
         self.note_sibling(seq, false)
@@ -787,6 +977,7 @@ pub class Builder {
     fn wire(component: Component, slot: int) {
         component.mount.id = slot
         component.mount.sink = self.registry.dirty_sink()
+        component.mount.page = some(self.registry)
     }
 
     /// Wire this page to its dirty sink.
@@ -799,6 +990,7 @@ pub class Builder {
         self.registry.attach(sink)
         page.mount.id = self.id
         page.mount.sink = some(sink)
+        page.mount.page = some(self.registry)
     }
 
     /// `$slot` and `$slot(expr)`: child content, or any `fn(Builder)`. The body
@@ -906,6 +1098,10 @@ pub class Builder {
             let _: Frame = self.frames.items.remove(self.frames.len() - 1)
         }
         self.frames.items[mark.frame] = Frame.boundary_open(mark.seq, true)
+        // The body's frames are gone, so the live expressions that wrote them
+        // are measured against indices this list no longer has. They unwind
+        // with the slots, for the same reason and one line further down.
+        self.drop_bindings_since(mark.frame)
         // Slots are the sixth thing the body wrote, and they unwind like the
         // other five. A component mounted inside the failed body is no longer
         // on the page, so leaving it mounted would keep its `dispose` from ever
@@ -944,6 +1140,18 @@ pub class Builder {
         self.leave_scope()
         self.pop_path()
         self.frames.push(Frame.boundary_close)
+    }
+
+    /// Retire every live binding whose frame the truncation removed, and stop
+    /// any evaluation that was open when the body panicked.
+    fn drop_bindings_since(frame: int) {
+        var kept: List<LiveBinding> = []
+        for binding: LiveBinding in self.bindings {
+            if binding.index > frame { binding.retire() } else { kept.push(binding) }
+        }
+        self.bindings.clear()
+        for binding: LiveBinding in kept { self.bindings.push(binding) }
+        self.registry.watch_clear()
     }
 
     /// Drop every slot the pass reached after `mark`, disposing what they held.
@@ -1112,6 +1320,19 @@ pub class Builder {
         self.failures.clear()
         self.live.clear()
         self.touched.clear()
+        // Signal edits queued against the list that is about to become
+        // `previous` still have to be sent, and now have to be sent FIRST.
+        for edit: Edit in self.pending { self.carry.push(edit) }
+        self.drop_pending()
+        // Every binding measured itself against the frame list that just
+        // became `previous`. Retiring them here — rather than letting the
+        // render replace them — is what stops a signal write between two
+        // renders from rewriting a frame in a list nothing holds any more, and
+        // it is also the unsubscribe: a component that stopped reading a
+        // signal stops being woken by it.
+        for binding: LiveBinding in self.bindings { binding.retire() }
+        self.bindings.clear()
+        self.registry.watch_clear()
         self.depth = 0
         self.regions = 0
         self.in_attributes = false
@@ -1145,6 +1366,14 @@ pub class Builder {
 
     /// The whole render cycle for one component, so it cannot be got wrong.
     pub fn render_root(component: Component) {
+        // A component rendered by this buffer belongs to this buffer's page,
+        // whatever else has or has not wired it. `wire` covers every child and
+        // `attach_sink` covers the root of a rendered page; this covers the
+        // root of a Builder tree nobody is rendering — a hand-driven buffer in
+        // a suite — so the live tier does not quietly need a Renderer to work.
+        // It does not touch `id` or `sink`: a component nothing mounted still
+        // must not be able to mark a dirty set it is not in.
+        component.mount.page = some(self.registry)
         self.reset()
         component.render(self)
         self.settle()
@@ -1224,6 +1453,13 @@ pub class Builder {
         }
         self.slots.clear()
         self.live.clear()
+        for binding: LiveBinding in self.bindings { binding.retire() }
+        self.bindings.clear()
+        // A queued signal edit for a component that has left the page is an
+        // edit addressed to a node the applier is about to drop. The disposal
+        // is what the client is told; the edit would arrive after it.
+        self.pending.clear()
+        self.carry.clear()
         self.frames.clear()
         self.previous.clear()
         self.rendered = false

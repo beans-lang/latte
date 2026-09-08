@@ -8,7 +8,7 @@
 # each `self.faults.push(...)` site in turn, runs the suite that owns it, and
 # requires that a check naming THAT site turns red.
 #
-#   builder.b     24 sites   tests/frames.b § 13
+#   builder.b     25 sites   tests/frames.b § 13
 #   apply.b       14 sites   tests/w1_faults.b § 1
 #   serialize.b    4 sites   tests/w1_faults.b § 3
 #   stream.b      24 sites   tests/w6_stream.b § 4
@@ -87,6 +87,7 @@ FILES = [
             "attrs / refused splatted attribute name",
             "attrs / refused splatted inline handler",
             "attrs / attribute N carried a refused scheme",
+            "live_text / live expression N read no signal",
             "fill_slot / slot N holds a X, not a Y",
             "mount / X is not a Component",
             "mount / cannot activate X",
