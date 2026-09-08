@@ -14,6 +14,7 @@
 #   stream.b      24 sites   tests/w6_stream.b § 4
 #   virtual.b      1 site    tests/w6_virtual.b § 4
 #   upload.b       1 site    tests/w6_upload.b § 6
+#   forms.b       17 sites   tests/w4_forms.b § 6
 #
 # Run it with no argument for all three, or name one source file to run just
 # that one: `probes/delete_faults.sh apply.b`.
@@ -124,6 +125,29 @@ FILES = [
         ],
     },
     {
+        "source": "forms.b",
+        "suite": "tests/w4_forms.b",
+        "labels": [
+            "scan / a @field on a type that is not a @form",
+            "scan / a rule on a type that is not a @form",
+            "check_form_pages / a form page no unsafe method reaches",
+            "check_form_pages / an unsafe method with no form",
+            "plan_for_form / a @form that declares no @field",
+            "bind_fields / a rule on a field that is not a @field",
+            "bind_fields / two @fields with one posted name",
+            "bind_fields / a @field that is not public",
+            "bind_fields / a @field declared by a generic type",
+            "bind_fields / a @field a form cannot bind",
+            "read_rules / @required on a checkbox",
+            "read_rules / a negative @length floor",
+            "read_rules / a @length no value can satisfy",
+            "read_rules / a @length that bounds nothing",
+            "read_rules / @length on something that is not a string",
+            "read_rules / @range on something that is not a number",
+            "adopt_range / a @range no value can satisfy",
+        ],
+    },
+    {
         "source": "stream.b",
         "suite": "tests/w6_stream.b",
         "labels": [
@@ -183,19 +207,29 @@ if only:
     FILES = [entry for entry in FILES if entry["source"] == only]
     if not FILES:
         print(f"no source file named {only}; this script knows builder.b, "
-              f"apply.b, serialize.b, stream.b, virtual.b and upload.b", file=sys.stderr)
+              f"apply.b, serialize.b, stream.b, virtual.b, upload.b and "
+              f"forms.b", file=sys.stderr)
         sys.exit(1)
 
 
 def find_sites(text):
-    """Every `self.faults.push( … )` expression, as (start, end) offsets.
+    """Every `<receiver>.faults.push( … )` expression, as (start, end) offsets.
+
+    The receiver is anything, not only `self`. It was `self` until 2026-09-08,
+    which meant a refusal written in a free function — the shape a whole-program
+    scan writes them in — was invisible to this script and to test.sh's
+    refusal-coverage leg alike. Comment lines are skipped so that a file
+    explaining the rule is not deleted by it.
 
     The end is found by balancing parentheses while ignoring anything inside a
     double-quoted string, because the messages themselves carry `(` and `)` —
     `{problem.message()}` for one.
     """
     out = []
-    for match in re.finditer(r"self\.faults\.push\(", text):
+    for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_.\[\]]*\.faults\.push\(", text):
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        if text[line_start:match.start()].lstrip().startswith("//"):
+            continue
         i = match.end()
         depth = 1
         in_string = False

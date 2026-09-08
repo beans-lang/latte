@@ -800,6 +800,33 @@ pub class PageMap {
         if best < 0 { return none }
         return some(new PageMatch(self.pages[best], move best_values))
     }
+
+    /// Every method some usable page serves at `path`, sorted and without
+    /// repeats.
+    ///
+    /// `find` deliberately answers `none` for a path that matches a page whose
+    /// methods do not serve the request, so that two pages can share a path and
+    /// split the methods. That leaves the caller unable to tell "no such page"
+    /// from "not that method", which is a 404 where the answer is a 405 — and a
+    /// 405 is not cosmetic here: a form posting to a page that only serves GET
+    /// is one of the two ways a form silently does nothing, and a 404 sends its
+    /// author looking at the route.
+    pub fn allowed(path: string) -> List<string> {
+        var out: List<string> = []
+        for plan: PagePlan in self.pages {
+            if !plan.usable() { continue }
+            match plan.route.matches(path) {
+                some(_) => {
+                    for method: string in plan.methods {
+                        if !out.contains(method) { out.push(method) }
+                    }
+                }
+                none => {}
+            }
+        }
+        out.sort()
+        return move out
+    }
 }
 
 /// Walk every type in the executable once and turn the annotated ones into
@@ -833,6 +860,7 @@ pub fn scan_pages() -> PageMap {
             continue
         }
         if uses.len() > 1 {
+            // Unreachable: @page is not @repeatable. See `annotations_named`.
             map.faults.push("{described.qualified_name()} carries @page more than once")
             continue
         }
@@ -930,6 +958,7 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation, component_name: st
 
     let layouts: List<reflect.Annotation> = annotations_named(described.annotations(), "layout")
     if layouts.len() > 1 {
+        // Unreachable: @layout is not @repeatable. See `annotations_named`.
         plan.faults.push("{plan.type_name} carries @layout more than once")
     } else if layouts.len() == 1 {
         plan.layout_name = argument_string(layouts[0], "name")
@@ -967,6 +996,7 @@ fn bind_params(plan: PagePlan, described: reflect.Type, declared: List<string>) 
         let uses: List<reflect.Annotation> = annotations_named(field.annotations(), "param")
         if uses.len() == 0 { continue }
         if uses.len() > 1 {
+            // Unreachable: @param is not @repeatable. See `annotations_named`.
             plan.faults.push("{plan.type_name}.{field.name()} carries @param more than once")
             continue
         }
@@ -1175,6 +1205,7 @@ fn resolve_layouts(plan: PagePlan, described: reflect.Type, all: List<reflect.Ty
                 let nested: List<reflect.Annotation> =
                     annotations_named(found.annotations(), "layout")
                 if nested.len() > 1 {
+                    // Unreachable: @layout is not @repeatable. See `annotations_named`.
                     plan.faults.push("{owner} carries @layout more than once")
                     return
                 }
@@ -1234,6 +1265,26 @@ fn latte_annotation(simple: string) -> string {
     }
 }
 
+/// **Four refusals in this file cannot fire, and this is where that is
+/// written down.** `@page`, `@layout` and `@param` are not `@repeatable`, and
+/// 0.1.40 refuses a repeated non-repeatable annotation at the author's own
+/// declaration — `error: annotation '@once' is not repeatable`, measured in
+/// `probes/p16_repeat`. So the four `carries @X more than once` faults below
+/// stand behind a compile error and no program can reach them:
+///
+///   scan_pages      "... carries @page more than once"
+///   plan_for        "... carries @layout more than once"
+///   bind_params     "... carries @param more than once"
+///   find_layout     "... carries @layout more than once"
+///
+/// They are kept rather than deleted because what makes them unreachable is a
+/// property of latte's OWN annotation declarations, thirty lines above: adding
+/// `@repeatable` to `@layout` one day would make the third one live again, and
+/// the scan would be silently taking the first of two layouts without it. They
+/// are marked here so a reader auditing `pages.b` does not spend the afternoon
+/// trying to build an input that reaches one. RULES.md, "the refusal that never
+/// runs": say so beside the code with the evidence, rather than leaving a
+/// reader to assume it is covered.
 pub fn annotations_named(uses: List<reflect.Annotation>, simple: string) -> List<reflect.Annotation> {
     let wanted: string = latte_annotation(simple)
     var out: List<reflect.Annotation> = []
@@ -1264,6 +1315,18 @@ pub fn argument_bool(use: reflect.Annotation, name: string) -> bool {
             }
         }
         none => { return false }
+    }
+}
+
+pub fn argument_int(use: reflect.Annotation, name: string) -> int {
+    match use.argument(name) {
+        some(argument) => {
+            match argument.value().as_int() {
+                some(value) => { return value }
+                none => { return 0 }
+            }
+        }
+        none => { return 0 }
     }
 }
 
