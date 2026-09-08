@@ -184,19 +184,25 @@ if [[ $status -ne 0 ]]; then
     echo "--- w8b-smoke FAILED: the browser half reported failures (exit $status) ---" >&2
     if grep -q 'Illegal invocation' "$out/smoke.txt"; then
         echo "" >&2
-        echo '    READ THIS BEFORE BLAMING YOUR CHANGE. "Illegal invocation" is a' >&2
-        echo "    standing bug in js/latte.js and has nothing to do with whatever you" >&2
-        echo "    are editing. js/latte.js:1191 keeps a bare \`window.setTimeout\` and" >&2
-        echo "    then calls it as \`this.setTimeout(fn, ms)\`, which hands the browser's" >&2
-        echo "    own method a Circuit as its receiver; every browser refuses that." >&2
-        echo "    Its two callers are \`armFence\` and \`retry\`, so the B11 fence never" >&2
-        echo "    arms and a dropped socket is never reconnected -- which is why" >&2
-        echo "    sections 8 and 9 are red together. tests/js_apply.js injects a fake" >&2
-        echo "    timer, which is why no other test in this repo can see it." >&2
-        echo "    The fix is one line each:" >&2
+        echo '    "Illegal invocation" here means one specific fix has been REVERTED.' >&2
+        echo "    js/latte.js used to keep a bare \`window.setTimeout\` and then call it" >&2
+        echo "    as \`this.setTimeout(fn, ms)\`, handing the browser's own method a" >&2
+        echo "    Circuit as its receiver; every browser refuses that. Its two callers" >&2
+        echo "    are \`armFence\` and \`retry\`, so the B11 fence never arms and a" >&2
+        echo "    dropped socket is never reconnected -- which is why sections 8 and 9" >&2
+        echo "    go red together. tests/js_apply.js injects a fake timer, so this leg" >&2
+        echo "    is the only thing in the repo that can see it. What must be there:" >&2
         echo "        this.setTimeout  = options.setTimeout  || (typeof setTimeout  !== 'undefined' ? function (fn, ms) { return setTimeout(fn, ms); } : null);" >&2
         echo "        this.clearTimeout = options.clearTimeout || (typeof clearTimeout !== 'undefined' ? function (id) { return clearTimeout(id); } : null);" >&2
-        echo "    lanes/W8b.md, "Findings", carries the whole write-up." >&2
+        echo "" >&2
+    fi
+    if grep -q 'a circuit is bound to a session' "$out/server.err"; then
+        echo "" >&2
+        echo "    The server refused a handshake for having no session. If that is" >&2
+        echo "    section 10, it is the check working. If it is section 2, the page" >&2
+        echo "    route stopped setting the \`latte_session\` cookie, or the endpoint" >&2
+        echo "    stopped reading that name -- the two agree in exactly one place," >&2
+        echo "    tests/_w8b_smoke_server.b, and they agree by hand." >&2
         echo "" >&2
     fi
     echo "--- server stderr ---" >&2
@@ -227,12 +233,34 @@ fi
 # says it opened. That is a stronger claim than any constant, and it stays true
 # when the reconnect in § 9 starts working and adds a third.
 js_sockets=$(awk '/^W8B-SMOKE-JS-SOCKETS/ { print $2; exit }' "$out/smoke.txt")
+js_refused=$(awk '/^W8B-SMOKE-JS-REFUSED/ { print $2; exit }' "$out/smoke.txt")
 expect pages    "$(fact PAGES)"    2
 expect scripts  "$(fact SCRIPTS)"  2
 expect stops    "$(fact STOPS)"    1
 expect faults   "$(fact FAULTS)"   0
-expect upgrades "$(fact UPGRADES)" "${js_sockets:-<no count from the browser>}"
+# Every handshake the browser put on the wire reached a route, so espresso
+# counted it -- including the one § 10 had refused for carrying no session.
+# Circuits count only the ones that got past that refusal.
+if [[ -n "$js_sockets" && -n "$js_refused" ]]; then
+    expect upgrades "$(fact UPGRADES)" "$((js_sockets + js_refused))"
+else
+    expect upgrades "$(fact UPGRADES)" "<no counts from the browser>"
+fi
 expect circuits "$(fact CIRCUITS)" "${js_sockets:-<no count from the browser>}"
+# W4's session binding, from a real browser, which nothing else here does.
+#
+# TWO sessions minted, and the number is the claim. § 1.1 fetches the shell
+# with node's own `fetch` -- a client with no cookie jar -- and that mints one.
+# The browser's first navigation mints the second. The RELOAD in § 7 mints
+# nothing, because the browser sent the cookie back; a 3 here would mean it
+# did not, and then `circuit-sessions` below would be 2 and the binding would
+# be doing nothing. Every circuit is opened for that one browser session, and
+# none for the empty one -- `anonymous_circuits` is off and § 10 proves the
+# refusal it leaves standing.
+expect sessions-minted   "$(fact SESSIONS-MINTED)"   2
+expect circuit-sessions  "$(fact CIRCUIT-SESSIONS)"  1
+expect anon-circuits     "$(fact ANON-CIRCUITS)"     0
+expect naked-pages       "$(fact NAKED-PAGES)"       1
 if [[ $server_bad -ne 0 ]]; then
     echo "--- w8b-smoke FAILED: $server_bad server-side fact(s) wrong ---" >&2
     grep 'W8B-SMOKE' "$out/server.err" >&2
