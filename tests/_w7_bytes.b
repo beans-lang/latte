@@ -94,8 +94,43 @@ fn attach_message(id: string) -> string {
     return "\{\"t\":\"attach\",\"c\":\"{id}\",\"u\":\"/board\"\}"
 }
 
-fn click_message() -> string {
-    return "\{\"t\":\"ev\",\"h\":2,\"k\":\"click\",\"p\":\{\"b\":0,\"x\":4,\"y\":9\}\}"
+fn click_message(handler: int) -> string {
+    return "\{\"t\":\"ev\",\"h\":{handler},\"k\":\"click\",\"p\":\{\"b\":0,\"x\":4,\"y\":9\}\}"
+}
+
+/// The slot id of the first click handler in a batch's reference pool.
+///
+/// Hard-coding it was the first version and it was wrong: the id a builder
+/// assigns depends on the page, so `h:2` landed nowhere and every run measured
+/// ONE batch instead of twenty-one. A probe that quietly measures a tenth of
+/// its workload is worse than one that fails.
+fn click_slot(batch: string) -> int {
+    let marker: string = "[\"h\","
+    var from: int = 0
+    for from < batch.len() {
+        match batch.slice(from, batch.len()).find(marker) {
+            none => { return -1 }
+            some(at) => {
+                let rest: string = batch.slice(from + at + marker.len(), batch.len())
+                match rest.find("]") {
+                    none => { return -1 }
+                    some(end) => {
+                        let row: string = rest.slice(0, end)
+                        if row.find("\"click\"").is_some() {
+                            match row.rfind(",") {
+                                none => { return -1 }
+                                some(comma) => {
+                                    return row.slice(comma + 1, row.len()).to_int().or(-1)
+                                }
+                            }
+                        }
+                        from = from + at + marker.len()
+                    }
+                }
+            }
+        }
+    }
+    return -1
 }
 
 fn hello_id(frame: string) -> string {
@@ -122,6 +157,7 @@ fn is_batch(frame: string) -> bool {
 // hands back is exactly the text `encode_batch` produced.
 
 pub class RunA {
+    pub slot: int = -1
     pub bytes: int = 0
     pub batches: int = 0
     pub first_batch: int = 0
@@ -143,6 +179,7 @@ fn run_a(port: int) -> RunA {
         return out
     }
     var circuit: string = ""
+    var slot: int = -1
     var sent: int = 0
     var quiet: bool = false
     for !quiet {
@@ -158,16 +195,20 @@ fn run_a(port: int) -> RunA {
                                 out.bytes += body.len()
                                 if is_batch(body) {
                                     out.batches += 1
-                                    if out.first_batch == 0 { out.first_batch = body.len() }
+                                    if out.first_batch == 0 {
+                                        out.first_batch = body.len()
+                                        slot = click_slot(body)
+                                        out.slot = slot
+                                    }
                                 }
                                 if circuit == "" { circuit = hello_id(body) }
                                 if circuit != "" && sent == 0 {
                                     let _ok: Result<bool> =
                                         socket.send_text(attach_message(circuit))
                                     sent = 1
-                                } else if sent > 0 && sent <= CLICKS {
+                                } else if sent > 0 && sent <= CLICKS && slot > 0 {
                                     let _ok: Result<bool> =
-                                        socket.send_text(click_message())
+                                        socket.send_text(click_message(slot))
                                     sent += 1
                                 }
                                 if sent > CLICKS && out.batches >= CLICKS + 1 {
@@ -221,6 +262,16 @@ fn client_frame(body: string) -> Bytes {
 }
 
 pub class RunRaw {
+    pub frames: int = 0
+    /// The size of every frame, header included, in arrival order. Frame 1 is
+    /// the hello, frame 2 the attach batch, and 3.. the one-edit click
+    /// batches — three shapes with very different compression, and an average
+    /// over all of them would hide exactly the one the v2 decision rests on.
+    pub sizes: List<int> = []
+    pub reads: int = 0
+    pub wrote: int = 0
+    pub script_len: int = 0
+    pub last: string = ""
     pub bytes: int = 0
     pub head_bytes: int = 0
     pub deflated: bool = false
@@ -236,7 +287,7 @@ pub class RunRaw {
 /// DEFLATE-compressed, so this side inflates exactly one message — a fresh
 /// context, RFC 7692's four sync bytes put back, `std.compress.inflate_raw`.
 /// It is the receiver's rule applied once, not a second receiver.
-fn run_raw(port: int, path: string, offer: bool, read_ms: int) -> RunRaw {
+fn run_raw(port: int, path: string, offer: bool, slot: int, read_ms: int) -> RunRaw {
     let out: RunRaw = new RunRaw()
     var dialled: Result<net.TcpStream> =
         net.TcpStream.connect_timeout("127.0.0.1", port, 10000)
@@ -254,20 +305,27 @@ fn run_raw(port: int, path: string, offer: bool, read_ms: int) -> RunRaw {
 
     var buffer: Bytes = new Bytes(65536)
     var head: Bytes = new Bytes(0)
+    // Every frame byte the server sent that this side has not yet accounted
+    // for. Frames are COUNTED, never timed: the run stops when the expected
+    // number of complete frames has arrived, so the byte total is a function
+    // of the protocol and not of how fast this machine is. The read timeout
+    // below is a safety net, and reaching it is reported as a fault.
     var frames: Bytes = new Bytes(0)
     var head_done: bool = false
     var counted: int = 0
     var attached: bool = false
     var quiet: bool = false
+    let want: int = CLICKS + 2
     for !quiet {
         match stream.read_into(buffer) {
-            err(problem) => { quiet = true }
+            err(problem) => { out.last = "{problem.kind}: {problem.msg}"; quiet = true }
             ok(got) => {
-                if got <= 0 { quiet = true }
+                out.reads += 1
+                if got <= 0 { out.last = "zero read"; quiet = true }
                 else {
                     if head_done {
                         counted += got
-                        if !attached { frames.append_range(buffer, 0, got) }
+                        frames.append_range(buffer, 0, got)
                     } else {
                         head.append_range(buffer, 0, got)
                         let text: string = head.to_string()
@@ -283,6 +341,23 @@ fn run_raw(port: int, path: string, offer: bool, read_ms: int) -> RunRaw {
                             none => {}
                         }
                     }
+                    if head_done && attached {
+                        // Consume whole frames off the front. Server→client
+                        // frames are unmasked, so a header is 2, 4 or 10 bytes
+                        // and nothing here has to decompress anything to know
+                        // where the next one starts.
+                        var walking: bool = true
+                        for walking {
+                            let size: int = whole_frame_size(frames)
+                            if size <= 0 || size > frames.len() { walking = false }
+                            else {
+                                out.frames += 1
+                                out.sizes.push(size)
+                                frames = frames.slice(size, frames.len())
+                                if out.frames >= want { quiet = true; walking = false }
+                            }
+                        }
+                    }
                     if head_done && !attached {
                         let id: string = first_frame_body(frames)
                         if id != "" {
@@ -290,11 +365,21 @@ fn run_raw(port: int, path: string, offer: bool, read_ms: int) -> RunRaw {
                             script.append(client_frame(attach_message(id)))
                             var written: int = 0
                             for written < CLICKS {
-                                script.append(client_frame(click_message()))
+                                script.append(client_frame(click_message(slot)))
                                 written += 1
                             }
-                            let _sent: Result<int> = stream.write(script)
+                            out.script_len = script.len()
+                            out.wrote = stream.write(script).or(-1)
                             attached = true
+                            // The hello is frame one and it has already been
+                            // read; count it and drop it here, so the walk
+                            // above starts on the boundary it expects.
+                            let size: int = whole_frame_size(frames)
+                            if size > 0 && size <= frames.len() {
+                                out.frames += 1
+                                out.sizes.push(size)
+                                frames = frames.slice(size, frames.len())
+                            }
                         }
                     }
                 }
@@ -302,9 +387,37 @@ fn run_raw(port: int, path: string, offer: bool, read_ms: int) -> RunRaw {
         }
     }
     if !attached { out.fault = "the hello never arrived whole" }
+    else if out.frames < want {
+        out.fault = "only {out.frames} of {want} frames arrived before the read timeout"
+    }
     out.bytes = counted
     let _closed: Result<bool> = stream.close()
     return out
+}
+
+/// The total size of the frame at the front of `data`, header included, or 0
+/// when the frame is not there whole yet.
+///
+/// Server→client frames are never masked, so the header is 2 bytes plus the
+/// extended length. Nothing here reads the payload.
+fn whole_frame_size(data: Bytes) -> int {
+    if data.len() < 2 { return 0 }
+    let flag: int = data.get(1)
+    if flag >= 128 { return -1 }
+    var header: int = 2
+    var length: int = flag
+    if flag == 126 {
+        if data.len() < 4 { return 0 }
+        header = 4
+        length = data.get(2) * 256 + data.get(3)
+    } else if flag == 127 {
+        if data.len() < 10 { return 0 }
+        header = 10
+        length = 0
+        for index: int in 2..10 { length = length * 256 + data.get(index) }
+    }
+    if data.len() < header + length { return 0 }
+    return header + length
 }
 
 /// The circuit id out of the first server frame in `data`, or "" if the frame
@@ -321,18 +434,46 @@ fn first_frame_body(data: Bytes) -> string {
     if length >= 126 { return "" }
     if data.len() < 2 + length { return "" }
     var payload: Bytes = data.slice(2, 2 + length)
-    io.println("   [frame0 {first} len {length} have {data.len()} rsv1 {compressed}]")
     if !compressed { return hello_id(payload.to_string()) }
     // RFC 7692 §7.2.2: the sender stripped the four bytes that end a sync
-    // flush; put them back and it is a complete raw DEFLATE stream.
+    // flush; put them back and the message is readable again.
+    //
+    // The STREAMING inflater, not `inflate_raw`. A sync-flushed block plus
+    // those four bytes is NOT a terminated DEFLATE stream — there is no final
+    // block — so the one-shot form refuses it with "the stream ends before its
+    // data does". That was the second bug in this probe and it is the same
+    // rule the real receiver follows.
     payload.push(0)
     payload.push(0)
     payload.push(255)
     payload.push(255)
-    match compress.inflate_raw(payload, 65536) {
+    var opened: Result<compress.Inflater> =
+        compress.Inflater.open(compress.Format.raw, 65536)
+    if !opened.is_ok() { return "" }
+    var reader: compress.Inflater = (move opened).expect("inflater")
+    match reader.push(payload) {
         ok(plain) => { return hello_id(plain.to_string()) }
-        err(problem) => { io.println("   [inflate {problem.msg}]"); return "" }
+        err(problem) => { return "" }
     }
+}
+
+/// The three shapes, separately. An average over all twenty-two frames is
+/// dominated by the one big one and says nothing about the shape a click
+/// produces, which is the shape a binary encoding would have to beat.
+fn report_shapes(tag: string, run: RunRaw) {
+    if run.sizes.len() < 3 { return }
+    var events: int = 0
+    var smallest: int = run.sizes[2]
+    var largest: int = run.sizes[2]
+    for index: int in 2..run.sizes.len() {
+        events += run.sizes[index]
+        if run.sizes[index] < smallest { smallest = run.sizes[index] }
+        if run.sizes[index] > largest { largest = run.sizes[index] }
+    }
+    let count: int = run.sizes.len() - 2
+    io.println("{tag} hello          {run.sizes[0]}")
+    io.println("{tag} attach batch   {run.sizes[1]}")
+    io.println("{tag} {count} event batches  {events} total, {events / count} mean, {smallest}..{largest}")
 }
 
 // ============================================================== the server
@@ -396,22 +537,27 @@ fn main() {
         io.println("   batches         {a.batches}")
         io.println("   json bytes      {a.bytes}")
         io.println("   first batch     {a.first_batch}")
+        io.println("   click slot      {a.slot}")
 
-        let b: RunRaw = run_raw(port, "/plain", false, 400)
+        let b: RunRaw = run_raw(port, "/plain", false, a.slot, 5000)
         io.println("")
         io.println("-- B. wire bytes, extension NOT offered")
         io.println("   fault           {b.fault}")
         io.println("   deflate agreed  {b.deflated}")
         io.println("   101 head bytes  {b.head_bytes}")
         io.println("   frame bytes     {b.bytes}")
+        io.println("   frames read     {b.frames}")
+        report_shapes("   B", b)
 
-        let c: RunRaw = run_raw(port, "/ws", true, 400)
+        let c: RunRaw = run_raw(port, "/ws", true, a.slot, 5000)
         io.println("")
         io.println("-- C. wire bytes, permessage-deflate offered and agreed")
         io.println("   fault           {c.fault}")
         io.println("   deflate agreed  {c.deflated}")
         io.println("   101 head bytes  {c.head_bytes}")
         io.println("   frame bytes     {c.bytes}")
+        io.println("   frames read     {c.frames}")
+        report_shapes("   C", c)
 
         io.println("")
         io.println("-- the division")
