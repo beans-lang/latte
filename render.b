@@ -483,15 +483,17 @@ pub class Renderer extends DirtySink {
     /// The two are merged rather than concatenated, because a component can
     /// have both and the answer is not "send both".
     ///
+    /// * Edits queued BEFORE the render that is now waiting to be diffed lead
+    ///   the update. The render turned those frames into `previous`, mutation
+    ///   and all, so the differ cannot see them and dropping them loses the
+    ///   write — `Builder.carry` carries the whole argument.
     /// * A buffer that did NOT re-render (`diffed` is still true) has no diff
     ///   edits, and its queued signal edits are the only thing carrying the
     ///   rewrite. They are sent.
-    /// * A buffer that DID re-render has its signal mutation already inside
-    ///   `frames` — a signal write rewrites the frame in place — so the diff
-    ///   against `previous` carries it, and the queue is dropped. Sending both
-    ///   would be the same `set_text` twice, and, worse, the queued edit's
-    ///   child index was measured against a frame list the client has not
-    ///   reached yet.
+    /// * A buffer that DID re-render drops what was queued AFTER that render:
+    ///   the mutation is inside `frames`, `previous` predates it, so the diff
+    ///   carries it already — and the queued edit's child index was measured
+    ///   against a frame list the client has not reached yet.
     ///
     /// The walk is the same pre-order over `Builder.nested` the differ uses, so
     /// `updates` stays parent-before-child: a child's edits are addressed to a
@@ -533,6 +535,7 @@ pub class Renderer extends DirtySink {
             some(value) => { was_settled = value }
             none => {}
         }
+        buffer.take_carry(update.edits)
         if was_settled { buffer.take_pending(update.edits) }
         else { buffer.drop_pending() }
         match by_id.get(buffer.id) {

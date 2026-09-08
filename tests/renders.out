@@ -89,4 +89,104 @@ ok   its handler no longer dispatches: 0
 ok   and marking its id does nothing: 0
 ok   faults: 0
 
+== 10. a signal write runs ZERO renders ==
+ok   the live board mounted every row: 201
+ok   everything rendered exactly once: 201
+ok   total renders across the page: 201
+ok   faults: 0
+ok   first batch: one update per component: 201
+ok   nothing is dirty: 0
+ok   no flush happened: 0
+ok   the board has NOT re-rendered: 1
+ok   EVERY component is still at exactly one render: 201
+ok   total renders across the page: 201
+ok   one component sends anything: 1
+ok   one structural edit: 1
+ok   five edits in all, the other four being the cursor: 5
+ok   and this is the whole stream: in 0 | in 1 | text 0 = c1 | out | out
+
+== 10b. the same edit the DIFFER would have produced ==
+ok   the plain twin mounted the same page: 201
+ok   the twin re-rendered the board: 1
+ok   the twin board has rendered twice: 2
+ok   and the differ's edits are the signal's edits, exactly: in 0 | in 1 | text 0 = c1 | out | out
+ok   one component, on that side too: 1
+ok   the signal side ran no render at all: 1
+
+== 10c. repeated writes between two batches are ONE edit ==
+ok   still one update: 1
+ok   still five edits: 5
+ok   carrying the LAST value: in 0 | in 1 | text 0 = c3 | out | out
+ok   and still no render: 1
+
+== 10d. a write that changes nothing sends nothing ==
+ok   a write of the same value: 0
+ok   a write to a signal the expression did not read: 0
+ok   the read signal has one subscriber: 1
+ok   the unread one has none: 0
+ok   no render, still: 1
+ok   no flush, still: 0
+
+== 10e. the counter CAN move — a render moves it ==
+ok   the flush ran the board and nothing else: 1
+ok   the board has now rendered twice: 2
+ok   total renders across the page: 202
+ok   every row is still at its first render: 200
+ok   and the branch flip is one edit: in 0 | in 1 | text 0 = nzz | out | out
+
+== 10f. the dependency set is the LAST read, not the union ==
+ok   the signal it stopped reading has no subscriber: 0
+ok   the one it reads now has one: 1
+ok   writing the abandoned signal sends nothing: 0
+ok   writing the live one still sends one edit: in 0 | in 1 | text 0 = nq | out | out
+ok   and neither write rendered anything: 2
+ok   one flush in the whole section: 1
+ok   faults: 0
+
+== 10g. a write and then a render, before the next batch ==
+ok   the flush ran the board: 1
+ok   the board has rendered three times: 3
+ok   one component: 1
+ok   two structural edits: 2
+ok   eight edits in all: 8
+ok   the signal's edit first, then the render's: in 0 | in 1 | text 0 = nr | out | out | in 0 | text 0 = live! | out
+ok   every row is STILL at its first render: 200
+
+== 11. a signal in a mounted child is addressed to the CHILD ==
+ok   two components: 2
+ok   the shell did not render: 1
+ok   the meter did not render either: 1
+ok   nothing is dirty: 0
+ok   one component sends anything: 1
+ok   and it is the child: 1
+ok   the parent sends nothing: 0
+ok   the stream is addressed inside the child: in 0 | text 0 = m5 | out
+
+== 12. a live expression under `preserve` is silent ==
+ok   no edit crosses the wire: 0
+ok   and no render ran: 1
+ok   but the frames moved: <div>k1</div>
+
+== 13. a signal write after disposal is inert ==
+ok   the flush ran the shell: 1
+ok   the meter is gone: 1
+ok   the write sends nothing: 0
+ok   nothing is dirty: 0
+ok   faults: 0
+
+== 14. a signal batch APPLIES to the tree it describes ==
+ok   the first render lands: <ul class="board">live<li class="head">c0</li><li>r0/0<em class="tag">row</em>.</li><li>r1/0<em class="tag">row</em>.</li><li>r2/0<em class="tag">row</em>.</li></ul>
+ok   and it is this page: <ul class="board">live<li class="head">c0</li><li>r0/0<em class="tag">row</em>.</li><li>r1/0<em class="tag">row</em>.</li><li>r2/0<em class="tag">row</em>.</li></ul>
+ok   a signal write lands: <ul class="board">live<li class="head">c4</li><li>r0/0<em class="tag">row</em>.</li><li>r1/0<em class="tag">row</em>.</li><li>r2/0<em class="tag">row</em>.</li></ul>
+ok   and only the live cell moved: <ul class="board">live<li class="head">c4</li><li>r0/0<em class="tag">row</em>.</li><li>r1/0<em class="tag">row</em>.</li><li>r2/0<em class="tag">row</em>.</li></ul>
+ok   the flush ran the board: 1
+ok   a write and a render in one batch land: <ul class="board">live!<li class="head">c5</li><li>r0/0<em class="tag">row</em>.</li><li>r1/0<em class="tag">row</em>.</li><li>r2/0<em class="tag">row</em>.</li></ul>
+ok   and both changes are there: <ul class="board">live!<li class="head">c5</li><li>r0/0<em class="tag">row</em>.</li><li>r1/0<em class="tag">row</em>.</li><li>r2/0<em class="tag">row</em>.</li></ul>
+ok   the flush ran the board: 1
+ok   the branch flip lands: <ul class="board">live!<li class="head">na</li><li>r0/0<em class="tag">row</em>.</li><li>r1/0<em class="tag">row</em>.</li><li>r2/0<em class="tag">row</em>.</li></ul>
+ok   and the other signal drives it now: <ul class="board">live!<li class="head">nz</li><li>r0/0<em class="tag">row</em>.</li><li>r1/0<em class="tag">row</em>.</li><li>r2/0<em class="tag">row</em>.</li></ul>
+ok   the applier raised nothing: 0
+ok   the board rendered twice in this section: 3
+ok   faults: 0
+
 renders: every count exact

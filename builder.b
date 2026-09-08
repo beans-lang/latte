@@ -453,10 +453,29 @@ pub class Builder {
     /// measured against.
     pub bindings: List<LiveBinding> = []
 
-    /// Edits a signal write produced since the last batch, ready to send: no
+    /// Edits a signal write produced since the last render, ready to send: no
     /// render ran and no diff ran, so nothing else in the pipeline knows about
     /// them. `Renderer.batch` is what drains this.
     pub pending: List<Edit> = []
+
+    /// Signal edits that were queued BEFORE the render that is now waiting to
+    /// be diffed, and that must therefore go out ahead of that render's edits.
+    ///
+    /// They cannot simply stay in `pending`, and they cannot be dropped
+    /// either — dropping them loses the write, which is the bug gate 6 § 10b
+    /// caught. `reset()` assigns `previous = frames`, and a signal write
+    /// rewrote a body inside `frames` in place, so the mutation ends up on
+    /// BOTH sides of the next diff and the differ is blind to it. The client
+    /// is still at the value before the write.
+    ///
+    /// The order is what makes them valid: a queued edit's child indices were
+    /// measured against a frame list whose STRUCTURE is the one the client
+    /// holds — a signal changes a text body and never the shape — so applying
+    /// it first walks the client from what it has to `previous`, and the diff
+    /// then walks it from `previous` to `frames`. That composition is only
+    /// sound because a buffer is never rendered twice between two batches,
+    /// which is `Renderer.flush` rule 1.
+    pub carry: List<Edit> = []
 
     slots: Map<string, int> = {}
     live: Map<int, bool> = {}
@@ -771,17 +790,26 @@ pub class Builder {
         }
     }
 
-    /// Take the signal edits this buffer has queued. The renderer calls it once
-    /// per batch, so a queued edit crosses the wire exactly once.
+    /// Take the signal edits queued before the pending render. They lead the
+    /// batch; see `carry`.
+    pub fn take_carry(out: List<Edit>) {
+        for edit: Edit in self.carry { out.push(edit) }
+        self.carry.clear()
+    }
+
+    /// Take the signal edits this buffer has queued since its last render. The
+    /// renderer calls it once per batch, so a queued edit crosses the wire
+    /// exactly once.
     pub fn take_pending(out: List<Edit>) {
         for edit: Edit in self.pending { out.push(edit) }
         self.drop_pending()
     }
 
     /// Forget the queue without sending it. `Renderer.batch` does this for a
-    /// buffer that RE-RENDERED since the last batch: the mutation a signal
-    /// made is in `frames`, so the render's own diff against `previous`
-    /// already carries it, and sending both would be the same edit twice.
+    /// buffer that re-rendered AFTER the write: the mutation is in `frames`
+    /// and `previous` is the list from before the render, so the diff carries
+    /// it already — and the queued edit's child indices were measured against
+    /// a frame list the client has not reached yet.
     pub fn drop_pending() {
         self.pending.clear()
         for binding: LiveBinding in self.bindings { binding.pending_at = -1 }
@@ -1292,6 +1320,10 @@ pub class Builder {
         self.failures.clear()
         self.live.clear()
         self.touched.clear()
+        // Signal edits queued against the list that is about to become
+        // `previous` still have to be sent, and now have to be sent FIRST.
+        for edit: Edit in self.pending { self.carry.push(edit) }
+        self.drop_pending()
         // Every binding measured itself against the frame list that just
         // became `previous`. Retiring them here — rather than letting the
         // render replace them — is what stops a signal write between two
@@ -1427,6 +1459,7 @@ pub class Builder {
         // edit addressed to a node the applier is about to drop. The disposal
         // is what the client is told; the edit would arrive after it.
         self.pending.clear()
+        self.carry.clear()
         self.frames.clear()
         self.previous.clear()
         self.rendered = false
