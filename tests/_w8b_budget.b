@@ -76,7 +76,11 @@ fn spread(name: string, samples: List<int>) {
     let p50: int = sorted[n / 2]
     let p90: int = sorted[(n * 9) / 10]
     let high: int = sorted[n - 1]
-    io.println("{name}: n={n} min={low}ns p50={p50}ns p90={p90}ns max={high}ns")
+    // Every figure is a multiple of 1000ns on this host: `time.monotonic_nanos`
+    // is named in nanoseconds and ticks in microseconds here, so a difference
+    // under a microsecond cannot be told from zero. Nothing below is close to
+    // that floor, but a reader comparing two runs should know where it is.
+    io.println("{name}: n={n} min={low}ns p50={p50}ns p90={p90}ns max={high}ns (clock ticks at 1us on this host)")
     io.println("{name}: min={low / 1000}.{low % 1000 / 100}us p50={p50 / 1000}.{p50 % 1000 / 100}us p90={p90 / 1000}.{p90 % 1000 / 100}us max={high / 1000}.{high % 1000 / 100}us")
 }
 
@@ -107,27 +111,43 @@ pub class Sheet extends Component {
     }
 }
 
-/// The control: the SAME rows, not virtualised. One render of this is what a
-/// framework that walked the whole collection would pay on every change.
+/// The control: the SAME rows, not virtualised, and re-rendered by the SAME
+/// operation — one client message in, one batch out.
 ///
 /// It is here because "render plus diff of a virtualised 50,000-row table" is
-/// a number with no meaning on its own — fast compared to what? A reader
-/// comparing the two lines below can see what the window bought.
+/// a number with no meaning on its own: fast compared to what? Clicking the
+/// button flips `tag`, every row's text changes, and the whole list is
+/// re-rendered and diffed. That is what a framework with no window pays on
+/// every change, measured the same way as the window move above, so the two
+/// lines can be read against each other.
+///
+/// 2,000 rows and not 50,000 because the point is the per-row cost. 50,000
+/// rows of un-virtualised markup answers a question about this machine's
+/// memory instead.
 pub class Flat extends Component {
     pub rows: int = 2000
+    pub tag: string = "a"
     pub fn init() {}
 
     pub override fn render(b: Builder) {
         b.open(0, "div")
         b.attr(1, "id", "flat")
+        b.open(2, "button")
+        b.on_click(3, fn(e: MouseEvent) {
+            if self.tag == "a" { self.tag = "b" } else { self.tag = "a" }
+        })
+        b.text(4, "flip")
+        b.close()
+        b.open(5, "ul")
         for index: int in 0..self.rows {
-            b.region(2, "{index}")
-            b.open(0, "div")
+            b.region(6, "{index}")
+            b.open(0, "li")
             b.attr(1, "class", "row")
-            b.text(2, "row {index}")
+            b.text(2, "row {index} {self.tag}")
             b.close()
             b.end_region()
         }
+        b.close()
         b.close()
     }
 }
@@ -290,19 +310,63 @@ fn budget_one() -> List<string> {
     }
     io.println("B1: {moved} of {B1_MOVES} window moves produced exactly one batch")
     io.println("B1: the circuit is still alive at the end: {!c.ending()} (a dead one answers nothing and would be timed as fast)")
+    // The window the renderer actually drew, asked of the component rather
+    // than assumed from the range: `Virtual` adds overscan on both sides and
+    // clamps, so the number of rows rendered is not the number requested.
+    var shown: int = 0
+    match c.renderer.component(vid) {
+        some(component) => {
+            match component as? Virtual {
+                some(list) => { shown = list.placement.shown }
+                none => {}
+            }
+        }
+        none => {}
+    }
+    var batch_bytes: int = 0
+    if batches.len() > 0 { batch_bytes = batches[0].len() }
+    io.println("B1: the window the renderer drew is {shown} rows (the range asked for {WINDOW}; Virtual adds overscan and clamps)")
     spread("B1 window move (decode + render + diff + serialize)", samples)
 
-    // The control. One full render of a flat list, no window, so the two lines
-    // can be read against each other. 2,000 rows and not 50,000 because the
-    // point is the per-row cost, and 50,000 rows of un-virtualised HTML is a
-    // number about this machine's memory rather than about latte.
+    // The control, measured by the SAME operation: one client message in, one
+    // batch out, over an un-virtualised list of the same kind of rows.
     let flat: Flat = new Flat()
-    let started: int = time.monotonic_nanos()
     let fc: Circuit = mounted(flat)
-    let elapsed: int = time.monotonic_nanos() - started
-    let per_row: int = elapsed / flat.rows
-    io.println("B1 control: one un-virtualised render of {flat.rows} rows took {elapsed}ns ({elapsed / 1000}us), {per_row}ns per row")
-    io.println("B1 control: at that rate {ROWS} rows would be {(per_row * ROWS) / 1000000}ms, and the window above is the whole reason nobody pays it")
+    var flat_samples: List<int> = []
+    var flat_bytes: int = 0
+    for step: int in 0..24 {
+        let before: int = time.monotonic_nanos()
+        fc.accept(click(1), 100 + step)
+        let out: List<string> = fc.take_outbox()
+        let after: int = time.monotonic_nanos()
+        if out.len() == 1 {
+            // The first four are warm-up and are not counted.
+            if step >= 4 { flat_samples.push(after - before) }
+            flat_bytes = out[0].len()
+        }
+        fc.accept(ack(fc.batch_count()), 100 + step)
+    }
+    spread("B1 control: full re-render + diff of {flat.rows} UN-virtualised rows", flat_samples)
+    io.println("B1 control: its batch is {flat_bytes} B; the window move's is {batch_bytes} B")
+    // The comparison, done here rather than left to the reader. The per-row
+    // cost of the two is close — it is the same renderer and the same differ —
+    // and that is the point: what the window buys is not a faster row, it is
+    // thirty rows instead of fifty thousand.
+    if flat_samples.len() > 0 && samples.len() > 0 && shown > 0 {
+        var fs: List<int> = []
+        for value: int in flat_samples { fs.push(value) }
+        fs.sort()
+        var ws: List<int> = []
+        for value: int in samples { ws.push(value) }
+        ws.sort()
+        let flat_p50: int = fs[fs.len() / 2]
+        let win_p50: int = ws[ws.len() / 2]
+        let flat_per_row: int = flat_p50 / flat.rows
+        let win_per_row: int = win_p50 / shown
+        io.println("B1 compare: {win_per_row}ns per row in the window, {flat_per_row}ns per row flat — the same renderer, so the same order")
+        io.println("B1 compare: at the flat rate, one change to a {ROWS}-row list would be {(flat_per_row * ROWS) / 1000000}ms of render and diff, and its batch would be about {(flat_bytes / flat.rows) * ROWS / 1000} KB")
+        io.println("B1 compare: the window pays {win_p50 / 1000}us and {batch_bytes} B instead, and that is the whole of what virtualisation is for")
+    }
     io.println("")
     var all: List<string> = []
     all.push(page_batch)
