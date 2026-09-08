@@ -770,6 +770,26 @@ ok two-refused-schemes-in-one-splat: what the refusal left
 ok two-refused-schemes-in-one-splat: the pass is still balanced
 ok two-refused-schemes-in-one-splat: the control raises nothing
 ok two-refused-schemes-in-one-splat: and the control renders
+-- live-expression-with-no-signal
+   site:    live_text / live expression N read no signal
+   faults:  0: live expression 0 read no signal
+   left:    static
+   control: 7
+ok live-expression-with-no-signal: the exact faults
+ok live-expression-with-no-signal: what the refusal left
+ok live-expression-with-no-signal: the pass is still balanced
+ok live-expression-with-no-signal: the control raises nothing
+ok live-expression-with-no-signal: and the control renders
+-- live-expression-reading-an-unowned-signal
+   site:    live_text / live expression N read no signal
+   faults:  0: live expression 0 read no signal
+   left:    7
+   control: 7
+ok live-expression-reading-an-unowned-signal: the exact faults
+ok live-expression-reading-an-unowned-signal: what the refusal left
+ok live-expression-reading-an-unowned-signal: the pass is still balanced
+ok live-expression-reading-an-unowned-signal: the control raises nothing
+ok live-expression-reading-an-unowned-signal: and the control renders
 -- mount-a-non-component
    site:    mount / X is not a Component
    faults:  0: NotAComponent is not a Component
@@ -1036,6 +1056,7 @@ ok a-slot-that-holds-another-class: and the instance survived all three passes
    2x end_region / end_region with no open region
    2x fail_boundary / fail_boundary with no open boundary
    1x fill_slot / slot N holds a X, not a Y
+   2x live_text / live expression N read no signal
    1x mount / X has no zero-argument initializer
    1x mount / X is not a Component
    2x mount / cannot activate X
@@ -1053,4 +1074,4 @@ ok a-slot-that-holds-another-class: and the instance survived all three passes
    3x unwind_to / an element was left open
 ok every fault site in builder.b has a case
 == summary
-checks: 459, failed: 0
+checks: 469, failed: 0

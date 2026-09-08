@@ -477,10 +477,79 @@ pub class Renderer extends DirtySink {
         return writer.page(self.root)
     }
 
-    /// The edits since the last batch, for the components that re-rendered.
+    /// The edits since the last batch: what the components that re-rendered
+    /// diffed to, plus what the live tier queued without rendering at all.
+    ///
+    /// The two are merged rather than concatenated, because a component can
+    /// have both and the answer is not "send both".
+    ///
+    /// * A buffer that did NOT re-render (`diffed` is still true) has no diff
+    ///   edits, and its queued signal edits are the only thing carrying the
+    ///   rewrite. They are sent.
+    /// * A buffer that DID re-render has its signal mutation already inside
+    ///   `frames` — a signal write rewrites the frame in place — so the diff
+    ///   against `previous` carries it, and the queue is dropped. Sending both
+    ///   would be the same `set_text` twice, and, worse, the queued edit's
+    ///   child index was measured against a frame list the client has not
+    ///   reached yet.
+    ///
+    /// The walk is the same pre-order over `Builder.nested` the differ uses, so
+    /// `updates` stays parent-before-child: a child's edits are addressed to a
+    /// mount node its parent's edits create.
     pub fn batch() -> Batch {
+        // BEFORE the differ, because the differ SETS `diffed` on every buffer
+        // it visits — so asking afterwards answers true for all of them and
+        // the distinction this merge turns on would be gone.
+        var settled: Map<int, bool> = {}
+        self.note_settled(self.root, settled)
         let differ: Differ = new Differ()
-        return differ.batch(self.root)
+        let out: Batch = differ.batch(self.root)
+        var by_id: Map<int, ComponentUpdate> = {}
+        for update: ComponentUpdate in out.updates { by_id[update.component] = update }
+        var merged: List<ComponentUpdate> = []
+        self.merge_live(self.root, settled, by_id, merged)
+        out.updates = move merged
+        return out
+    }
+
+    fn note_settled(buffer: Builder, settled: Map<int, bool>) {
+        settled[buffer.id] = buffer.diffed
+        var slots: List<int> = buffer.nested.keys()
+        slots.sort()
+        for slot: int in slots {
+            match buffer.nested.get(slot) {
+                some(child) => { self.note_settled(child, settled) }
+                none => {}
+            }
+        }
+    }
+
+    fn merge_live(buffer: Builder, settled: Map<int, bool>,
+                  by_id: Map<int, ComponentUpdate>,
+                  out: List<ComponentUpdate>) {
+        let update: ComponentUpdate = new ComponentUpdate(buffer.id)
+        var was_settled: bool = true
+        match settled.get(buffer.id) {
+            some(value) => { was_settled = value }
+            none => {}
+        }
+        if was_settled { buffer.take_pending(update.edits) }
+        else { buffer.drop_pending() }
+        match by_id.get(buffer.id) {
+            some(diffed) => {
+                for edit: Edit in diffed.edits { update.edits.push(edit) }
+            }
+            none => {}
+        }
+        if update.edits.len() > 0 { out.push(update) }
+        var slots: List<int> = buffer.nested.keys()
+        slots.sort()
+        for slot: int in slots {
+            match buffer.nested.get(slot) {
+                some(child) => { self.merge_live(child, settled, by_id, out) }
+                none => {}
+            }
+        }
     }
 
     /// Every fault anywhere: the renderer's own, and every Builder's.

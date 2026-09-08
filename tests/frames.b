@@ -31,8 +31,8 @@ package main
 import std.io
 import std.reflect
 import {Builder, Callback, Component, DirtySink, Frame, FocusEvent, InputEvent,
-        KeyboardEvent, MouseEvent, Reference, Renderer, Serializer, SubmitEvent,
-        describe_frame} from latte
+        KeyboardEvent, MouseEvent, Reference, Renderer, Serializer, Signal,
+        SubmitEvent, describe_frame} from latte
 
 // ---------------------------------------------------------------- reporting
 //
@@ -1154,6 +1154,14 @@ pub class Cell<T> extends Component {
 /// The control: the same call over a NON-generic component. Without it a green
 /// run cannot tell "the factory route works" from "the factory route did
 /// nothing and the assertions were about an empty page".
+/// A component with a signal, for § 13's live-expression site. Its value is 7
+/// so the trip and the control can be told apart from an empty render.
+pub class Ticker extends Component {
+    pub ticks: Signal<int> = new Signal<int>(7)
+    pub fn init() {}
+    pub override fn on_init() { self.ticks.own(self) }
+}
+
 pub class Plain extends Component {
     pub label: string = ""
     pub renders: int = 0
@@ -1661,6 +1669,7 @@ const SITE_ATTR_ON: string = "name_is_writable / refused inline handler attribut
 const SITE_SPLAT_NAME: string = "attrs / refused splatted attribute name"
 const SITE_SPLAT_ON: string = "attrs / refused splatted inline handler"
 const SITE_SPLAT_URL: string = "attrs / attribute N carried a refused scheme"
+const SITE_LIVE_DEAF: string = "live_text / live expression N read no signal"
 const SITE_WRONG_CLASS: string = "fill_slot / slot N holds a X, not a Y"
 const SITE_NOT_COMPONENT: string = "mount / X is not a Component"
 const SITE_ACTIVATE: string = "mount / cannot activate X"
@@ -2249,6 +2258,44 @@ fn sites() -> List<Site> {
             b.close()
         }, "<a href=\"https://example.com/v\" poster=\"https://example.com/p.png\"></a>"))
 
+    // -- live expressions -------------------------------------------------
+    //
+    // `live` promises that writing a signal updates this text without a
+    // render. An expression that read no signal cannot be woken by anything,
+    // so it renders once, correctly, and then never moves again — and nothing
+    // anywhere says so. Both shapes that reach it are here, because they are
+    // different mistakes with the same silence: markup marked `live` with no
+    // signal in it, and a signal whose `own(self)` was forgotten.
+    out.push(new Site(SITE_LIVE_DEAF, "live-expression-with-no-signal",
+        fn(b: Builder) {
+            b.live_text(0, fn() -> string { return "static" })
+        },
+        "0: live expression 0 read no signal", "static",
+        fn(b: Builder) {
+            let clock: Ticker = new Ticker()
+            clock.mount.page = some(b.registry)
+            clock.ticks.own(clock)
+            b.live_text(0, fn() -> string { return "{clock.ticks.get()}" })
+        }, "7"))
+
+    // The forgotten line, which is the one an author will actually write. The
+    // signal is read; it just has no owner, so the read reaches no page and
+    // records nothing. The control differs from it by `own(clock)` and by
+    // nothing else.
+    out.push(new Site(SITE_LIVE_DEAF, "live-expression-reading-an-unowned-signal",
+        fn(b: Builder) {
+            let clock: Ticker = new Ticker()
+            clock.mount.page = some(b.registry)
+            b.live_text(0, fn() -> string { return "{clock.ticks.get()}" })
+        },
+        "0: live expression 0 read no signal", "7",
+        fn(b: Builder) {
+            let clock: Ticker = new Ticker()
+            clock.mount.page = some(b.registry)
+            clock.ticks.own(clock)
+            b.live_text(0, fn() -> string { return "{clock.ticks.get()}" })
+        }, "7"))
+
     // -- mounting ---------------------------------------------------------
     out.push(new Site(SITE_NOT_COMPONENT, "mount-a-non-component",
         fn(b: Builder) {
@@ -2660,7 +2707,7 @@ fn fault_sites(r: Report) {
             none => {}
         }
     }
-    r.eqi("every fault site in builder.b has a case", names.len(), 24)
+    r.eqi("every fault site in builder.b has a case", names.len(), 25)
 }
 
 /// Three controls in the table render no html of their own, because a handler,

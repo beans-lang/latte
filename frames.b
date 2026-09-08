@@ -92,6 +92,14 @@ pub class Frames {
     pub fn at(index: int) -> Frame { return self.items[index] }
     pub fn clear() { self.items.clear() }
 
+    /// Rewrite one frame in place. The only caller is a live binding replacing
+    /// the body of the text frame it owns (`signal.b`): the frame LIST is not
+    /// changing — no frame is added, removed or reordered — so nothing the
+    /// differ, the serializer or the applier reads about structure moves. A
+    /// caller that wanted to change a frame's KIND or seq would be changing the
+    /// structure and must render instead.
+    pub fn set(index: int, frame: Frame) { self.items[index] = frame }
+
     /// One frame per line, indented by depth. A one-line dump is unreadable in
     /// a failing diff, and a golden file is read by a person exactly once —
     /// when it breaks.
