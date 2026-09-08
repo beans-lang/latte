@@ -1,0 +1,99 @@
+== 1. child content ==
+ok   the host, the card: two components: 2
+ok   the caller's markup is inside the card: <section><div class="card"><h3>titled</h3><p>one</p></div></section>
+ok   the card has its own buffer
+ok   and the caller's <p> is in it
+ok   and NOT in the host's
+ok   the body is placed as a fragment
+ok   and the fragment is closed
+ok   placing it raised no fault: 0
+ok   an empty body places nothing: <section><div class="card"><h3>titled</h3></div></section>
+ok   and still no faults: 0
+
+== 2. templated content ==
+ok   the template ran once per item: 3
+ok   with each item's own data: <section><table><td>10</td><td>20</td><td>30</td></table></section>
+ok   the placement raised no fault: 0
+ok   no items, no template calls: 0
+ok   and an empty table: <section><table></table></section>
+
+== 3. a callback marks the component that SUPPLIED it ==
+ok   host, card, picker: three levels: 3
+ok   the ref holds a mounted picker
+ok   and the renderer knows it
+ok   nothing is dirty yet: 0
+ok   the callback ran the parent's code: 7
+ok   the SUPPLIER is dirty
+ok   the child that fired it is NOT
+ok   exactly one component is dirty: 1
+ok   the flush ran two renders, not three: 2
+ok   the host rendered again: 2
+ok   the picker did not: 1
+ok   notify marks the component that called it
+ok   and not its parent
+ok   the picker bound a handler
+ok   and the renderer knows who owns it: 3
+ok   the click dispatched
+ok   the child is dirty, by dispatch
+ok   the host is dirty, by callback
+ok   the callback carried the child's id: 1
+ok   an unknown handler id dispatches nothing
+ok   and marks nothing: 0
+ok   a callback with no owner is not alive
+ok   and calling it changes nothing: 0
+
+== 4. ref, on an element and on a component tag ==
+ok   the element ref was filled
+ok   and it is the same node after a re-render: 1
+ok   nothing is dirty before the call: 0
+ok   the held child is dirty
+ok   and its parent is not
+ok   driving it re-renders one component: 1
+ok   and the new state is in the HTML
+ok   a parameter written through a ref is reset by the parent: pick
+ok   the control: no ref, no node: -1
+ok   and no component handle
+
+== 5. attrs= splat ==
+ok   splatted attributes, sorted, after the literal one: <div class="base" aria-label="a" data-kind="b" title="c">splatted</div>
+ok   the splat introduced no faults: 0
+ok   no splat, no extra attributes: <div class="base">splatted</div>
+ok   an empty map splats nothing: <div class="base">splatted</div>
+ok   and still no faults: 0
+
+== 6. preserve ==
+ok   a preserved subtree sends one text edit, for the sibling: 1
+the batch:
+component 0
+  in 0
+    in 1
+      text 0 = b
+    out
+  out
+
+ok   not preserved: both texts are edited: 2
+the batch:
+component 0
+  in 0
+    in 0
+      in 0
+        text 0 = b
+      out
+    out
+    in 1
+      text 0 = b
+    out
+  out
+
+
+== 7. what gate 5 asks for and latte does not check ==
+a required parameter on a CHILD component is NOT checked; see the comment here
+
+== 8. three levels, each with its own buffer ==
+ok   the whole tree: <section><input><div class="card"><h3>wrapper</h3><button>pick!</button></div></section>
+ok   three components, three buffers: 3
+ok   the picker's button is in the PICKER's buffer
+ok   and not in the host's
+ok   no faults anywhere in the tree: 0
+
+checks failed: 0
