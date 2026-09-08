@@ -252,12 +252,31 @@ pub class Applier {
                     } else if !kind_satisfies(cur.kids[index].kind, WANT_CONTAINER) {
                         self.wrong_kind_at(update.component, "step_in", index,
                                            WANT_CONTAINER, cur.kids[index].kind)
-                        // The same placeholder, for the same reason. Refusing
-                        // the descent without pushing one would leave the
-                        // matching `step_out` to pop this node's PARENT, and
-                        // every edit after it would land somewhere it was
-                        // never addressed to.
-                        stack.push(new Node())
+                        // Descend into THAT node, not into a placeholder, and
+                        // the difference is not cosmetic.
+                        //
+                        // A fresh `Node` is an element, which is a container.
+                        // Substituting one would make the cursor a container on
+                        // every reachable path, so the `insert`/`remove`/
+                        // `relocate` container refusals would be dead code and
+                        // a `set_attr` inside a mis-stepped scope would succeed
+                        // SILENTLY against a throwaway — accepted, discarded,
+                        // nothing raised. RULES.md, "the refusal that never
+                        // runs", built by hand.
+                        //
+                        // Descending into the leaf costs nothing: every edit
+                        // that could mutate it is refused by the same rule —
+                        // `set_text`/`set_markup` find no child at any index,
+                        // and the eight cursor edits find a leaf. So a
+                        // mis-stepped scope raises one fault per edit that had
+                        // no business there, and the matching `step_out` still
+                        // balances. Only an INDEX-out-of-range `step_in` gets a
+                        // placeholder, because there is no node to descend into.
+                        //
+                        // lanes/W5.md, THE APPLIER CONTRACT: `latte.js` does
+                        // the same, so the two appliers fault identically on
+                        // one stream.
+                        stack.push(cur.kids[index])
                     } else {
                         stack.push(cur.kids[index])
                     }
@@ -418,18 +437,15 @@ pub class Applier {
     /// index to name: the three that rearrange children and the five that
     /// write an attribute or a handler.
     ///
-    /// Reachable through `apply()` for `WANT_ELEMENT` and not for
-    /// `WANT_CONTAINER`, and the asymmetry is worth writing down rather than
-    /// leaving a reader to assume both are ordinary. The cursor is the
-    /// component's root — always `SPAN_MOUNT` — or a node `step_in` descended
-    /// into, and `step_in` now refuses a leaf, or a `step_in` placeholder,
-    /// which is an element. So a cursor that is a mount, a region, a fragment
-    /// or a boundary reaches the element check from an ordinary edit stream,
-    /// while a cursor that is a leaf can only be arrived at by putting one
-    /// into `Applier.roots` by hand — the field is `pub`, so the refusal is
-    /// live rather than dead, and `tests/w1_faults.b` § 1 trips it that way.
-    /// It is kept because the rule is one rule: a node that cannot hold
-    /// children never gains any, however the applier got there.
+    /// Both wants are reachable from an ordinary edit stream, and keeping the
+    /// container one reachable is why a refused `step_in` descends into the
+    /// leaf instead of a placeholder. `WANT_ELEMENT` fires whenever the cursor
+    /// is a mount — which is what every component's root is — or a region, a
+    /// fragment or a boundary. `WANT_CONTAINER` fires below a `step_in` that
+    /// was refused, which is the only way a leaf becomes the cursor through
+    /// `apply()`; a leaf planted in the public `Applier.roots` is the second
+    /// way, and § 2 uses it, because the rule is one rule: a node that cannot
+    /// hold children never gains any, however the applier got there.
     fn wrong_kind(component: int, op: string, want: int, got: int) {
         self.faults.push(
             "component {component}: {op} needs a {want_name(want)} node, not a {node_kind_name(got)} node")
