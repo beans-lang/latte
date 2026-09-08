@@ -181,9 +181,22 @@ build_control() {                # <source stem>; builds and runs into $out
         failed=1
         return 1
     fi
+    # Control A aborts ON PURPOSE — that is what ASan does to a double free —
+    # and bash announces a child killed by a signal on ITS OWN stderr, as
+    # "line N: 12345 Abort trap: 6". In an otherwise green gate run that line
+    # reads like something broke, and a gate that trains its readers to skip
+    # a line is a gate whose skip lines stop being read (RULES.md 5).
+    #
+    # The announcement comes from THIS shell, not from the child, so a
+    # redirect on the child cannot catch it; the script's own stderr is put
+    # aside for exactly this one command and restored immediately. Nothing is
+    # lost — the child's stdout and stderr are captured in files above and
+    # below, and they are what every assertion here reads.
     set +e
+    exec 3>&2 2>/dev/null
     (cd "$ROOT" && ASAN_OPTIONS="detect_leaks=0:halt_on_error=1" BEANS_NO_POOL=1 \
         "$out/$stem") >"$out/$stem.stdout" 2>"$out/$stem.stderr"
+    exec 2>&3 3>&-
     set -e
     return 0
 }
