@@ -182,6 +182,23 @@ wait "$server_pid" 2>/dev/null || true
 
 if [[ $status -ne 0 ]]; then
     echo "--- w8b-smoke FAILED: the browser half reported failures (exit $status) ---" >&2
+    if grep -q 'Illegal invocation' "$out/smoke.txt"; then
+        echo "" >&2
+        echo "    READ THIS BEFORE BLAMING YOUR CHANGE. "Illegal invocation" is a" >&2
+        echo "    standing bug in js/latte.js and has nothing to do with whatever you" >&2
+        echo "    are editing. js/latte.js:1191 keeps a bare \`window.setTimeout\` and" >&2
+        echo "    then calls it as \`this.setTimeout(fn, ms)\`, which hands the browser's" >&2
+        echo "    own method a Circuit as its receiver; every browser refuses that." >&2
+        echo "    Its two callers are \`armFence\` and \`retry\`, so the B11 fence never" >&2
+        echo "    arms and a dropped socket is never reconnected -- which is why" >&2
+        echo "    sections 8 and 9 are red together. tests/js_apply.js injects a fake" >&2
+        echo "    timer, which is why no other test in this repo can see it." >&2
+        echo "    The fix is one line each:" >&2
+        echo "        this.setTimeout  = options.setTimeout  || (typeof setTimeout  !== 'undefined' ? function (fn, ms) { return setTimeout(fn, ms); } : null);" >&2
+        echo "        this.clearTimeout = options.clearTimeout || (typeof clearTimeout !== 'undefined' ? function (id) { return clearTimeout(id); } : null);" >&2
+        echo "    lanes/W8b.md, "Findings", carries the whole write-up." >&2
+        echo "" >&2
+    fi
     echo "--- server stderr ---" >&2
     cat "$out/server.err" >&2
     exit 1
