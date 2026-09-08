@@ -1,0 +1,161 @@
+ok hostile.refusal-comes-first.0
+ok hostile.refusal-comes-first.0-same-message
+ok hostile.refusal-comes-first.1
+ok hostile.refusal-comes-first.1-same-message
+ok hostile.refusal-comes-first.2
+ok hostile.refusal-comes-first.2-same-message
+ok hostile.refusal-comes-first.3
+ok hostile.refusal-comes-first.3-same-message
+ok hostile.refusal-comes-first.4
+ok hostile.refusal-comes-first.4-same-message
+ok hostile.refusal-comes-first.5
+ok hostile.refusal-comes-first.5-same-message
+ok hostile.refusal-comes-first.6
+ok hostile.refusal-comes-first.6-same-message
+ok hostile.refusal-comes-first.7
+ok hostile.refusal-comes-first.7-same-message
+ok hostile.control-an-accepted-message-is-answered-differently
+
+== what each family generated ==
+   truncated: 262 shapes, 255 refused, 7 accepted; fresh circuit ended 261, attached circuit ended 1
+   one byte substituted: 3825 shapes, 3061 refused, 764 accepted; fresh circuit ended 3784, attached circuit ended 494
+   one byte inserted: 3930 shapes, 3050 refused, 880 accepted; fresh circuit ended 3871, attached circuit ended 535
+   nesting depth: 42 shapes, 42 refused, 0 accepted; fresh circuit ended 42, attached circuit ended 0
+   size caps: 26 shapes, 22 refused, 4 accepted; fresh circuit ended 26, attached circuit ended 4
+   hostile keys: 48 shapes, 32 refused, 16 accepted; fresh circuit ended 48, attached circuit ended 0
+   wrong types: 1183 shapes, 240 refused, 943 accepted; fresh circuit ended 1024, attached circuit ended 159
+   not a message: 37 shapes, 37 refused, 0 accepted; fresh circuit ended 37, attached circuit ended 0
+   TOTAL: 9353 hostile shapes
+
+ok hostile.truncated.the-generator-produced-shapes
+ok hostile.truncated.every-shape-was-fed
+ok hostile.truncated.refused-plus-accepted-is-every-shape
+ok hostile.truncated.no-shape-decoded-into-limbo
+ok hostile.truncated.no-fault-is-loud
+ok hostile.truncated.every-fresh-circuit-answered
+ok hostile.truncated.every-decoded-shape-reached-an-attached-circuit
+ok hostile.truncated.every-attached-circuit-answered
+ok hostile.truncated.no-shape-silently-un-attached-a-live-circuit
+ok hostile.one byte substituted.the-generator-produced-shapes
+ok hostile.one byte substituted.every-shape-was-fed
+ok hostile.one byte substituted.refused-plus-accepted-is-every-shape
+ok hostile.one byte substituted.no-shape-decoded-into-limbo
+ok hostile.one byte substituted.no-fault-is-loud
+ok hostile.one byte substituted.every-fresh-circuit-answered
+ok hostile.one byte substituted.every-decoded-shape-reached-an-attached-circuit
+ok hostile.one byte substituted.every-attached-circuit-answered
+ok hostile.one byte substituted.no-shape-silently-un-attached-a-live-circuit
+ok hostile.one byte inserted.the-generator-produced-shapes
+ok hostile.one byte inserted.every-shape-was-fed
+ok hostile.one byte inserted.refused-plus-accepted-is-every-shape
+ok hostile.one byte inserted.no-shape-decoded-into-limbo
+ok hostile.one byte inserted.no-fault-is-loud
+ok hostile.one byte inserted.every-fresh-circuit-answered
+ok hostile.one byte inserted.every-decoded-shape-reached-an-attached-circuit
+ok hostile.one byte inserted.every-attached-circuit-answered
+ok hostile.one byte inserted.no-shape-silently-un-attached-a-live-circuit
+ok hostile.nesting depth.the-generator-produced-shapes
+ok hostile.nesting depth.every-shape-was-fed
+ok hostile.nesting depth.refused-plus-accepted-is-every-shape
+ok hostile.nesting depth.no-shape-decoded-into-limbo
+ok hostile.nesting depth.no-fault-is-loud
+ok hostile.nesting depth.every-fresh-circuit-answered
+ok hostile.nesting depth.every-decoded-shape-reached-an-attached-circuit
+ok hostile.nesting depth.every-attached-circuit-answered
+ok hostile.nesting depth.no-shape-silently-un-attached-a-live-circuit
+ok hostile.size caps.the-generator-produced-shapes
+ok hostile.size caps.every-shape-was-fed
+ok hostile.size caps.refused-plus-accepted-is-every-shape
+ok hostile.size caps.no-shape-decoded-into-limbo
+ok hostile.size caps.no-fault-is-loud
+ok hostile.size caps.every-fresh-circuit-answered
+ok hostile.size caps.every-decoded-shape-reached-an-attached-circuit
+ok hostile.size caps.every-attached-circuit-answered
+ok hostile.size caps.no-shape-silently-un-attached-a-live-circuit
+ok hostile.hostile keys.the-generator-produced-shapes
+ok hostile.hostile keys.every-shape-was-fed
+ok hostile.hostile keys.refused-plus-accepted-is-every-shape
+ok hostile.hostile keys.no-shape-decoded-into-limbo
+ok hostile.hostile keys.no-fault-is-loud
+ok hostile.hostile keys.every-fresh-circuit-answered
+ok hostile.hostile keys.every-decoded-shape-reached-an-attached-circuit
+ok hostile.hostile keys.every-attached-circuit-answered
+ok hostile.hostile keys.no-shape-silently-un-attached-a-live-circuit
+ok hostile.wrong types.the-generator-produced-shapes
+ok hostile.wrong types.every-shape-was-fed
+ok hostile.wrong types.refused-plus-accepted-is-every-shape
+ok hostile.wrong types.no-shape-decoded-into-limbo
+ok hostile.wrong types.no-fault-is-loud
+ok hostile.wrong types.every-fresh-circuit-answered
+ok hostile.wrong types.every-decoded-shape-reached-an-attached-circuit
+ok hostile.wrong types.every-attached-circuit-answered
+ok hostile.wrong types.no-shape-silently-un-attached-a-live-circuit
+ok hostile.not a message.the-generator-produced-shapes
+ok hostile.not a message.every-shape-was-fed
+ok hostile.not a message.refused-plus-accepted-is-every-shape
+ok hostile.not a message.no-shape-decoded-into-limbo
+ok hostile.not a message.no-fault-is-loud
+ok hostile.not a message.every-fresh-circuit-answered
+ok hostile.not a message.every-decoded-shape-reached-an-attached-circuit
+ok hostile.not a message.every-attached-circuit-answered
+ok hostile.not a message.no-shape-silently-un-attached-a-live-circuit
+
+== the fault vocabulary, digits normalised ==
+   a \u escape with a non-hex digit
+   a high surrogate with no low surrogate
+   a js result carries no call id
+   a low surrogate with no high surrogate
+   a message must be a JSON object
+   a message sequence must be a whole number
+   a message sequence must not be negative
+   a message with no "t"
+   a number too large for this protocol
+   a number with a leading zero
+   a number with no digits
+   a range carries no region id
+   a range must be two non-negative numbers
+   a raw control byte inside a string
+   a string longer than # bytes
+   a string was never closed
+   a value cannot start with byte #
+   ack carries no batch number
+   an array longer than #
+   an event carries no handler id
+   an event payload must be an object
+   an object key must be a string
+   an object with more than # members
+   an unknown string escape
+   attach carries no circuit id
+   expected , or ] in an array
+   expected , or } in an object
+   expected : after an object key
+   expected null
+   expected true
+   nav carries no url
+   nesting deeper than #
+   resume carries no acknowledged batch
+   resume carries no circuit id
+   the message ended early
+   the message is # bytes, over the #-byte limit
+   this protocol carries integers only
+   trailing bytes after the message
+   unknown event name
+   unknown message kind
+   (40 distinct)
+
+== the bye kinds a hostile shape produced ==
+   forbidden
+   protocol
+   (2 distinct)
+
+== the outbox frame kinds a hostile shape produced ==
+   batch
+   bye
+   seen
+   (3 distinct)
+ok hostile.no-outbox-frame-was-unparseable
+ok hostile.no-outbox-frame-lacked-a-kind
+ok hostile.the-corpus-produced-byes
+ok hostile.the-corpus-produced-faults
+
+9353 hostile shapes, 93 checks, 0 failed
