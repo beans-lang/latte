@@ -91,6 +91,10 @@ SUITES=(
     w8_threats       # every refusal in the repo, driven at once
     w8_hostile       # thousands of generated hostile shapes through the
                      # markup and attribute path
+    w9_shell         # the page shell and the asset route: a document built,
+                     # an asset read off disk and answered, and every refusal
+                     # on both — the first path in latte that touches the
+                     # filesystem on a request
 )
 
 # Every gated suite, by test.sh's own definition: tests/*.b, no leading "_",
