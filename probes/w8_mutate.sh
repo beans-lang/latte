@@ -96,8 +96,8 @@ M = [
 },
 {
  "file": "frames.b", "label": "is_url_attribute / force-allow (nothing is a URL)",
- "find": 'pub fn is_url_attribute(name: string) -> bool {\n    if name == "href" { return true }',
- "into": 'pub fn is_url_attribute(name: string) -> bool {\n    if true { return false }\n    if name == "href" { return true }',
+ "find": 'pub fn is_url_attribute(name: string) -> bool {\n    return name == "href" || name == "src" || name == "action" ||',
+ "into": 'pub fn is_url_attribute(name: string) -> bool {\n    if true { return false }\n    return name == "href" || name == "src" || name == "action" ||',
  "breaks": ["row3.every-url-attribute-refuses-javascript",
             "row3.every-url-attribute-goes-inert",
             "row3.evasions-all-inert",
@@ -108,8 +108,8 @@ M = [
 },
 {
  "file": "frames.b", "label": "is_url_attribute / force-refuse (everything is a URL)",
- "find": 'pub fn is_url_attribute(name: string) -> bool {\n    if name == "href" { return true }',
- "into": 'pub fn is_url_attribute(name: string) -> bool {\n    if true { return true }\n    if name == "href" { return true }',
+ "find": 'pub fn is_url_attribute(name: string) -> bool {\n    return name == "href" || name == "src" || name == "action" ||',
+ "into": 'pub fn is_url_attribute(name: string) -> bool {\n    if true { return true }\n    return name == "href" || name == "src" || name == "action" ||',
  "breaks": ["row3.control-non-url-attribute-keeps-value",
             "row3.control-non-url-attribute-no-fault",
             "row3.control-url-attribute-title",
@@ -296,6 +296,62 @@ M = [
  "into": '        if false {',
  "breaks": ["row14.past-the-idle-window-the-circuit-ends",
             "row14.and-the-reason-is-idle"],
+},
+
+# ---- row 9, the revalidation interval -------------------------------------
+#
+# Five mutations, because "revalidated on an interval" is four separate claims
+# and a check that only watched `ending()` could not tell them apart: that a
+# tick past the interval RE-ASKS, that a tick inside it does NOT, that the
+# re-ask ends the circuit when the answer is no, and that it does not when the
+# answer is yes.
+{
+ "file": "circuit.b", "label": "the revalidation interval / force-allow (never due)",
+ "find": '        if !self.attached { return false }\n        return now_ms - self.authorized_ms >= self.options.revalidate_ms',
+ "into": '        if !self.attached { return false }\n        if true { return false }\n        return now_ms - self.authorized_ms >= self.options.revalidate_ms',
+ "breaks": ["row9.a-tick-revalidates-authorization",
+            "row9.a-lapsed-authorization-ends-the-circuit",
+            "row9.a-lapsed-authorization-sends-a-bye",
+            "row9.control-the-held-role-is-re-asked-too",
+            "row9.a-shorter-interval-catches-it-sooner",
+            "row9.control-the-interval-still-fires-after-a-navigation"],
+},
+{
+ "file": "circuit.b", "label": "the revalidation interval / force-refuse (due on every tick)",
+ "find": '        if !self.attached { return false }\n        return now_ms - self.authorized_ms >= self.options.revalidate_ms',
+ "into": '        if !self.attached { return false }\n        if true { return true }\n        return now_ms - self.authorized_ms >= self.options.revalidate_ms',
+ "breaks": ["row9.a-tick-inside-the-interval-does-not-re-ask",
+            "row9.a-tick-inside-the-interval-does-not-end",
+            "row9.the-interval-is-the-option-not-a-constant",
+            "row9.a-navigation-restarts-the-interval"],
+},
+{
+ "file": "circuit.b", "label": "revalidation's attached guard / force-allow",
+ "find": '        if !self.attached { return false }\n        return now_ms - self.authorized_ms >= self.options.revalidate_ms',
+ "into": '        if false { return false }\n        return now_ms - self.authorized_ms >= self.options.revalidate_ms',
+ "breaks": ["row9.an-unattached-circuit-is-not-revalidated",
+            "row9.an-unattached-circuit-is-not-ended-by-it"],
+},
+{
+ "file": "circuit.b", "label": "the lapsed-authorization refusal / force-allow (re-asks, ignores the answer)",
+ "find": '            none => {\n                self.stop("forbidden",\n                    "the authorization this circuit opened with no longer holds")\n            }',
+ "into": '            none => {}',
+ "breaks": ["row9.a-lapsed-authorization-ends-the-circuit",
+            "row9.a-lapsed-authorization-sends-a-bye",
+            "row9.a-shorter-interval-catches-it-sooner"],
+},
+{
+ "file": "circuit.b", "label": "the lapsed-authorization refusal / force-refuse (a held role ends too)",
+ "find": '        match build(self.url) {\n            some(component) => {}',
+ "into": '        match build(self.url) {\n            some(component) => {\n                self.stop("forbidden",\n                    "the authorization this circuit opened with no longer holds")\n            }',
+ "breaks": ["row9.control-the-held-role-keeps-the-circuit",
+            "row9.control-the-held-role-sends-nothing"],
+},
+{
+ "file": "circuit.b", "label": "the nav re-arming the interval clock / dropped",
+ "find": '                self.page = some(component)\n                self.url = message.url\n                self.authorized_ms = now_ms\n                self.renderer = new Renderer()',
+ "into": '                self.page = some(component)\n                self.url = message.url\n                self.renderer = new Renderer()',
+ "breaks": ["row9.a-navigation-restarts-the-interval"],
 },
 {
  "file": "circuit.b", "label": "the idle timeout / force-refuse",
@@ -536,10 +592,13 @@ def failing_checks():
     return names, ""
 
 
-# The two rows PLAN.md requires and latte does not have yet. They fail in every
-# run, mutated or not, so they are subtracted rather than reported forty times.
-EXPECTED = {"row9.a-tick-revalidates-authorization",
-            "row18.latte-ships-a-security-header-middleware"}
+# The row PLAN.md requires and latte does not have yet. It fails in every run,
+# mutated or not, so it is subtracted rather than reported forty times.
+#
+# Row 9's interval clause was here too until `Circuit.tick` grew the
+# revalidation. It is now an ordinary set of cases with its own mutations
+# below, which is the only reason it may be taken off this list.
+EXPECTED = {"row18.latte-ships-a-security-header-middleware"}
 
 base, why = failing_checks()
 if base is None:
