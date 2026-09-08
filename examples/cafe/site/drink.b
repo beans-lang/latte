@@ -1,0 +1,70 @@
+// Generated from examples/cafe/site/drink.bx by latte-bx. Do not edit.
+//
+// The <beans> block below is drink.bx's, copied through byte for byte; its
+// own package line is blanked so every line after it keeps its number. The
+// render method under it is the markup, as Builder calls with fixed
+// sequence numbers. Change drink.bx and regenerate:
+//
+//     latte-bx build examples/cafe/site/drink.bx
+package site
+
+import {Builder, Callback, Component, FocusEvent, InputEvent, KeyboardEvent, MouseEvent, Reference, SubmitEvent} from latte
+
+
+// `examples/cafe/site/drink.bx` — one row of the menu, and the component the
+// browser smoke clicks.
+//
+// The event goes OUT as a `Callback<string>` and not a bare `fn(string)`. A
+// bare closure would run, change the page's state, and re-render nothing:
+// nothing would have told the renderer which component changed. A `Callback`
+// marks the component that SUPPLIED it — the page, not this row.
+//
+// `should_render` answers from the parameters recorded in `on_params_set`, so
+// picking one drink re-renders that drink and the page and leaves the other
+// two alone. `main.b -- check` asserts exactly that on the batch that crosses
+// the wire, so a framework that re-rendered the world would fail the example
+// rather than pass it.
+//          
+
+import {ParamWatch, param} from latte
+
+pub partial class Drink extends Component {
+    @param pub name: string = ""
+    @param pub price: int = 0
+    @param pub chosen: bool = false
+    @param pub on_pick: Option<Callback<string>> = none
+    watch: ParamWatch = new ParamWatch()
+    pub fn init() {}
+
+    pub override fn on_params_set() {
+        self.watch.record([self.name, "{self.price}", "{self.chosen}"])
+    }
+    pub override fn should_render() -> bool { return self.watch.differs() }
+
+    /// The button's text. A method and not `$self.name — $self.price p`,
+    /// because an implicit expression's chain stops at the first character
+    /// that cannot continue it — so the `p` of `190p` would have to be its own
+    /// text run, with a space in front of it that the page does not want.
+    pub fn label() -> string { return "{self.name} — {self.price}p" }
+
+    fn pick() {
+        match self.on_pick {
+            some(handler) => { handler.call(self.name) }
+            none => {}
+        }
+    }
+}
+
+partial class Drink {
+    pub override fn render(b: Builder) {
+        b.open(0, "li")  // drink.bx:46
+        b.attr(1, "class", "{if self.chosen { "drink chosen" } else { "drink" }}")
+        b.open(2, "button")  // drink.bx:47
+        b.attr(3, "type", "button")
+        b.attr(4, "data-drink", "{self.name}")
+        b.on_click(5, fn(e: MouseEvent) { self.pick() })
+        b.text(6, "{self.label()}")  // drink.bx:49
+        b.close()
+        b.close()
+    }
+}
