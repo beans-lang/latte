@@ -43,6 +43,48 @@
         pre.id = 'latte-verdict';
         pre.textContent = '@@LATTE-BEGIN@@\n' + lines.join('\n') + '\n@@LATTE-END@@';
         document.body.appendChild(pre);
+        releaseLoad();
+    }
+
+    // THE LOAD EVENT, HELD OPEN ON PURPOSE. See § 10.
+    //
+    // `test.sh` reads this page with `chrome --headless=new --dump-dom`, which
+    // dumps the DOM when the load event fires and not a millisecond later.
+    // Everything up to § 9 prints inside the script's own task or a microtask
+    // queued behind it, so the dump has always caught it. § 10 waits for REAL
+    // timers, and those fire after load: measured on this machine, a `<pre>`
+    // appended from a 40 ms timer is simply absent from the dump.
+    //
+    // An iframe whose document is still parsing holds its parent's load event,
+    // so this opens one and does not close it until `emit()` runs.
+    //
+    // HOW MUCH IT BUYS, MEASURED ON THIS MACHINE, because a guard nobody can
+    // make fire is worth saying out loud. Removing the `holdLoad()` call and
+    // running the whole page: § 10 as it ships (about 60 ms of waiting)
+    // survives 3 runs out of 3, and so does a § 10 stretched to 200 ms — the
+    // dump has that much slack here. Stretched to 600 ms it is lost 3 out of
+    // 3, and with the hold put back the same 600 ms survives 3 out of 3. So
+    // the hold is real and it is measured, but it is INSURANCE rather than the
+    // thing that makes § 10 pass here: the margin is a property of the machine
+    // and of how much § 10 waits, and neither is something a reader of this
+    // file should have to guess about. Losing the race is loud either way —
+    // `test.sh` reports "the page printed no verdict" — so what the hold
+    // removes is a flake, not a wrong answer.
+    var loadHold = null;
+    function holdLoad() {
+        if (loadHold) { return; }
+        var frame = document.createElement('iframe');
+        frame.setAttribute('title', 'load hold');
+        document.body.appendChild(frame);
+        loadHold = frame.contentDocument;
+        loadHold.open();
+        loadHold.write('<p>holding the load event open until the verdict</p>');
+    }
+    function releaseLoad() {
+        if (!loadHold) { return; }
+        var doc = loadHold;
+        loadHold = null;
+        try { doc.close(); } catch (err) { /* the frame is already gone */ }
     }
     window.addEventListener('error', function (event) {
         say('FAIL the harness threw: ' + (event.message || event.error));
@@ -353,6 +395,13 @@
     FakeSocket.prototype.close = function () { this.closed = true; this.readyState = 3; };
 
     var CIRCUIT_ID = '0123456789abcdef0123';
+    // The id a RECONNECT is answered with. A returning socket never gets the
+    // id it left with: the server has already opened a fresh circuit for it
+    // and announced that one, because nothing in the handshake could have said
+    // which circuit this is. `CircuitSet.adopt` is what moves the socket to
+    // the retained circuit, and `tests/circuit_live.b` § 8.2 asserts the two
+    // ids differ from the server's end.
+    var RECONNECT_ID = 'fedcba9876543210fedc';
 
     // The clock and the timer queue are FAKE, and that is the point: the
     // fence deadline (§ 5) is a property of elapsed time, and a gate that
@@ -593,11 +642,24 @@
     eq('an unknown wire version stops rather than guessing', oldrig.circuit.ended, true);
     eq('and it sent nothing', oldrig.socket.sent.length, 0);
 
-    // --- a circuit id that is not this one ---
+    // --- a circuit id that is not this one, BEFORE anything has attached ---
+    //
+    // The refusal is the client half of `Circuit.on_attach`'s "the id the
+    // client presents must be the one this circuit was opened with", so it
+    // holds exactly where this end is about to ATTACH. Its complement — an
+    // ATTACHED circuit, whose reconnect must accept a differing id and resume
+    // — is `dropfence` in § 5. Neither row means anything without the other:
+    // one alone reads as "the client checks the id" or "the client ignores
+    // it", and the truth is that which one is right depends on the message
+    // this end is about to send.
     var wrongrig = newCircuit();
     wrongrig.socket.onmessage({ data: JSON.stringify({
         t: 'hello', v: 1, c: 'ffffffffffffffffffff', mx: 65536 }) });
-    eq('a hello for a different circuit stops', wrongrig.circuit.ended, true);
+    eq('a hello for a different circuit stops one that never attached',
+       wrongrig.circuit.ended, true);
+    eq('and it is the forbidden ending, not some other', wrongrig.circuit.endKind,
+       'forbidden');
+    eq('and it attached to nothing', wrongrig.socket.sent.length, 0);
 
     // --- bye, and no reconnect after it ---
     var byerig = newCircuit();
@@ -751,16 +813,35 @@
     eq('a drop clears the deadlines', dropfence.circuit.outstanding.length, 0);
     dropfence.advance(1);
     eq('the reconnect opened a socket', dropfence.sockets.length, 2);
+    // A DIFFERENT id, and that is the only shape a server ever sends here.
+    // Nothing in a WebSocket handshake says which circuit a returning client
+    // wants, so the server opens a fresh circuit for the new socket and
+    // announces ITS id; `CircuitSet.adopt` moves the socket to the retained
+    // one when the first message is a `resume` naming it.
+    // `tests/circuit_live.b` § 8.2 asserts the same thing from the server's
+    // end: "and it is NOT the one being resumed". This row used to feed
+    // CIRCUIT_ID back, which is why `onHello` refusing a differing id as
+    // `forbidden` — every reconnect a real browser would ever make — was
+    // invisible to a suite that otherwise covers the reconnect in detail.
     dropfence.current().onmessage({ data: JSON.stringify({
-        t: 'hello', v: 1, c: CIRCUIT_ID, mx: 65536 }) });
-    eqJson('and the resume it sends carries a NEW sequence, not the old one',
+        t: 'hello', v: 1, c: RECONNECT_ID, mx: 65536 }) });
+    eq('the reconnect resumes across a hello with a DIFFERENT id',
+       dropfence.circuit.ended, false);
+    eqJson('and the resume it sends names the OLD circuit, with a NEW sequence',
            last(dropfence.current().sent),
            { t: 'resume', c: CIRCUIT_ID, a: 1, n: 2 });
+    eq('and this end still holds the id it is resuming, not the fresh one',
+       dropfence.circuit.id, CIRCUIT_ID);
     dropfence.advance(60000);
     eq('the dropped attach never stalls the reconnected circuit',
        dropfence.stalls.length, 1);
+    // Guarded for the same reason § 10's stall row is: a client that refuses
+    // the reconnect stalls nothing, and an unguarded `undefined.t` here would
+    // throw and take the remaining 120 checks and the tally with it — turning
+    // "the reconnect was refused" into "the page printed a fifth of a verdict".
     eq('and the stall that did happen is the RESUME, not the dead attach',
-       dropfence.stalls[0].t, 'resume');
+       dropfence.stalls.length ? dropfence.stalls[0].t : '(nothing stalled)',
+       'resume');
 
     // --- an unsendable message owes nothing ---
     var unsent = newCircuit({ answerMs: 5000 });
@@ -1488,9 +1569,184 @@
         });
     }
 
-    observerCheck(function () {
+    // ============================================= § 10 the page's own timer
+    //
+    // Every rig in § 4 and § 5 injects `setTimeout`, `clearTimeout` and the
+    // clock. That is right — a deadline asserted by really waiting is a
+    // deadline no gate can name a millisecond of — and it is also why 469
+    // checks ran without one of them ever reaching the browser's own timer.
+    // Which is how this survived, in the file those checks are about:
+    //
+    //     this.setTimeout = setTimeout;    // a method of `window`, taken bare
+    //     ...
+    //     this.setTimeout(fn, ms);         // called with a Circuit as `this`
+    //
+    // Every browser answers that with `TypeError: Illegal invocation`. The two
+    // lines that make the call are `armFence` and `retry`, so in a real
+    // browser the B11 fence never armed and a dropped socket never came back —
+    // seven uncaught pageerrors in the W8b Playwright smoke, one per fenced
+    // message, and not one check anywhere able to see it.
+    //
+    // So this section injects NO timer and NO clock. It takes the page's,
+    // waits real milliseconds, and asserts the two things a fake timer cannot
+    // claim: that a fence FIRES, and that the socket it drops COMES BACK.
+    //
+    // And it carries the reconnect the timer bug was hiding. `retry` never
+    // ran, so nothing ever reached `onHello` on a SECOND socket — where the
+    // server always announces a different circuit id, and where refusing one
+    // as `forbidden` ends the page instead of resuming it.
+
+    holdLoad();
+
+    function newRealCircuit(options) {
+        options = options || {};
+        var host = freshHost();
+        var sockets = [];
+        var errors = [];
+        var stalls = [];
+        var circuit = new latte.Circuit({
+            url: 'ws://localhost/_latte/ws',
+            id: CIRCUIT_ID,
+            document: document,
+            host: host,
+            answerMs: options.answerMs,
+            backoff: options.backoff,
+            open: function () {
+                var made = new FakeSocket();
+                sockets.push(made);
+                return made;
+            },
+            onstall: function (head) { stalls.push(head); },
+            log: { error: function (text) { errors.push(text); },
+                   warn: function () {} }
+            // No `setTimeout`, no `clearTimeout`, no `now`, no `schedule`.
+            // That absence is the whole section.
+        });
+        circuit.start();
+        return { circuit: circuit, host: host, sockets: sockets,
+                 errors: errors, stalls: stalls,
+                 current: function () { return sockets[sockets.length - 1]; } };
+    }
+
+    // Real milliseconds. Bounded, because "the deadline never fires" is
+    // precisely the bug this section exists for and it has to read as a FAIL
+    // line rather than as a page that hangs until the dump gives up.
+    function waitUntil(name, ready, next) {
+        var tries = 0;
+        function look() {
+            if (ready()) { next(); return; }
+            tries += 1;
+            if (tries > 200) {
+                checks += 1;
+                bad += 1;
+                say('FAIL ' + name);
+                say('   the browser never delivered it (waited about 1000 ms)');
+                next();
+                return;
+            }
+            setTimeout(look, 5);
+        }
+        setTimeout(look, 0);
+    }
+
+    function realTimerCheck(done) {
         say('');
-        say(checks + ' checks, ' + bad + ' bad');
-        emit();
+        say('=== 10. the page\'s own timer: a fence that fires, a socket that comes back');
+
+        var rig = newRealCircuit({ answerMs: 12, backoff: [8] });
+        var threw = '';
+        try {
+            // `hello` → `attach`, which is fenced, which arms a deadline on
+            // the page's own `setTimeout`. THIS is the call that threw.
+            rig.current().onmessage({ data: JSON.stringify({
+                t: 'hello', v: 1, c: CIRCUIT_ID, mx: 65536 }) });
+        } catch (err) {
+            threw = String(err && err.message ? err.message : err);
+        }
+        eq('arming a fence on the page\'s own timer does not throw', threw, '');
+        eqJson('so the attach went out', rig.current().sent[0],
+               { t: 'attach', c: CIRCUIT_ID,
+                 u: location.pathname + location.search, n: 1 });
+        eq('and a real deadline is armed for it',
+           rig.circuit.fenceTimer !== null, true);
+
+        // A batch, so this end has something to RESUME from: `attached` is set
+        // by the first batch, and a circuit that never got one re-attaches.
+        rig.current().onmessage({
+            data: JSON.stringify(caseNamed('page').steps[0].b) });
+        eq('a batch arrived through the socket callback',
+           normalize(rig.host.innerHTML),
+           normalize(caseNamed('page').steps[0].h));
+
+        // Nothing answers the attach. From here only the browser's clock can
+        // move this on — there is nothing to advance.
+        waitUntil('the fence fires on the browser\'s own clock',
+            function () { return rig.stalls.length > 0 && rig.sockets.length > 1; },
+            function () {
+                eq('the fence fired without anything advancing a clock',
+                   rig.stalls.length, 1);
+                // Guarded, because when the deadline does NOT fire this row
+                // is the one that would otherwise throw on `undefined.t` and
+                // take the remaining fifteen rows and the tally with it.
+                eq('and it names the message that went unanswered',
+                   rig.stalls.length ? rig.stalls[0].t : '(nothing stalled)',
+                   'attach');
+                eq('the stalled socket was closed', rig.sockets[0].closed, true);
+                eq('the backoff timer opened a new one', rig.sockets.length, 2);
+                eq('and a stall is still not an ending', rig.circuit.ended, false);
+
+                // THE RECONNECT. A different id, which is the only thing a
+                // server sends on a second socket — see RECONNECT_ID above and
+                // `tests/circuit_live.b` § 8.2.
+                var back = '';
+                try {
+                    rig.current().onmessage({ data: JSON.stringify({
+                        t: 'hello', v: 1, c: RECONNECT_ID, mx: 65536 }) });
+                } catch (err) {
+                    back = String(err && err.message ? err.message : err);
+                }
+                // `retry`'s timer and `armFence`'s are two call sites of the
+                // same thing, and this is the second one: without it a throw
+                // here takes the six rows below and the tally with it, and the
+                // page reports `Script error.` instead of what happened.
+                eq('the hello on the new socket does not throw either', back, '');
+                eq('the reconnect is not refused', rig.circuit.ended, false);
+                eqJson('and it resumes the circuit this page remembers',
+                       last(rig.current().sent),
+                       { t: 'resume', c: CIRCUIT_ID, a: 1, n: 2 });
+                eq('the resume armed a deadline of its own',
+                   rig.circuit.fenceTimer !== null, true);
+
+                // `clearTimeout` is the other half of F1 and it is reached
+                // from here: a `seen` retires the resume and disarms.
+                rig.current().onmessage({
+                    data: JSON.stringify({ t: 'seen', n: 2 }) });
+                eq('a seen retires it', rig.circuit.outstanding.length, 0);
+                eq('and clearTimeout on the page\'s own timer disarmed the deadline',
+                   rig.circuit.fenceTimer, null);
+
+                // The control for the row above, and it needs real time too:
+                // a fence that fires no matter what would look identical up to
+                // here. Nothing is outstanding, so nothing may stall — and the
+                // wait is longer than the deadline that already fired once.
+                var quiet = 0;
+                waitUntil('the answered fence stays quiet',
+                    function () { quiet += 1; return quiet > 8; },
+                    function () {
+                        eq('an answered fence never fires a second time',
+                           rig.stalls.length, 1);
+                        eq('and no third socket was opened', rig.sockets.length, 2);
+                        eq('the circuit is still live', rig.circuit.ended, false);
+                        done();
+                    });
+            });
+    }
+
+    observerCheck(function () {
+        realTimerCheck(function () {
+            say('');
+            say(checks + ' checks, ' + bad + ' bad');
+            emit();
+        });
     });
 })();
