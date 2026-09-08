@@ -439,16 +439,54 @@ M = [
             "row6.expired-at-expiry",
             "row6.control-boundary-pair-checks-out"],
 },
+# Dropping the prefixes and KEEPING the separator. This was UNGUARDED until
+# row 6 grew a pair whose session id contains the separator: "ab|c" and "a|bc"
+# are different strings whatever the prefixes do, so the old pair proved the
+# `|` and said nothing about the `{len}:`.
 {
  "file": "forms.b", "label": "the payload's length prefixes / dropped",
  "find": '        return "{session.len()}:{session}|{form_id.len()}:{form_id}|{expiry}"',
  "into": '        return "{session}|{form_id}|{expiry}"',
- "breaks": ["row6.no-boundary-collision", "row6.boundary-pair-does-not-cross"],
+ "breaks": ["row6.a-separator-inside-the-session-does-not-collide",
+            "row6.the-separator-pair-does-not-cross"],
 },
+# There is deliberately NO "separators dropped" mutation beside it. A
+# length-prefixed encoding is injective on its own, so `{len}:{a}{len}:{b}{exp}`
+# has no collision to find and the mutation would be reported UNGUARDED for a
+# true reason — the separators are the braces, the prefixes are the belt, and
+# only the belt survives a session id that contains a `|`.
+
+# Row 10's whole claim: no field name ever crosses the wire, because a bind is
+# a compiled closure over the fields the AUTHOR annotated. This is the guard
+# that decides which those are.
+#
+# The obvious mutation — `if uses.len() == 0 {` to `if false {` — panics at
+# `uses[0]` two lines down and the suite never runs, so this refusal was
+# UNPROVEN by mutation for as long as that was the entry. This one is the same
+# break with the index guarded, so it changes only whether the filter filters.
 {
  "file": "forms.b", "label": "the @field filter / force-allow (every field is bindable)",
- "find": '        let uses: List<reflect.Annotation> = annotations_named(member.annotations(), "field")\n        if uses.len() == 0 {',
- "into": '        let uses: List<reflect.Annotation> = annotations_named(member.annotations(), "field")\n        if false {',
+ "find": """        let uses: List<reflect.Annotation> = annotations_named(member.annotations(), "field")
+        if uses.len() == 0 {
+            // A rule on a non-`@field` of a `@form` is the same mistake the
+            // scan reports for a non-`@form` type, and it is reported here so
+            // the message names the model the author was looking at.
+            let rule: string = rule_named(member)
+            if rule != "" {
+                plan.faults.push(
+                    "{plan.type_name}.{member.name()} carries @{rule} but not @field, so the rule would never run")
+            }
+            continue
+        }
+        var bound: FormField = new FormField()
+        bound.field_name = member.name()
+        bound.wire_name = argument_string(uses[0], "name")
+        if bound.wire_name == "" { bound.wire_name = member.name() }""",
+ "into": """        let uses: List<reflect.Annotation> = annotations_named(member.annotations(), "field")
+        var bound: FormField = new FormField()
+        bound.field_name = member.name()
+        if uses.len() > 0 { bound.wire_name = argument_string(uses[0], "name") }
+        if bound.wire_name == "" { bound.wire_name = member.name() }""",
  "breaks": ["row10.unannotated-names-are-ignored",
             "row10.the-model-was-not-mass-assigned",
             "row10.the-plan-names-only-the-annotated-fields",
@@ -592,13 +630,16 @@ def failing_checks():
     return names, ""
 
 
-# The row PLAN.md requires and latte does not have yet. It fails in every run,
-# mutated or not, so it is subtracted rather than reported forty times.
+# Checks that fail in every run, mutated or not, and are therefore subtracted
+# rather than reported forty times.
 #
-# Row 9's interval clause was here too until `Circuit.tick` grew the
-# revalidation. It is now an ordinary set of cases with its own mutations
-# below, which is the only reason it may be taken off this list.
-EXPECTED = {"row18.latte-ships-a-security-header-middleware"}
+# **It is empty, and keeping it empty is the point.** Two rows lived here:
+# row 9's interval clause until `Circuit.tick` grew the revalidation, and
+# row 18's `security_headers` until W4 shipped it. Each came off this list only
+# because the thing PLAN.md asked for actually landed and the row became an
+# ordinary set of cases with its own mutations below. A name added here for any
+# other reason is a failing check made invisible.
+EXPECTED = set()
 
 base, why = failing_checks()
 if base is None:
@@ -612,8 +653,8 @@ if base != EXPECTED:
     print("  Fix the suite before reading anything below.", file=sys.stderr)
     sys.exit(1)
 
-print(f"baseline: {len(base)} known failure(s) — "
-      + ", ".join(sorted(base)))
+print(f"baseline: the suite is green — {len(base)} known failure(s) subtracted"
+      + ("" if not base else ": " + ", ".join(sorted(base))))
 print()
 
 unguarded = 0
@@ -638,7 +679,11 @@ for m in M:
         # about which assertion noticed, so it is a failure of the mutation.
         print(f"BROKE  {m['file']:<12} {m['label']}")
         print("       the suite did not run under this mutation:")
-        print("       " + why.strip().split("\n")[0])
+        # The LAST line, not the first. `why` is stdout + stderr and stdout
+        # starts with the suite's own output, so printing the first line
+        # reported "-- row 1: XSS through interpolated text" for a stack
+        # overflow three hundred checks later.
+        print("       " + why.strip().split("\n")[-1])
         unguarded += 1
         continue
     new = got - base
