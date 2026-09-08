@@ -63,6 +63,20 @@ async function settle(page, fn, want, deadline = 15000) {
     }
 }
 
+/// `settle` for a predicate that runs HERE rather than in the page: the
+/// `sockets` bookkeeping below is filled from CDP events, which arrive on
+/// their own schedule and not when `page.goto` resolves.
+///
+/// A wait is not a weakened check. The deadline expires and the assertion
+/// that follows then runs on exactly the same data, so a server that never
+/// speaks still fails — it takes fifteen seconds to say so instead of none.
+async function waitFor(probe, deadline = 15000) {
+    const until = Date.now() + deadline;
+    while (!probe() && Date.now() < until) {
+        await new Promise(resume => setTimeout(resume, 25));
+    }
+}
+
 async function main() {
     const browser = await chromium.launch({
         executablePath,
@@ -149,6 +163,26 @@ async function main() {
     const drinks = await settle(page,
         () => document.querySelectorAll('#drinks li.drink').length, 3);
     yes('4.1 the menu rendered its keyed list of drinks', drinks > 0);
+
+    // Everything from here on is about the state AFTER the circuit attached
+    // and its first batch was applied, and TWO clocks decide when that is
+    // visible: Playwright fills `sockets` from CDP events, and the browser
+    // applies the batch when it gets it. `goto` resolving at
+    // `domcontentloaded` says nothing about either — the deferred script has
+    // only just run — and 4.1 above cannot stand in for them, because the
+    // shell SERVER-RENDERS the drinks and its `settle` is satisfied by the
+    // markup that was in the document before any socket opened.
+    //
+    // Without these two waits every check below is a race, and on a busy
+    // machine it is lost: 4.2 read `sockets.length` 0 and 4.4 read an empty
+    // frame list, one round trip after the load, in half the runs.
+    await waitFor(() => sockets.length > 0 &&
+        sockets[0].got.some(f => String(f).indexOf('"t":"batch"') >= 0));
+    await settle(page, () => {
+        const live = window.latte;
+        return !!(live && live.current && live.current.lastBatch > 0);
+    }, true);
+
     eq('4.2 exactly one WebSocket was opened', sockets.length, 1);
     yes('4.3 and it went to the circuit endpoint on this server',
         sockets.length === 1 && sockets[0].url === base.replace(/^http:/, 'ws:') + '/_latte/ws');

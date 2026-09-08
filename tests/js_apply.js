@@ -1355,6 +1355,17 @@
     // no scroll event is coming to say so.
     var batchrig = newReporter();
     hello(batchrig);
+    // The ATTACH batch comes first, and the list is hung on the host after it.
+    //
+    // Not decoration and not a delay: the applier takes the host over on the
+    // first batch it applies and removes whatever it did not build (D5,
+    // "replace on attach" — `Applier.claim`), because that is how the shell's
+    // server-rendered page stops standing beside the client's copy. So a list
+    // put on the host BEFORE the first batch is a list the first batch throws
+    // away, and this rig was the only place in this file that hung a node on
+    // the host by hand and then delivered a batch to it. A real circuit cannot
+    // reach that state: a virtual list is in the host because a batch built it.
+    batchrig.circuit.onBatch({ b: 1, u: [] });
     var grows = scroller(11, 50, 32, 4, 1600);
     batchrig.host.appendChild(grows);
     grows.scrollTop = 1600;
@@ -1363,13 +1374,13 @@
     eqJson('the window at the bottom of a 50-row list', last(batchrig.socket.sent),
            { t: 'range', h: 11, s: 42, c: 8, n: 2 });
     grows.setAttribute('data-latte-rows', '500');
-    batchrig.circuit.onBatch({ b: 1, u: [] });
+    batchrig.circuit.onBatch({ b: 2, u: [] });
     batchrig.tick();
     eqJson('the same scroll position in a 500-row list is a different window',
            last(batchrig.socket.sent), { t: 'range', h: 11, s: 42, c: 12, n: 3 });
     // And it settles: a batch that changed nothing about the list sends no
     // second range, so a batch and a range cannot chase each other.
-    batchrig.circuit.onBatch({ b: 2, u: [] });
+    batchrig.circuit.onBatch({ b: 3, u: [] });
     batchrig.tick();
     eq('a batch that moved no window sends no range',
        last(batchrig.socket.sent).t, 'ack');
