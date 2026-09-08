@@ -977,6 +977,52 @@ run_refusal_coverage_leg() {
 # cannot be skipped cannot rot.
 run_refusal_coverage_leg
 
+# Every recorded refusal in probes/*_bad/, re-checked against today's compiler.
+#
+# This existed as a hand-run script for three lanes and `test.sh` never called
+# it, which is the exact shape RULES.md refuses: a guard that only runs when
+# someone remembers is a guard that reports nothing the day it matters. A
+# probe's answer is half "this works" and half "this is refused, and here is
+# the message" — the second half rots silently when a compiler starts accepting
+# a shape the design was built around.
+#
+# The count is pinned here on purpose. check_refusals.sh finds probes by shape,
+# so it stays green after a `*_bad/` directory is deleted — it would simply
+# check fewer and still say ok. Pinning means removing a refusal is a decision
+# someone has to write down here, not something a `rm -rf` does quietly.
+RECORDED_REFUSALS=3
+run_recorded_refusals_leg() {
+    local script="$ROOT/probes/check_refusals.sh"
+    # Missing is a FAILURE, never a skip: the whole point is that it cannot
+    # be absent without anyone noticing.
+    if [[ ! -f "$script" ]]; then
+        echo "--- recorded-refusals FAILED: probes/check_refusals.sh is gone ---" >&2
+        failed=1
+        return
+    fi
+    local out
+    if ! out=$(BEANSC="$BEANSC" bash "$script" 2>&1); then
+        echo "--- recorded-refusals FAILED: a shape the design was built around is no longer refused ---" >&2
+        echo "$out" >&2
+        failed=1
+        return
+    fi
+    local n
+    n=$(printf '%s\n' "$out" | sed -n 's/^ok — \([0-9][0-9]*\) recorded refusal(s).*/\1/p')
+    if [[ "$n" != "$RECORDED_REFUSALS" ]]; then
+        echo "--- recorded-refusals FAILED: checked ${n:-0}, expected $RECORDED_REFUSALS ---" >&2
+        echo "    A refusal was added or removed. If that was deliberate, change" >&2
+        echo "    RECORDED_REFUSALS in test.sh and say why in the commit." >&2
+        echo "$out" >&2
+        failed=1
+        return
+    fi
+    echo "ok recorded-refusals — all $n recorded refusal(s) in probes/*_bad/ are still refused, with their recorded message"
+}
+
+# Always runs, for the same reason as the leg above.
+run_recorded_refusals_leg
+
 for case in "$ROOT"/tests/*.b; do
     name=$(basename "$case" .b)
     # Scratch drivers are allowed in tests/ and are not gated: a name starting
