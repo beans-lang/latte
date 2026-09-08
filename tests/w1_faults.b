@@ -1634,12 +1634,132 @@ fn swallowed_upstream(r: Report) {
         "<div>a child closes the attribute run</div>")
 }
 
+// ------------------------------------------------------------------ § 5
+
+/// The other half of § 4: what the two walkers do when the frame ISN'T
+/// swallowed upstream.
+///
+/// `Builder.frames` is public, so a hand-assembled list puts an attribute-run
+/// frame in a child position and both walkers meet it. `serialize.b` reports it
+/// by name and writes the children after it anyway; `scan_spans` — which is
+/// what `Applier.build` and the whole differ read siblings with — used to
+/// BREAK on it, so every sibling past the stray was silently dropped.
+///
+/// The two answers were `<b>one</b>` and `<b>onetwo</b>` for one frame list,
+/// with zero faults on the applier's side. That is gate 3's entire comparison
+/// — "the applier must land on the serializer's HTML of the new tree" —
+/// disagreeing with itself over a shape neither walker refuses. `scan_spans`
+/// steps over the stray now, which is what the serializer does, and this
+/// section is the assertion that they cannot drift apart again.
+///
+/// All SIX frames that `frame_is_attribute` names, not the one the probe
+/// found: `attribute`, `flag`, `splat`, `handler`, `reference` and `preserve`
+/// each reach the same branch, and a fix measured on one of them says nothing
+/// about the other five.
+///
+/// It is deliberately NOT a refusal on the applier's side. The Beans applier
+/// could raise a fault here, but `latte.js` applies the same stream with no
+/// serializer beside it to report anything, and a sentence invented in one
+/// half is a sentence the other half does not have — the exact drift THE
+/// APPLIER CONTRACT exists to stop. What both halves must do first is agree on
+/// the CONTENT, and that is what is pinned here; whether a stray frame also
+/// earns a sentence is a contract question and belongs to whoever owns both
+/// halves. lanes/W1.md, SEVENTH AGENT, says so and names the cost.
+fn strays_read_the_same_way(r: Report) {
+    io.println("== 5 a stray attribute frame reads the same to both walkers")
+
+    var names: List<string> = ["attribute", "flag", "splat", "handler",
+                              "reference", "preserve"]
+    var strays: List<Frame> = [Frame.attribute(1, "class", "x"),
+                               Frame.flag(1, "hidden", true),
+                               Frame.splat(1, 0),
+                               Frame.handler(1, "click", 7),
+                               Frame.reference(1),
+                               Frame.preserve(1)]
+    var reports: List<string> = ["1 attr class=x is not a child position",
+                                 "1 flag hidden=true is not a child position",
+                                 "1 splat 0 is not a child position",
+                                 "1 on:click -> 7 is not a child position",
+                                 "1 ref is not a child position",
+                                 "1 preserve is not a child position"]
+
+    var index: int = 0
+    for index < names.len() {
+        // `<b>one<stray>two</b>`, staged in a batch's reference pool and
+        // handed to the serializer as a frame list. Two children around the
+        // stray, because a subtree with nothing after it cannot tell "stepped
+        // over" from "stopped here".
+        let a: Applier = new Applier()
+        let batch: Batch = new Batch()
+        batch.reference.push(Frame.open(9, "b"))
+        batch.reference.push(Frame.text(0, "one"))
+        batch.reference.push(strays[index])
+        batch.reference.push(Frame.text(2, "two"))
+        batch.reference.push(Frame.close)
+        at_component(batch, 0, [Edit.insert(0, 0)])
+        a.apply(batch)
+
+        let b: Builder = new Builder()
+        b.frames.push(Frame.open(9, "b"))
+        b.frames.push(Frame.text(0, "one"))
+        b.frames.push(strays[index])
+        b.frames.push(Frame.text(2, "two"))
+        b.frames.push(Frame.close)
+        let writer: Serializer = new Serializer()
+        let html: string = writer.page(b)
+        let applied: string = a.html()
+
+        io.println("-- a stray {names[index]} frame in a child position")
+        io.println("   applier:    {applied}")
+        io.println("   serializer: {html}  {joined(writer.faults)}")
+
+        r.eq("a stray {names[index]}: the serializer reports it",
+            joined(writer.faults), reports[index])
+        r.eq("a stray {names[index]}: and writes the children after it", html,
+            "<b>onetwo</b>")
+        // The one that was red before the fix: it read `<b>one</b>`.
+        r.eq("a stray {names[index]}: the applier reads the same children",
+            applied, html)
+        r.eq("a stray {names[index]}: and the applier says nothing about it",
+            joined(a.faults), "")
+        index += 1
+    }
+
+    // The control: the same subtree with no stray. Without it, "both walkers
+    // say <b>onetwo</b>" would pass just as well against a walker that ignored
+    // the middle frame slot entirely.
+    let clean: Applier = new Applier()
+    let batch: Batch = new Batch()
+    batch.reference.push(Frame.open(9, "b"))
+    batch.reference.push(Frame.text(0, "one"))
+    batch.reference.push(Frame.text(2, "two"))
+    batch.reference.push(Frame.close)
+    at_component(batch, 0, [Edit.insert(0, 0)])
+    clean.apply(batch)
+
+    let b: Builder = new Builder()
+    b.frames.push(Frame.open(9, "b"))
+    b.frames.push(Frame.text(0, "one"))
+    b.frames.push(Frame.text(2, "two"))
+    b.frames.push(Frame.close)
+    let writer: Serializer = new Serializer()
+    let html: string = writer.page(b)
+    io.println("-- the control: no stray frame")
+    io.println("   applier:    {clean.html()}")
+    io.println("   serializer: {html}  {joined(writer.faults)}")
+    r.eq("with no stray the serializer raises nothing", joined(writer.faults), "")
+    r.eq("and both walkers read the same two children", clean.html(), html)
+    r.eq("which is the same page the stray cases produced", clean.html(),
+        "<b>onetwo</b>")
+}
+
 fn main() {
     let r: Report = new Report()
     apply_fault_sites(r)
     the_kind_rule(r)
     serializer_fault_sites(r)
     swallowed_upstream(r)
+    strays_read_the_same_way(r)
     io.println("== summary")
     io.println("checks: {r.checks}, failed: {r.bad}")
 }

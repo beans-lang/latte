@@ -286,6 +286,28 @@ pub fn span_at(frames: Frames, index: int) -> Option<Span> {
     return some(span)
 }
 
+/// Every logical child between `start` and `stop`.
+///
+/// `span_at` answers `none` for two different things and they are not the same
+/// problem. A frame that CLOSES a scope means the scope really ended, whatever
+/// `stop` said, so the walk stops — reading on would take an outer scope's
+/// children for this one's. An attribute-run frame in a CHILD position is a
+/// stray: it belongs to no span, and the walk steps over it and keeps reading
+/// siblings.
+///
+/// Stepping over is not a nicety, it is the only answer that agrees with
+/// `serialize.b`, which reports that frame by name and then writes the
+/// children after it anyway. Breaking instead — which this did — silently
+/// dropped every sibling past the stray, so the applier's tree and the
+/// serializer's HTML of the SAME frames came out different with no fault
+/// anywhere: `<b>one</b>` against `<b>onetwo</b>`. That is gate 3's entire
+/// comparison disagreeing with itself, which is why the two walkers step the
+/// same way now. `tests/w1_faults.b` § 5 pins all six stray frame kinds.
+///
+/// Nothing in this repo produces one — `take_attribute_slot` refuses and drops
+/// the frame before it is written, which § 4 asserts — so this is reached by a
+/// hand-assembled `Builder.frames` and by a differ bug, and neither is a
+/// reason for two walkers to answer differently.
 pub fn scan_spans(frames: Frames, start: int, stop: int) -> List<Span> {
     var out: List<Span> = []
     var index: int = start
@@ -295,7 +317,11 @@ pub fn scan_spans(frames: Frames, start: int, stop: int) -> List<Span> {
                 out.push(span)
                 index = span.next
             }
-            none => { break }
+            none => {
+                if index >= frames.len() { break }
+                if !frame_is_attribute(frames.at(index)) { break }
+                index += 1
+            }
         }
     }
     return move out
