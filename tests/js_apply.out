@@ -397,9 +397,12 @@ ok and leaves no timer behind
 slot ids compared: 20
 ok every slot id gets the same answer from both halves
 ok the longest slot id is the same number on both sides
-documents: 8, splits run: 4397
+documents swept at every split: 7 of 8, splits run: 4397
+splits where a chunk had landed before the last write: 2327
 ok every split lands on the document assemble_chunks describes
 ok and raises exactly the faults assemble_chunks raises
+ok the parser is fed incrementally: some splits land before the end
+ok and not all of them, or the cut would not be a cut
 ok an unsealed chunk lands nothing
 ok and raises no fault, because more bytes could still be coming
 ok the placeholder is still on the page
@@ -408,6 +411,14 @@ ok the same bytes with a seal after them land the chunk
 ok and the placeholder is gone
 ok and the wrapper with it
 ok leaving the content where the hole was
+ok half a document already holds its placeholder
+ok and the chunk element the parser has opened
+ok but not the seal, so nothing may land yet
+ok and nothing did
+ok the rest of the bytes land it
+ok a document that finished before the observer started still lands
+ok all three of them
+ok leaving what assemble_chunks describes
 ok a second sweep lands nothing
 ok and changes nothing
 
@@ -420,6 +431,13 @@ ok by hand: 320px, 100px viewport
 ok by hand: one pixel earlier crosses a row boundary
 ok by hand: the top of the list
 ok by hand: a viewport taller than the cap allows
+ok the server renders an element the reporter can read
+ok carrying the row count
+ok the row height
+ok and the overscan, which the client cannot derive
+ok the served element scrolls like the geometry says
+ok and the window it describes is the hand-computed one
+ok the reporter reports the SERVER's element
 ok the box is exactly as tall as it was told to be
 ok and it really scrolled
 ok a scroll sends nothing until the frame comes
@@ -430,6 +448,8 @@ ok the same window again sends nothing
 ok a window that moved does send
 ok the second list reports under its own id
 ok and the first, which did not move, says nothing
+ok a watched list reports
+ok and an unlistened circuit does not
 ok a viewport that wants thousands of rows asks for the cap
 ok which is not more than circuit.b would accept
 ok an element whose id is not a number reports nothing
@@ -439,7 +459,7 @@ ok the same scroll position in a 500-row list is a different window
 ok a batch that moved no window sends no range
 
 === 8. uploads: the POST, and progress clamped as UploadProgress clamps it
-progress pairs compared: 24
+progress pairs compared: 38
 ok every pair clamps to what UploadProgress clamps it to
 ok two files inside the limits post
 ok one request went out
@@ -473,4 +493,4 @@ ok with no wrapper and no placeholder left
 ok a stopped observer lands nothing
 ok and the second chunk is still in its wrapper
 
-450 checks, 0 bad
+469 checks, 0 bad

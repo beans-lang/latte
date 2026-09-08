@@ -708,6 +708,25 @@ fn section_three(r: Report) {
     // is the cap doing the work and not `window_at` refusing everything.
     r.eqi("an honest viewport is not capped", g.window_at(0, VIEWPORT).shown, 24)
 
+    // A hostile viewport at the BOTTOM of the list is a different failure from
+    // a hostile viewport at the top, and only one line stands in front of it.
+    // `window_at` computes `offset + height - 1`; with `offset` at the end of a
+    // 1,600,000-pixel list and `height` the largest int, that add OVERFLOWS —
+    // undefined, and free to answer differently in the two backends. The clamp
+    // of `height` to the list's own span is what stops it, and nothing reached
+    // it before: disabling that line left this suite at 140 checks, 0 bad,
+    // because `window_at(0, ...)` above starts the add at zero.
+    let far: Placement = g.window_at(ROWS * ROW_HEIGHT, 9223372036854775807)
+    io.println("   the largest viewport at the end of the list: {far.describe()}")
+    r.eq("a viewport that would overflow the add is bounded by the list",
+         far.describe(), "start=49996 shown=4 top=1599872 bottom=0")
+    r.yes("and the window it answers is sound", far.sound())
+    // The control: an honest viewport at the same offset answers the same four
+    // rows, so the line above is the clamp doing the work and not the end of
+    // the list refusing everything.
+    r.eq("an honest viewport at the same offset answers the same window",
+         g.window_at(ROWS * ROW_HEIGHT, VIEWPORT).describe(), far.describe())
+
     // A geometry that cannot be laid out answers NO window rather than a wrong
     // one. A negative row height is the shape that used to escape: `place`
     // multiplied it out and produced negative spacers, which is a placement no

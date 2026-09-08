@@ -839,6 +839,14 @@
 
     /// Write `text` into the frame in `parts` pieces, sweeping after each, and
     /// answer what the document was left holding.
+    ///
+    /// `early` is how many chunks had landed BEFORE the last write, and it is
+    /// the answer to the question that decides whether this whole section
+    /// means anything: if `document.write` buffered its input and parsed it
+    /// all at `close()`, every sweep between the writes would see an empty
+    /// document, every split would pass for the same trivial reason, and the
+    /// 4397 below would be 4397 runs of one test. The count is printed into
+    /// the golden.
     function runStream(text, cuts) {
         var doc = frame.contentDocument;
         doc.open();
@@ -850,11 +858,12 @@
             stream.sweep();
             at = cuts[c];
         }
+        var early = stream.landed.length;
         doc.write(text.slice(at));
         stream.sweep();
         doc.close();
         stream.sweep();
-        return { stream: stream,
+        return { stream: stream, early: early,
                  html: doc.body ? doc.body.innerHTML : '',
                  doc: doc };
     }
@@ -862,10 +871,13 @@
     var splitsRun = 0;
     var splitWrong = 0;
     var splitFaults = 0;
+    var splitsEarly = 0;
+    var splitsSwept = 0;
     var firstSplitFailure = '';
     for (var sc = 0; sc < LATTE_STREAM.docs.length; sc++) {
         var scase = LATTE_STREAM.docs[sc];
         if (!scase.sealed) { continue; }
+        splitsSwept += 1;
         var wantHtml = normalize(scase.want);
         var wantFaults = scase.faults.join('\n');
         // EVERY split, 0 through the whole length. 0 is "nothing written yet"
@@ -874,6 +886,7 @@
         for (var cut = 0; cut <= scase.doc.length; cut++) {
             var got = runStream(scase.doc, [cut]);
             splitsRun += 1;
+            if (got.early > 0) { splitsEarly += 1; }
             if (normalize(got.html) !== wantHtml) {
                 splitWrong += 1;
                 if (firstSplitFailure === '') {
@@ -896,6 +909,7 @@
             for (var b = a; b <= scase.doc.length; b += 11) {
                 var got3 = runStream(scase.doc, [a, b]);
                 splitsRun += 1;
+                if (got3.early > 0) { splitsEarly += 1; }
                 if (normalize(got3.html) !== wantHtml) {
                     splitWrong += 1;
                     if (firstSplitFailure === '') {
@@ -907,9 +921,23 @@
         }
     }
     if (firstSplitFailure !== '') { say('   first: ' + firstSplitFailure); }
-    say('documents: ' + LATTE_STREAM.docs.length + ', splits run: ' + splitsRun);
+    // "documents" is how many were SWEPT, not how many are in the fixture:
+    // `unsealed` is deliberately excluded and asserted separately below, and a
+    // count that included it would say 8 while 7 were tested.
+    say('documents swept at every split: ' + splitsSwept + ' of ' +
+        LATTE_STREAM.docs.length + ', splits run: ' + splitsRun);
+    say('splits where a chunk had landed before the last write: ' + splitsEarly);
     eq('every split lands on the document assemble_chunks describes', splitWrong, 0);
     eq('and raises exactly the faults assemble_chunks raises', splitFaults, 0);
+    // THE LINE THAT MAKES THE 4397 ABOVE MEAN SOMETHING. A `document.write`
+    // that buffered until `close()` would leave every intermediate sweep
+    // looking at an empty document and every split would pass for the same
+    // trivial reason. Some splits land early and some do not, which is only
+    // possible if the parser is really being fed incrementally.
+    eq('the parser is fed incrementally: some splits land before the end',
+       splitsEarly > 0, true);
+    eq('and not all of them, or the cut would not be a cut',
+       splitsEarly < splitsRun, true);
 
     // --- the seal is what makes the difference, and here is the proof ---
     //
@@ -942,6 +970,54 @@
        sealed.doc.querySelectorAll('latte-chunk,latte-seal').length, 0);
     eq('leaving the content where the hole was',
        normalize(sealed.doc.body.innerHTML), normalize('<div><p>half</p></div>'));
+
+    // The same thing said once, concretely, at a cut chosen by hand: after the
+    // first write the placeholder is parsed and in the document, the seal is
+    // not, and nothing has landed. If the parser buffered, the first two of
+    // these would be 0 and 0.
+    var oneDoc = LATTE_STREAM.docs[0];
+    var midCut = oneDoc.doc.indexOf('</latte-chunk>');
+    var midDoc = frame.contentDocument;
+    midDoc.open();
+    var midStream = new latte.Stream({ document: midDoc });
+    midDoc.write(oneDoc.doc.slice(0, midCut));
+    midStream.sweep();
+    eq('half a document already holds its placeholder',
+       midDoc.querySelectorAll('latte-slot[id="s0"]').length, 1);
+    eq('and the chunk element the parser has opened',
+       midDoc.querySelectorAll('latte-chunk[for="s0"]').length, 1);
+    eq('but not the seal, so nothing may land yet',
+       midDoc.querySelectorAll('latte-seal').length, 0);
+    eq('and nothing did', midStream.landed.length, 0);
+    midDoc.write(oneDoc.doc.slice(midCut));
+    midStream.sweep();
+    midDoc.close();
+    eq('the rest of the bytes land it', midStream.landed.join(','), 's0');
+
+    // --- the observer may arrive AFTER the parser has finished ---
+    //
+    // A deferred script, or one that boots on DOMContentLoaded, starts on a
+    // document that is already complete. An observer only reports what happens
+    // after it starts, so if `start()` did not sweep once on the way in, every
+    // chunk on such a page would stay in its wrapper for ever. Nothing here
+    // mutates the document after `start()`, so the catch-up sweep is the only
+    // thing that can land anything.
+    var late = LATTE_STREAM.docs[1];
+    var lateDoc = frame.contentDocument;
+    lateDoc.open();
+    lateDoc.write(late.doc);
+    lateDoc.close();
+    var lateStream = new latte.Stream({ document: lateDoc });
+    eq('a document that finished before the observer started still lands',
+       lateStream.start(), true);
+    eq('all three of them', lateStream.landed.join(','), 's0,s1,s2');
+    eq('leaving what assemble_chunks describes',
+       normalize(lateDoc.body.innerHTML), normalize(late.want));
+    // `document.open()` REUSES the Document object rather than making a new
+    // one, so an observer left running here would still be attached to the
+    // document § 9 reopens — and § 9's whole claim is that ITS observer did
+    // the work. This cost two red lines to find.
+    lateStream.stop();
 
     // --- sweeping twice does not land twice ---
     var twice = runStream(LATTE_STREAM.docs[0].doc, [LATTE_STREAM.docs[0].doc.length]);
@@ -1026,7 +1102,7 @@
 
     function newReporter(options) {
         options = options || {};
-        var host = freshHost();
+        var host = options.host || freshHost();
         var frames = [];
         var rig = newCircuit({ schedule: function (fn) { frames.push(fn); },
                                host: host });
@@ -1038,6 +1114,35 @@
         };
         return rig;
     }
+
+    // The element `virtual.b` ACTUALLY renders, taken from the fixture and not
+    // built here. An earlier draft of this section built its own element with
+    // `scroller()` below, and deleting `data-latte-overscan` from `virtual.b`
+    // left this leg green — the reporter went on reading an attribute only the
+    // harness was writing. The four numbers the reporter needs now come from
+    // the serializer.
+    var serverHost = freshHost();
+    serverHost.innerHTML = LATTE_VIRTUAL_ELEMENT.html;
+    var served = serverHost.querySelector('[data-latte-virtual]');
+    eq('the server renders an element the reporter can read', served !== null, true);
+    eq('carrying the row count', served.getAttribute('data-latte-rows'),
+       String(LATTE_VIRTUAL_ELEMENT.rows));
+    eq('the row height', served.getAttribute('data-latte-row-height'),
+       String(LATTE_VIRTUAL_ELEMENT.rowHeight));
+    eq('and the overscan, which the client cannot derive',
+       served.getAttribute('data-latte-overscan'),
+       String(LATTE_VIRTUAL_ELEMENT.overscan));
+    served.setAttribute('style', 'height:100px;overflow:auto;border:0;padding:0');
+    served.scrollTop = 320;
+    eq('the served element scrolls like the geometry says', served.scrollTop, 320);
+    eqJson('and the window it describes is the hand-computed one',
+           latte.windowForElement(served, latte.maxWindow), { start: 6, count: 12 });
+    var servedRig = newReporter({ host: serverHost });
+    hello(servedRig);
+    served.dispatchEvent(new Event('scroll', { bubbles: false }));
+    servedRig.tick();
+    eqJson('the reporter reports the SERVER\'s element', last(servedRig.socket.sent),
+           { t: 'range', h: LATTE_VIRTUAL_ELEMENT.id, s: 6, c: 12, n: 2 });
 
     var rrig = newReporter();
     hello(rrig);
@@ -1082,6 +1187,24 @@
     eqJson('the second list reports under its own id', last(rrig.socket.sent),
            { t: 'range', h: 9, s: 6, c: 12, n: 4 });
     eq('and the first, which did not move, says nothing', rrig.socket.sent.length, 4);
+
+    // --- unlisten takes the scroll listener with it ---
+    //
+    // `unlisten` is public and nothing inside latte.js calls it, so without
+    // this the line that drops the scroll listener is a line no input reaches.
+    var offrig = newReporter();
+    hello(offrig);
+    var leaving = scroller(13, 50, 32, 4, 1600);
+    offrig.host.appendChild(leaving);
+    leaving.scrollTop = 320;
+    leaving.dispatchEvent(new Event('scroll', { bubbles: false }));
+    offrig.tick();
+    eq('a watched list reports', last(offrig.socket.sent).t, 'range');
+    offrig.circuit.unlisten();
+    leaving.scrollTop = 1600;
+    leaving.dispatchEvent(new Event('scroll', { bubbles: false }));
+    offrig.tick();
+    eq('and an unlistened circuit does not', last(offrig.socket.sent).s, 6);
 
     // --- the cap is never crossed, whatever the box says ---
     var caprigv = newReporter();
@@ -1314,7 +1437,12 @@
     // which is the correct answer to "the observer never fired".
 
     function observerCheck(finish) {
-        var doc = frame.contentDocument;
+        // Its own iframe, so nothing § 6 left attached can be what lands the
+        // chunk. See the note beside `lateStream.stop()` above.
+        var solo = document.createElement('iframe');
+        solo.setAttribute('title', 'observer');
+        document.body.appendChild(solo);
+        var doc = solo.contentDocument;
         doc.open();
         var watcher = new latte.Stream({ document: doc });
         var text = LATTE_STREAM.docs[0].doc;
