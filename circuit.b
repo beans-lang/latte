@@ -63,6 +63,19 @@ pub class CircuitOptions {
     /// How long a dropped circuit is kept so a reconnect can replay.
     pub retention_ms: int = 30000
 
+    /// How long an attached circuit may run on the authorization it mounted
+    /// with before that authorization is asked for again.
+    ///
+    /// PLAN.md, "authorization outliving its token": a circuit outlives the
+    /// request that opened it, so a session that expires or a role that is
+    /// revoked reaches nothing unless something re-asks. This is that
+    /// interval, and it IS the exposure window — a revocation takes effect
+    /// somewhere between now and `revalidate_ms` from now. 30 s is short
+    /// enough that a revoked operator loses the page while they are still
+    /// looking at it, and long enough that the cost is one page build per
+    /// circuit per half minute rather than one per event.
+    pub revalidate_ms: int = 30000
+
     /// How many circuits one `CircuitSet` will hold. Crossing it evicts the
     /// oldest DISCONNECTED circuit; if every circuit is live, the new one is
     /// refused rather than a live tab being killed for a new one.
@@ -228,6 +241,15 @@ pub class Circuit {
     make_page: fn(string) -> Option<Component> =
         fn(url: string) -> Option<Component> { return none }
 
+    /// The url the mounted page was built for. Kept because revalidation has
+    /// to ask about THIS page — `@authorize` is a property of the page, not of
+    /// the circuit — and because after a `nav` the circuit is on a different
+    /// one from the one it attached to.
+    url: string = ""
+    /// When the mounted page's authorization was last established: at `attach`
+    /// and at every `nav`, which are the two places `make_page` runs.
+    authorized_ms: int = 0
+
     batch_number: int = 0
     last_ack: int = 0
     sent: List<SentBatch> = []
@@ -388,6 +410,8 @@ pub class Circuit {
             some(component) => {
                 self.page = some(component)
                 self.attached = true
+                self.url = message.url
+                self.authorized_ms = now_ms
                 self.renderer.mount(component)
                 self.publish()
             }
@@ -440,6 +464,8 @@ pub class Circuit {
         match build(message.url) {
             some(component) => {
                 self.page = some(component)
+                self.url = message.url
+                self.authorized_ms = now_ms
                 self.renderer = new Renderer()
                 self.renderer.mount(component)
                 self.publish()
@@ -672,7 +698,16 @@ pub class Circuit {
     /// Called by the host's ticker. Answers `true` when it did something.
     pub fn tick(now_ms: int) -> bool {
         if self.ended { return false }
-        var worked: bool = self.drain(now_ms) > 0
+        // BEFORE anything else this tick runs. A circuit whose authorization
+        // has lapsed must not first drain a queue of jobs into the page it is
+        // no longer allowed to hold, and must not settle a render of it.
+        var worked: bool = false
+        if self.due_for_revalidation(now_ms) {
+            self.revalidate(now_ms)
+            worked = true
+            if self.ended { return true }
+        }
+        if self.drain(now_ms) > 0 { worked = true }
         // Anything `notify()`ed between messages settles here, which is what
         // makes a timer, a Callback or a boundary recovery reach the wire on
         // a circuit nobody is clicking.
@@ -685,6 +720,52 @@ pub class Circuit {
             worked = true
         }
         return worked
+    }
+
+    /// Is this circuit past its revalidation interval?
+    ///
+    /// Only an ATTACHED circuit has a page to be authorized for. A
+    /// DISCONNECTED one is included on purpose: it is retained so a reconnect
+    /// can replay, and a reconnect that replays a page the principal has since
+    /// lost is the same hole one socket further along.
+    fn due_for_revalidation(now_ms: int) -> bool {
+        if !self.attached { return false }
+        return now_ms - self.authorized_ms >= self.options.revalidate_ms
+    }
+
+    /// Ask the page factory again whether this circuit's principal still gets
+    /// this page, and end the circuit when it does not.
+    ///
+    /// PLAN.md, "authorization outliving its token" — Blazor's best-known
+    /// pitfall. `open_page` checks `@authorize` at mount and on every
+    /// in-circuit navigation, but a circuit that is neither mounting nor
+    /// navigating can run for as long as its socket lives, and a session that
+    /// expired an hour ago would still be driving a page.
+    ///
+    /// It re-asks `make_page` rather than taking an injected auth closure, and
+    /// that is the whole point: latte has exactly one spelling for page
+    /// authorization — `open_page(hit, who, ..)` inside the factory the app
+    /// already had to write — so an app that wrote `@authorize` at all gets
+    /// this with nothing to wire and nothing to forget. A separate closure
+    /// defaulting to "still authorized" would be a hole in every app that did
+    /// not know to fill it.
+    ///
+    /// The component it builds is thrown away. Re-mounting it would be wrong:
+    /// the revalidation must not cost the user the state they were typing
+    /// into, and `nav` is the only thing that replaces a mounted page.
+    fn revalidate(now_ms: int) {
+        // Recorded BEFORE the call, so a factory that panics or a check that
+        // passes both leave the next one a full interval away instead of
+        // running again on the very next tick.
+        self.authorized_ms = now_ms
+        let build: fn(string) -> Option<Component> = self.make_page
+        match build(self.url) {
+            some(component) => {}
+            none => {
+                self.stop("forbidden",
+                    "the authorization this circuit opened with no longer holds")
+            }
+        }
     }
 
     /// The socket went away. The circuit is KEPT — its state, its handlers and

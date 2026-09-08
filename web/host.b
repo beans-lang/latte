@@ -169,6 +169,103 @@ fn path_of(target: string) -> string {
     }
 }
 
+// ---------------------------------------------------------------- headers
+
+/// The Content-Security-Policy a latte page can actually run under, and the
+/// three headers that go with it.
+///
+/// **Why latte ships its own and does not reuse espresso's.** espresso's
+/// `security_headers` sends `default-src 'none'; frame-ancestors 'none'`
+/// (`espresso/security.b:73`). That is right for a JSON API and fatal for a
+/// page framework: with no `script-src`, `default-src 'none'` blocks
+/// `js/latte.js`, and with no `connect-src` it blocks the WebSocket the client
+/// opens and the `XMLHttpRequest` enhanced navigation uses. A deployment that
+/// mounted espresso's middleware would serve a page whose client never runs,
+/// and the only symptom is a console line nobody on the server ever sees.
+///
+/// Everything here is a list so a deployment can name a CDN or a separate
+/// socket host, and every list starts at `'self'` — the page's own origin —
+/// because that is where latte serves its client from and the tightest thing
+/// that still works. `default-src` is `'none'`, so a source latte does not name
+/// is refused rather than inherited.
+///
+/// **No `'unsafe-inline'` and no `'unsafe-eval'`, and that is a property of
+/// `js/latte.js`, not a wish.** It carries no `eval`, no `new Function` and no
+/// inline `<script>`; `tests/w4_headers.b` § 4 greps the shipped file for all
+/// three and fails if one appears. A policy that had to be loosened later
+/// because the client grew an `eval` would loosen it for every page.
+pub class HeaderOptions {
+    /// Where `<script src>` may load from. `'self'` is `js/latte.js`.
+    pub script: List<string> = ["'self'"]
+    /// Where `WebSocket` and `XMLHttpRequest` may go: the circuit and enhanced
+    /// navigation. A deployment whose socket is on another host names it here,
+    /// **with its scheme** — `wss://live.example.com` — because a browser that
+    /// predates CSP3's `'self'` matching does not read `'self'` as covering
+    /// `wss:` at all, and the failure is a socket that silently never opens.
+    pub connect: List<string> = ["'self'"]
+    pub style: List<string> = ["'self'"]
+    /// Images. `data:` is deliberately absent: a `data:` image source is also
+    /// how an SVG carrying script gets in, and latte's own URL-attribute rule
+    /// already replaces a `data:` `src` with an inert value.
+    pub image: List<string> = ["'self'"]
+    pub font: List<string> = ["'self'"]
+    /// Who may frame this page. `'none'` is the clickjacking control, and
+    /// `X-Frame-Options: DENY` goes out beside it for browsers that read only
+    /// the older header.
+    pub frame_ancestors: List<string> = ["'none'"]
+    /// Where a `<form>` may post. `'self'` and not `default-src`, because
+    /// `form-action` does not fall back to `default-src` in every engine, and a
+    /// form framework whose forms could post anywhere is the one place that
+    /// matters.
+    pub form_action: List<string> = ["'self'"]
+    /// `Referrer-Policy`. `no-referrer` is the default because a latte route
+    /// carries its parameters in the path.
+    pub referrer: string = "no-referrer"
+
+    pub fn init() {}
+
+    /// The policy, in a fixed directive order.
+    ///
+    /// Fixed because a test asserts this string whole, and a set-iteration
+    /// order would make that assertion a photograph of one run.
+    pub fn policy() -> string {
+        var parts: List<string> = ["default-src 'none'"]
+        parts.push("script-src {self.script.join(" ")}")
+        parts.push("connect-src {self.connect.join(" ")}")
+        parts.push("style-src {self.style.join(" ")}")
+        parts.push("img-src {self.image.join(" ")}")
+        parts.push("font-src {self.font.join(" ")}")
+        parts.push("base-uri 'none'")
+        parts.push("form-action {self.form_action.join(" ")}")
+        parts.push("frame-ancestors {self.frame_ancestors.join(" ")}")
+        return parts.join("; ")
+    }
+}
+
+/// The middleware. `app.use(security_headers(new HeaderOptions()))`.
+///
+/// The headers are set **after** `next`, so they land on whatever the pipeline
+/// produced — a page, a 404, a 500 — and a handler cannot forget them. A
+/// handler that set its own `Content-Security-Policy` deliberately keeps it:
+/// `header()` on espresso's response replaces, so this would overwrite it, and
+/// the check below is what stops that.
+pub fn security_headers(options: HeaderOptions) -> fn(
+    espresso.HttpContext, fn(espresso.HttpContext) -> Result<bool>) -> Result<bool> {
+    let policy: string = options.policy()
+    let referrer: string = options.referrer
+    return fn(context: espresso.HttpContext,
+              next: fn(espresso.HttpContext) -> Result<bool>) -> Result<bool> {
+        let result: Result<bool> = next(context)
+        if !context.response.headers.has("Content-Security-Policy") {
+            context.response.header("Content-Security-Policy", policy)
+        }
+        context.response.header("X-Content-Type-Options", "nosniff")
+        context.response.header("X-Frame-Options", "DENY")
+        context.response.header("Referrer-Policy", referrer)
+        return result
+    }
+}
+
 /// The reason phrase for the statuses the page half produces.
 ///
 /// A short table and not a general one: every status latte answers is listed,

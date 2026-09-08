@@ -525,29 +525,23 @@ fn report(outcome: Result<bool, reflect.ReflectError>, name: string) -> string {
     }
 }
 
-/// `to_int` saturates at the i64 limits and stops at the first byte it does not
-/// like, so `"12abc"` is 12 and `"99999999999999999999"` is the maximum. A
-/// route value is a wire value, so both are refused here: the text must be a
-/// whole integer and nothing else.
+/// A whole number in a ROUTE segment, where one resource has one spelling.
+///
+/// `parse_form_int` does the number: digits, a sign, and the overflow refusal.
+/// This adds the one extra rule a URL carries — the text must be the canonical
+/// spelling of the value it names, so `/notes/007` is not `/notes/7` wearing a
+/// disguise. A form field is the other rule and lives in `forms.b`; see
+/// `parse_form_int` for why one function cannot hold both.
+///
+/// `+7` is still accepted, exactly as before: `strip_plus` is what the
+/// comparison runs against and this file's route suites already stand on that.
 pub fn parse_int(text: string) -> Option<int> {
-    if text == "" { return none }
-    var index: int = 0
-    if text.starts_with("-") || text.starts_with("+") { index = 1 }
-    if index >= text.len() { return none }
-    var digits: int = index
-    for digits < text.len() {
-        let byte: int = text.byte_at(digits)
-        if byte < 48 || byte > 57 { return none }
-        digits += 1
-    }
-    match text.to_int() {
-        ok(value) => {
-            // The saturating cases come back with a different spelling than
-            // they went in with, which is the only signal `to_int` offers.
+    match parse_form_int(text) {
+        none => { return none }
+        some(value) => {
             if "{value}" != strip_plus(text) { return none }
             return some(value)
         }
-        err(_) => { return none }
     }
 }
 

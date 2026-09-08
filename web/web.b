@@ -155,7 +155,35 @@ pub class EndpointOptions {
 
     /// The cookie the circuit id is bound to. A reconnect may only pick up a
     /// circuit whose session matches.
-    pub session_cookie: string = "sid"
+    ///
+    /// **It defaults to the name `map_pages` sets, and that is the whole
+    /// point.** It used to say `"sid"`, which nothing in latte has ever
+    /// written: `map_pages` mints `SESSION_COOKIE`. Every handshake therefore
+    /// read `none`, every circuit was opened for the session `""`, and
+    /// `CircuitSet.adopt`'s check — `session_of(target) != session_of(handle)`
+    /// — compared `""` against `""` for every pair on the machine. The control
+    /// was written, reachable and running, and could not refuse anything. Two
+    /// spellings of one name is how a live refusal becomes a dead one.
+    pub session_cookie: string = SESSION_COOKIE
+
+    /// A handshake that carries no session cookie may open a circuit.
+    ///
+    /// **False, and not out of caution.** A circuit id is bound to a session so
+    /// that a stolen id buys nothing; the binding is `facts["session"]`, and
+    /// when that is `""` for every connection then every anonymous client holds
+    /// the *same* identity. `adopt` still runs, still compares, and still
+    /// cannot refuse — so a client that learns another's circuit id resumes it
+    /// and is handed a live, mounted page. One shared identity is not a weaker
+    /// session; it is no session with a check standing over it that reads like
+    /// one.
+    ///
+    /// Turning this on means exactly that, and `tests/w4_upgrade.b` § 5 asserts
+    /// the theft succeeding so the cost is a golden line rather than a comment.
+    /// It exists because `websocket.Connection.connect` cannot send a `Cookie`
+    /// header at all, so a suite that drives the real client — `circuit_live`,
+    /// `w7_live` — has no way to present a session, and those suites test the
+    /// circuit rather than the binding.
+    pub anonymous_circuits: bool = false
 
     /// What to answer a handshake on a platform with no fiber network poller.
     /// The host sets it from `latte.NO_POLLER_MESSAGE`; it is not spelled here
@@ -164,6 +192,14 @@ pub class EndpointOptions {
 
     pub fn init() {}
 }
+
+/// What a handshake with no session is told.
+///
+/// It says what to do and names nothing about who else is connected: a circuit
+/// id, a session id and the number of live circuits are all things this answer
+/// could leak and does not.
+pub const NO_SESSION_MESSAGE: string =
+    "a circuit is bound to a session; load a page first so one is set"
 
 /// Whether this target has a fiber network poller.
 ///
@@ -211,13 +247,30 @@ pub class CircuitEndpoint implements espresso.UpgradeHandler {
             return refuse(move stream, 403, "Forbidden",
                           "this origin may not open a circuit")
         }
+        // The session, and the refusal that makes the circuit id worth binding.
+        //
+        // A circuit is a live, authenticated, stateful connection, and the only
+        // thing standing between one client's circuit and another's is that the
+        // two were opened for different sessions. A handshake with no session
+        // has nothing to be different from. It is refused here rather than
+        // opened with `""`, because `""` is not a weaker identity — it is one
+        // identity shared by everyone who has it.
+        //
+        // A browser reaching this endpoint has already loaded a page over
+        // `map_pages`, which mints and sets the cookie, so the only clients
+        // this refuses are the ones that never did.
+        let session: string =
+            context.request.cookie(self.options.session_cookie).or("")
+        if session == "" && !self.options.anonymous_circuits {
+            return refuse(move stream, 403, "Forbidden", NO_SESSION_MESSAGE)
+        }
         // Bound both directions before the framer owns the socket. See
         // `EndpointOptions.socket_ms`.
         let timed: Result<bool> =
             stream.set_timeouts(self.options.socket_ms, self.options.socket_ms)
         var facts: Map<string, string> = {}
         facts["id"] = fresh_id()?
-        facts["session"] = context.request.cookie(self.options.session_cookie).or("")
+        facts["session"] = session
         facts["origin"] = offered
         facts["path"] = context.request.path
         let socket: websocket.Connection = websocket.Connection.accept(
