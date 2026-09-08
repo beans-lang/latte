@@ -383,30 +383,39 @@ pub class Virtual extends Component {
 
         b.open(0, "div")
         if self.class_name != "" { b.attr(1, "class", self.class_name) }
-        // The three attributes the browser reporter reads. They are DATA and
+        // The four attributes the browser reporter reads. They are DATA and
         // never a name: the client sends the id back and latte looks it up, so
         // nothing on the wire is ever interpreted as a name (PLAN.md,
         // "Security").
         b.attr(2, "data-latte-virtual", "{self.id()}")
         b.attr(3, "data-latte-rows", "{self.count}")
         b.attr(4, "data-latte-row-height", "{self.row_height}")
+        // The FOURTH number the reporter needs, and it has to be on the
+        // element because the client cannot derive it. `window_at` adds the
+        // overscan on both sides of the visible band, and the client is the
+        // end that computes the band — so a client that guessed 4 while the
+        // author configured 12 would report a window three times too small
+        // and the list would render blank rows on every fast scroll, with
+        // nothing anywhere saying why. It is the author's number, so it
+        // travels with the element rather than being duplicated in latte.js.
+        b.attr(5, "data-latte-overscan", "{self.overscan}")
 
-        b.open(5, "div")
-        b.attr(6, "data-latte-spacer", "top")
-        b.attr(7, "style", "height:{where.top}px")
+        b.open(6, "div")
+        b.attr(7, "data-latte-spacer", "top")
+        b.attr(8, "style", "height:{where.top}px")
         b.close()
 
         var index: int = where.start
         for index < where.start + where.shown {
-            b.region(8, "{index}")
+            b.region(9, "{index}")
             self.row(b, index)
             b.end_region()
             index += 1
         }
 
-        b.open(9, "div")
-        b.attr(10, "data-latte-spacer", "bottom")
-        b.attr(11, "style", "height:{where.bottom}px")
+        b.open(10, "div")
+        b.attr(11, "data-latte-spacer", "bottom")
+        b.attr(12, "style", "height:{where.bottom}px")
         b.close()
         b.close()
     }

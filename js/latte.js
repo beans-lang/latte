@@ -1211,6 +1211,16 @@
             host: this.host,
             onfault: this.log.error
         });
+        // The scroll reporter. It is part of the circuit and not of the page
+        // because the only thing it does is send a message, and a reporter
+        // with no circuit to send on would be a listener that costs a frame
+        // and produces nothing.
+        this.ranges = new Ranges({
+            circuit: this,
+            host: this.host,
+            maxWindow: options.maxWindow,
+            schedule: options.schedule
+        });
         this.socket = null;
         this.attached = false;
         this.lastBatch = 0;
@@ -1248,6 +1258,7 @@
 
     Circuit.prototype.start = function () {
         this.listen();
+        this.ranges.watch();
         this.connect();
     };
 
@@ -1494,6 +1505,15 @@
         this.applier.apply(message);
         this.lastBatch = number;
         this.send({ t: 'ack', b: number });
+        // A batch can mount a list, unmount one, or change how many rows one
+        // holds, and every one of those changes what window the client should
+        // be asking for. Without this a list that grew under a stationary
+        // scroll position would keep the window it had until the user touched
+        // the trackpad. It cannot loop: `report` sends nothing for a window it
+        // already sent, and `apply_range` answers false for a window that did
+        // not move, so a batch and a range settle in one round.
+        this.ranges.forget();
+        this.ranges.request();
         if (this.onbatch) { this.onbatch(message, this.applier); }
     };
 
@@ -1595,6 +1615,7 @@
             this.host.removeEventListener(row.name, row.listener, row.capture);
         }
         this.listeners = [];
+        this.ranges.unwatch();
     };
 
     // The handler bound to `name` on this node RIGHT NOW. Never cached: slot
@@ -1729,6 +1750,543 @@
         }
     };
 
+    // --------------------------------------------------------------- streaming
+    //
+    // stream.b's browser half. A streamed page arrives as a first pass with
+    // `<latte-slot id="s3"></latte-slot>` wherever a region was not ready, then
+    // each region's content as `<latte-chunk for="s3">…</latte-chunk>` followed
+    // by `<latte-seal for="s3"></latte-seal>`.
+    //
+    // WHY THE SEAL, restated here because this is the code that depends on it:
+    // a MutationObserver watching the body sees `<latte-chunk>` the moment the
+    // parser OPENS it, which is long before its content is complete — the bytes
+    // after it are still on the wire. Landing a chunk on the open event moves a
+    // fragment of it and loses the rest, silently, and only for a chunk that
+    // straddled a network boundary. The parser cannot insert the seal until it
+    // has read `</latte-chunk>`, so a seal in the DOM is the parser's own word
+    // that the chunk before it is whole. Nothing here ever looks at a chunk
+    // that has no seal.
+    //
+    // The observer is a MutationObserver and NOT an inline script for the
+    // reason PLAN.md gives: the shell ships `script-src 'self'` with no
+    // `unsafe-inline`, and a streaming mechanism that needed a weaker rule than
+    // the product would not be the product.
+
+    var SLOT_TAG = 'latte-slot';
+    var CHUNK_TAG = 'latte-chunk';
+    var SEAL_TAG = 'latte-seal';
+    // stream.b's MAX_STREAM_ID.
+    var MAX_STREAM_ID = 64;
+
+    // stream.b's `stream_id_is_safe`, applied on this side too. It is not
+    // decoration: an id read off an attribute is written straight back into an
+    // attribute SELECTOR below, and the set — letters, digits, `-`, `_` — is
+    // the one that cannot carry a quote, a bracket or a space out of the
+    // document and into the query. `tests/js_cases.b` emits the same probe
+    // list both halves are judged on.
+    function streamIdIsSafe(id) {
+        if (typeof id !== 'string') { return false; }
+        if (id.length === 0 || id.length > MAX_STREAM_ID) { return false; }
+        for (var i = 0; i < id.length; i++) {
+            var code = id.charCodeAt(i);
+            var ok = (code >= 48 && code <= 57) ||
+                     (code >= 65 && code <= 90) ||
+                     (code >= 97 && code <= 122) ||
+                     code === 45 || code === 95;
+            if (!ok) { return false; }
+        }
+        return true;
+    }
+
+    function Stream(options) {
+        options = options || {};
+        this.document = options.document ||
+            (typeof document !== 'undefined' ? document : null);
+        this.root = options.root || null;
+        this.log = options.log || defaultLog;
+        /// Chunks landed, in the order they landed.
+        this.landed = [];
+        /// What went wrong, in the words assemble_chunks uses for the same
+        /// thing, so the two halves can be compared on the failures too.
+        this.faults = [];
+        this.observer = null;
+    }
+
+    Stream.prototype.scope = function () {
+        if (this.root) { return this.root; }
+        if (!this.document) { return null; }
+        return this.document.body || this.document.documentElement;
+    };
+
+    /// Land every chunk whose seal has arrived. Idempotent, and safe to call
+    /// on a document the parser is still writing into.
+    ///
+    /// Answers how many chunks landed on THIS call, which is what makes an
+    /// observer that fires four times during one chunk distinguishable from
+    /// one that lands the chunk four times.
+    Stream.prototype.sweep = function () {
+        var scope = this.scope();
+        if (!scope) { return 0; }
+        var landed = 0;
+        // A guard rather than `while (true)`: every iteration removes a seal,
+        // so this cannot spin, but a document with a million seals should not
+        // be able to occupy the main thread forever either.
+        for (var guard = 0; guard < 100000; guard++) {
+            var seal = scope.querySelector(SEAL_TAG + '[for]');
+            if (!seal) { break; }
+            var id = seal.getAttribute('for');
+            // The seal comes out FIRST and unconditionally. Every `continue`
+            // below is a chunk this sweep cannot land, and a seal left in
+            // place would make the next iteration find the same one forever.
+            if (seal.parentNode) { seal.parentNode.removeChild(seal); }
+            if (!streamIdIsSafe(id)) {
+                this.faults.push('a chunk arrived under an unusable slot id');
+                continue;
+            }
+            var chunk = scope.querySelector(CHUNK_TAG + '[for="' + id + '"]');
+            if (!chunk) {
+                // A seal with no chunk before it is a document that was
+                // assembled wrong, not a chunk that is still arriving: the
+                // parser could not have inserted this seal without having read
+                // the whole element before it.
+                this.faults.push('the chunk "' + id + '" arrived sealed but empty');
+                continue;
+            }
+            var slot = scope.querySelector(SLOT_TAG + '[id="' + id + '"]');
+            if (!slot) {
+                // assemble_chunks' sentence, word for word: the head and the
+                // chunks disagree about a name, which is a page with a hole.
+                this.faults.push('the chunk "' + id + '" has no placeholder to fill');
+                if (chunk.parentNode) { chunk.parentNode.removeChild(chunk); }
+                continue;
+            }
+            // Move, never re-parse. `slot.outerHTML = chunk.innerHTML` would
+            // round-trip the content through the serializer and the parser a
+            // second time, which loses a live form control's value and any
+            // node identity the applier is holding.
+            while (chunk.firstChild) {
+                slot.parentNode.insertBefore(chunk.firstChild, slot);
+            }
+            if (chunk.parentNode) { chunk.parentNode.removeChild(chunk); }
+            slot.parentNode.removeChild(slot);
+            this.landed.push(id);
+            landed += 1;
+        }
+        return landed;
+    };
+
+    Stream.prototype.start = function () {
+        var scope = this.scope();
+        if (!scope || typeof MutationObserver === 'undefined') {
+            // No observer means no streaming, and a page that silently never
+            // fills its holes is worse than one that says so.
+            this.log.warn('latte: this browser has no MutationObserver, so streamed regions will not land');
+            return false;
+        }
+        var self = this;
+        this.observer = new MutationObserver(function () { self.sweep(); });
+        this.observer.observe(scope, { childList: true, subtree: true });
+        // The parser may already be past a seal by the time this runs — a
+        // script at the end of `<head>` is not, but a deferred one is, and so
+        // is anything that boots on DOMContentLoaded. An observer only reports
+        // what happens AFTER it starts.
+        this.sweep();
+        return true;
+    };
+
+    Stream.prototype.stop = function () {
+        if (this.observer) { this.observer.disconnect(); }
+        this.observer = null;
+    };
+
+    // ---------------------------------------------------------- virtual lists
+    //
+    // virtual.b's browser half: the scroll reporter.
+    //
+    // The element carries four data attributes and the client reads all four:
+    // `data-latte-virtual` is the component id it hands back, and
+    // `data-latte-rows`, `data-latte-row-height` and `data-latte-overscan` are
+    // the three numbers `VirtualGeometry` lays a window out from. The element
+    // IS the scroller — the spacers are inside it — so `scrollTop` and
+    // `clientHeight` are exactly the two arguments `window_at` takes.
+    //
+    // THE CAP IS NOT NEGOTIABLE AND IS NOT ON THE WIRE. `circuit.b:on_range`
+    // ENDS the circuit for a range asking for more than `CircuitOptions
+    // .max_window` rows, and `hello` does not carry that number — it carries
+    // `v`, `c` and `mx` and nothing else. So this constant is the client's copy
+    // of a server limit, and a client that got it wrong would kill its own
+    // circuit on the first scroll of a tall list. `tests/js_cases.b` emits the
+    // server's two spellings of it and `tests/js_apply.js` requires all three
+    // to be the same number.
+    var VIRTUAL_MAX_WINDOW = 200;
+
+    function readInt(el, name, fallback) {
+        if (!el || !el.getAttribute) { return fallback; }
+        var text = el.getAttribute(name);
+        if (text === null || text === '') { return fallback; }
+        var value = Number(text);
+        if (!isFinite(value)) { return fallback; }
+        return Math.trunc(value);
+    }
+
+    /// `VirtualGeometry.window_at` followed by `window`, on this side.
+    ///
+    /// It is a mirror and it is judged as one: `tests/js_cases.b` emits what
+    /// the Beans geometry answers for a table of scroll positions — the
+    /// ordinary ones and the hostile ones — and the browser leg requires this
+    /// function to answer the same pair for every row.
+    function virtualWindow(rows, rowHeight, overscan, maxWindow, scrollTop, viewport) {
+        // `VirtualGeometry.ok()`. A geometry that cannot be laid out has no
+        // correct window, and answering numbers from one would send a range
+        // computed out of a negative row height.
+        if (!(rowHeight > 0 && overscan >= 0 && maxWindow > 0 && rows >= 0)) {
+            return { start: 0, count: 0 };
+        }
+        var span = rows * rowHeight;
+        var offset = scrollTop;
+        if (!isFinite(offset)) { offset = 0; }
+        offset = Math.trunc(offset);
+        if (offset < 0) { offset = 0; }
+        if (offset > span) { offset = span; }
+        var height = viewport;
+        if (!isFinite(height)) { height = 0; }
+        height = Math.trunc(height);
+        if (height < 0) { height = 0; }
+        if (height > span) { height = span; }
+
+        var first = Math.floor(offset / rowHeight);
+        var last = first;
+        if (height > 0) { last = Math.floor((offset + height - 1) / rowHeight); }
+
+        var at = first - overscan;
+        if (at < 0) { at = 0; }
+        var stop = last + 1 + overscan;
+        if (stop > rows) { stop = rows; }
+        var size = stop - at;
+        if (size < 0) { size = 0; }
+
+        // `window(at, size)`, whose clamps are the ones that hold for a
+        // hostile pair. `at` is already in range; `size` is not.
+        if (at > rows) { at = rows; }
+        if (size > maxWindow) { size = maxWindow; }
+        var room = rows - at;
+        if (size > room) { size = room; }
+        return { start: at, count: size };
+    }
+
+    /// The window an element's own geometry and scroll position describe.
+    function windowForElement(el, maxWindow) {
+        return virtualWindow(readInt(el, 'data-latte-rows', 0),
+                             readInt(el, 'data-latte-row-height', 0),
+                             readInt(el, 'data-latte-overscan', 0),
+                             maxWindow,
+                             el.scrollTop || 0,
+                             el.clientHeight || 0);
+    }
+
+    /// The scroll reporter. One message per animation frame per list, and none
+    /// at all for a list whose window has not moved.
+    function Ranges(options) {
+        options = options || {};
+        this.circuit = options.circuit || null;
+        this.host = options.host || null;
+        this.maxWindow = options.maxWindow || VIRTUAL_MAX_WINDOW;
+        // Injected for the same reason the socket and the clock are: a gate
+        // that asserted coalescing by really waiting for a frame could not say
+        // which frame it was waiting for.
+        this.schedule = options.schedule ||
+            (typeof requestAnimationFrame !== 'undefined'
+                ? function (fn) { return requestAnimationFrame(fn); }
+                : function (fn) { return setTimeout(fn, 16); });
+        /// The last range sent per component id, so a finger resting on a
+        /// trackpad costs nothing. The server dedupes too — `apply_range`
+        /// answers false for a window that did not move — but a message per
+        /// frame per list is a message the wire should never carry.
+        this.sent = bareMap();
+        this.pending = false;
+        this.listener = null;
+    }
+
+    Ranges.prototype.watch = function () {
+        if (!this.host || !this.host.addEventListener) { return false; }
+        var self = this;
+        this.listener = function () { self.request(); };
+        // CAPTURE, and this is load-bearing: `scroll` does not bubble, so a
+        // listener on the host in the bubble phase never sees a descendant
+        // scroll. It fires on the way DOWN or not at all.
+        this.host.addEventListener('scroll', this.listener, true);
+        return true;
+    };
+
+    Ranges.prototype.unwatch = function () {
+        if (this.listener && this.host && this.host.removeEventListener) {
+            this.host.removeEventListener('scroll', this.listener, true);
+        }
+        this.listener = null;
+    };
+
+    /// Ask for a flush on the next frame. Any number of scroll events between
+    /// now and then cost nothing.
+    Ranges.prototype.request = function () {
+        if (this.pending) { return false; }
+        this.pending = true;
+        var self = this;
+        this.schedule(function () { self.flush(); });
+        return true;
+    };
+
+    Ranges.prototype.flush = function () {
+        this.pending = false;
+        if (!this.host || !this.host.querySelectorAll) { return 0; }
+        var lists = this.host.querySelectorAll('[data-latte-virtual]');
+        var sent = 0;
+        for (var i = 0; i < lists.length; i++) {
+            if (this.report(lists[i])) { sent += 1; }
+        }
+        return sent;
+    };
+
+    /// One list. Answers whether a message went out.
+    Ranges.prototype.report = function (el) {
+        var id = readInt(el, 'data-latte-virtual', -1);
+        // `h` on a range is a component id and the server looks it up; a
+        // negative one cannot be a component, and wire.b refuses it as "a
+        // range carries no region id" — which would be this end asking the
+        // server to spend a refusal on a message it should never have sent.
+        if (id < 0) { return false; }
+        var band = windowForElement(el, this.maxWindow);
+        var key = String(id);
+        var mark = band.start + ',' + band.count;
+        if (this.sent[key] === mark) { return false; }
+        if (!this.circuit) { return false; }
+        // `c` carries the count and NOT `n`. `n` is the message sequence on
+        // every client message and wire.b reads it before it looks at the
+        // kind; a count on `n` is silently a sequence, the range decodes as
+        // `c` missing — that is, -1 — and "a range must be two non-negative
+        // numbers" refuses every scroll the page ever makes.
+        if (!this.circuit.sendFenced({ t: 'range', h: id,
+                                       s: wireInt(band.start),
+                                       c: wireInt(band.count) })) {
+            return false;
+        }
+        this.sent[key] = mark;
+        return true;
+    };
+
+    /// A list that left the page must not keep its last window remembered:
+    /// slot ids are never reused, so a NEW list can never collide with a dead
+    /// one — but a page that mounts and unmounts lists for an hour would grow
+    /// this map forever. Called after every batch.
+    Ranges.prototype.forget = function () {
+        if (!this.host || !this.host.querySelectorAll) { return; }
+        var live = bareMap();
+        var lists = this.host.querySelectorAll('[data-latte-virtual]');
+        for (var i = 0; i < lists.length; i++) {
+            live[String(readInt(lists[i], 'data-latte-virtual', -1))] = true;
+        }
+        var keys = Object.keys(this.sent);
+        for (var k = 0; k < keys.length; k++) {
+            if (!live[keys[k]]) { delete this.sent[keys[k]]; }
+        }
+    };
+
+    // -------------------------------------------------------------- uploads
+    //
+    // upload.b's browser half. PLAN.md: "Inside a circuit an upload is still an
+    // HTTP POST, not a socket message. `latte.js` posts the file and reports
+    // progress over the circuit."
+    //
+    // The POST is here and it is real. THE REPORT IS NOT SENT, and that is a
+    // boundary and not an oversight: wire v1 has seven client message kinds —
+    // attach, resume, ev, ack, nav, js, range — and no eighth for progress.
+    // `decode_body` answers `refuse("unknown message kind")` for anything else
+    // and `Circuit.accept` turns a refusal into `bye protocol`, so a client
+    // that invented a `progress` message would end its own circuit on the
+    // first byte of the first upload. So progress goes to a sink the page
+    // supplies, the numbers are clamped exactly as `UploadProgress` clamps
+    // them, and `lanes/W6.md` carries what wire.b and circuit.b would have to
+    // grow for the sink to be the circuit.
+
+    /// `UploadProgress`, on this side. Same clamps, same percentage.
+    function Progress() {
+        this.sent = 0;
+        this.total = 0;
+        this.started = false;
+        this.done = false;
+    }
+
+    /// Answers whether anything changed, so a browser firing `progress` sixty
+    /// times a second for the same two numbers costs one comparison.
+    Progress.prototype.report = function (sent, total) {
+        var size = wireInt(total);
+        if (size < 0) { size = 0; }
+        var done = wireInt(sent);
+        if (done < 0) { done = 0; }
+        // Clamped to the total AFTER the total is clamped: the total is the
+        // ceiling and a wrong pair is two wrong numbers, not one.
+        if (done > size) { done = size; }
+        if (this.started && done === this.sent && size === this.total) { return false; }
+        this.sent = done;
+        this.total = size;
+        this.started = true;
+        return true;
+    };
+
+    /// 0..100. A total of zero is 0%, not a division by zero and not 100%.
+    Progress.prototype.percent = function () {
+        if (this.total <= 0) { return 0; }
+        var top = this.sent;
+        var bottom = this.total;
+        // `sent * 100` is exact in a double only below 2^53/100. Beans halves
+        // for the same reason with a different ceiling — an i64 multiply that
+        // overflows — and both land on the same integer percentage, because
+        // halving loses at most one unit out of more than 9e13.
+        while (top > 90071992547409) {
+            top = Math.floor(top / 2);
+            bottom = Math.floor(bottom / 2);
+        }
+        if (bottom <= 0) { return 100; }
+        var out = Math.floor(top * 100 / bottom);
+        if (out < 0) { return 0; }
+        if (out > 100) { return 100; }
+        return out;
+    };
+
+    function defaultRequest() { return new XMLHttpRequest(); }
+
+    /// One `<div data-latte-upload>` control.
+    function Uploader(options) {
+        options = options || {};
+        this.element = options.element || null;
+        this.document = options.document ||
+            (typeof document !== 'undefined' ? document : null);
+        this.request = options.request || defaultRequest;
+        /// Where a progress report goes. See the note above: it is NOT the
+        /// circuit, because wire v1 has no message for one.
+        this.onprogress = options.onprogress || null;
+        /// A file this control will not post, in the words it refused it with.
+        this.onrefused = options.onrefused || null;
+        this.ondone = options.ondone || null;
+        this.progress = new Progress();
+        this.refusals = [];
+        this.xhr = null;
+    }
+
+    Uploader.prototype.id = function () { return readInt(this.element, 'data-latte-upload', -1); };
+    Uploader.prototype.maxBytes = function () { return readInt(this.element, 'data-latte-max-bytes', 0); };
+    Uploader.prototype.maxFiles = function () { return readInt(this.element, 'data-latte-max-files', 0); };
+
+    /// Where the body goes. An empty `data-latte-action` is the page's own
+    /// url, which is what `Upload.action` means server-side.
+    Uploader.prototype.action = function () {
+        var named = this.element && this.element.getAttribute
+            ? this.element.getAttribute('data-latte-action') : null;
+        if (named) { return named; }
+        if (typeof location === 'undefined') { return '/'; }
+        return location.pathname + location.search;
+    };
+
+    /// The field name the parts post under, taken from the control's own
+    /// `<input type=file>` — never from a data attribute, because the server
+    /// reads the part name out of the body and the input is the thing that
+    /// produced the body.
+    Uploader.prototype.field = function () {
+        if (!this.element || !this.element.querySelector) { return ''; }
+        var input = this.element.querySelector('input[type=file]');
+        return input && input.name ? input.name : '';
+    };
+
+    /// What this control will not even attempt, and why.
+    ///
+    /// These are the CLIENT's sentences and they have no Beans counterpart:
+    /// the server's refusals come out of espresso's multipart parser, which is
+    /// looking at a body rather than at a file the user just picked. Refusing
+    /// here saves a person watching a 4 MB upload complete and then fail; it
+    /// authorizes nothing, and every one of these is checked again on the far
+    /// side against limits this control never sees.
+    Uploader.prototype.refusalsFor = function (files) {
+        var out = [];
+        var most = this.maxFiles();
+        var cap = this.maxBytes();
+        if (most > 0 && files.length > most) {
+            out.push('this control takes ' + most + ' file(s) and ' +
+                     files.length + ' were chosen');
+        }
+        for (var i = 0; i < files.length; i++) {
+            if (cap > 0 && files[i].size > cap) {
+                out.push('"' + wireText(files[i].name) + '" is ' + files[i].size +
+                         ' bytes, over the ' + cap + ' this control offers');
+            }
+        }
+        return out;
+    };
+
+    /// Post `files`. Answers whether a request went out.
+    ///
+    /// Nothing partial: a set with one refusal in it posts NOTHING, because a
+    /// control that took three of four files and said so in a corner is a
+    /// control that silently lost a file.
+    Uploader.prototype.post = function (files) {
+        var refused = this.refusalsFor(files);
+        if (refused.length > 0) {
+            for (var r = 0; r < refused.length; r++) {
+                this.refusals.push(refused[r]);
+                if (this.onrefused) { this.onrefused(refused[r]); }
+            }
+            return false;
+        }
+        var name = this.field();
+        if (name === '') {
+            // `Upload.render` refuses a control with no field name and renders
+            // nothing that can be posted to, so this is only reachable for an
+            // element a page built by hand.
+            this.refusals.push('this control has no file input to post');
+            if (this.onrefused) { this.onrefused(this.refusals[this.refusals.length - 1]); }
+            return false;
+        }
+        var body = new FormData();
+        for (var i = 0; i < files.length; i++) { body.append(name, files[i]); }
+        var self = this;
+        var xhr = this.request();
+        this.xhr = xhr;
+        this.progress = new Progress();
+        xhr.open('POST', this.action(), true);
+        if (xhr.upload) {
+            xhr.upload.onprogress = function (event) {
+                // A body whose length the browser does not know reports
+                // `lengthComputable` false and a total of 0, and `report`
+                // clamps that to 0 of 0 — which `percent()` answers 0 for.
+                // A bar that sat at 0 is honest; one that jumped to 100
+                // because the total was missing is not.
+                self.tick(event.loaded, event.lengthComputable ? event.total : 0);
+            };
+        }
+        xhr.onload = function () { self.finish(xhr.status); };
+        xhr.onerror = function () { self.finish(0); };
+        xhr.send(body);
+        return true;
+    };
+
+    /// One progress report. Answers whether it changed anything.
+    Uploader.prototype.tick = function (loaded, total) {
+        if (!this.progress.report(loaded, total)) { return false; }
+        if (this.onprogress) {
+            // The shape the message would carry if there were a message: the
+            // component id, the bytes sent and the bytes there are. `s` and
+            // `c` are the two names a range already uses for its pair, for the
+            // same reason — `n` is the sequence and belongs to no payload.
+            this.onprogress({ t: 'progress', h: this.id(),
+                              s: wireInt(this.progress.sent),
+                              c: wireInt(this.progress.total) });
+        }
+        return true;
+    };
+
+    Uploader.prototype.finish = function (status) {
+        this.progress.done = true;
+        if (this.ondone) { this.ondone(status); }
+    };
+
     // ---------------------------------------------------------------- boot
 
     // The shell carries the circuit id and the socket path on the script tag
@@ -1764,6 +2322,19 @@
         navTargetIsLocal: navTargetIsLocal,
         wireInt: wireInt,
         wireText: wireText,
+        // The streaming, virtual-list and upload halves. Public for the same
+        // reason `eventNames` is: each one reimplements a rule that lives in
+        // Beans, and a suite has to be able to compare the two copies rather
+        // than trust that someone kept them in step.
+        Stream: Stream,
+        Ranges: Ranges,
+        Uploader: Uploader,
+        Progress: Progress,
+        streamIdIsSafe: streamIdIsSafe,
+        virtualWindow: virtualWindow,
+        windowForElement: windowForElement,
+        maxStreamId: MAX_STREAM_ID,
+        maxWindow: VIRTUAL_MAX_WINDOW,
         kindName: kindName,
         spanAt: spanAt,
         scanSpans: scanSpans,
@@ -1800,14 +2371,41 @@
         register: function (name, fn) {
             if (!api.current) { return false; }
             return api.current.register(name, fn);
-        }
+        },
+
+        /// Start the MutationObserver that lands streamed chunks.
+        ///
+        /// Separate from `boot` and started BEFORE it, for two reasons. A
+        /// streamed page need not have a circuit at all — `@stream` is about
+        /// delivery and says nothing about interactivity — so a page whose
+        /// script tag carries no circuit id must still fill its holes. And the
+        /// chunks are arriving WHILE this runs: the sooner the observer is on
+        /// the document, the fewer of them the first sweep has to catch up on.
+        stream: function (options) {
+            options = options || {};
+            var doc = options.document ||
+                (typeof document !== 'undefined' ? document : null);
+            if (!doc) { return null; }
+            var made = new Stream({ document: doc, root: options.root || null });
+            made.start();
+            api.streaming = made;
+            return made;
+        },
+
+        streaming: null
     };
 
     // Auto-boot, but only in a browser and only when the page said so. A node
     // or a test harness gets the module and calls `boot` itself.
     if (typeof document !== 'undefined' && typeof window !== 'undefined') {
         var self_script = document.currentScript || null;
-        var startup = function () { api.boot({ document: document, script: self_script }); };
+        var startup = function () {
+            // The stream first: it needs no circuit and a page may have no
+            // circuit id at all, in which case `boot` answers null and every
+            // placeholder on a streamed static page would stay a placeholder.
+            api.stream({ document: document });
+            api.boot({ document: document, script: self_script });
+        };
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', startup);
         } else {

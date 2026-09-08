@@ -29,10 +29,13 @@ package main
 
 import std.io
 import std.fmt
-import {Applier, Batch, Builder, Component, ComponentUpdate, Edit,
-        ErrorBoundary, Frame, Frames, InputEvent, MouseEvent, Renderer,
-        encode_batch, event_captures, event_names, nav_target_is_local,
-        write_json_string} from latte
+import {Applier, Batch, Builder, ChunkReader, CircuitOptions, Component,
+        ComponentUpdate, Edit, ErrorBoundary, Frame, Frames, InputEvent,
+        MAX_STREAM_ID, MouseEvent, Placement, Renderer, StreamDocument,
+        UploadProgress, VIRTUAL_INITIAL_ROWS, VIRTUAL_MAX_WINDOW,
+        VirtualGeometry, assemble_chunks, encode_batch, event_captures,
+        event_names, nav_target_is_local, slot_placeholder,
+        stream_id_is_safe, write_json_string} from latte
 
 // ============================================================== components
 //
@@ -703,6 +706,397 @@ fn emit_tables(out: fmt.StringBuilder) {
     out.push("];\n")
 }
 
+
+// ====================================================== W6: the three seams
+//
+// Everything below is a table the BROWSER half has to reproduce. The pattern
+// is the one `emit_tables` already uses for the event families and the
+// navigation rule: latte.js reimplements a rule that lives in Beans, so the
+// two copies are compared rather than assumed to have been kept in step.
+//
+// Three seams, three tables:
+//
+//   LATTE_STREAM    stream.b's framing, and what `assemble_chunks` says a
+//                   browser is left holding. The browser leg writes the same
+//                   bytes into a real HTML parser at every split.
+//   LATTE_VIRTUAL   `VirtualGeometry.window_at` over a table of scroll
+//                   positions, and the two server caps a client must know
+//                   because `hello` does not carry them.
+//   LATTE_PROGRESS  `UploadProgress`, whose clamps are the whole class.
+
+/// A streamed document and what it assembles to.
+class StreamCase {
+    pub name: string = ""
+    pub doc: string = ""
+    pub want: string = ""
+    pub faults: List<string> = []
+    /// Whether the browser is expected to land every chunk. A document whose
+    /// last chunk has no seal is one the browser must LEAVE alone — more bytes
+    /// could still be coming — while `assemble_chunks`, which is handed the
+    /// whole event stream at once, knows they are not.
+    pub sealed: bool = true
+    pub fn init(name: string) { self.name = name }
+}
+
+/// Read a document's own bytes back and answer what a browser should hold.
+fn assembled(doc: string, faults: List<string>) -> string {
+    var reader: ChunkReader = new ChunkReader()
+    reader.feed(doc)
+    reader.finish()
+    for fault: string in reader.faults { faults.push(fault) }
+    return assemble_chunks(reader.events, faults)
+}
+
+fn stream_case(name: string, doc: string, sealed: bool) -> StreamCase {
+    let out: StreamCase = new StreamCase(name)
+    out.doc = doc
+    out.want = assembled(doc, out.faults)
+    out.sealed = sealed
+    return out
+}
+
+/// Built through the real `StreamDocument`, so the framing under test is the
+/// framing latte ships and not a string this file made up.
+fn built(name: string, head: string, ids: List<string>,
+         order: List<string>, bodies: List<string>, tail: string) -> StreamCase {
+    var doc: StreamDocument = new StreamDocument()
+    let _1: bool = doc.head(head, ids)
+    var index: int = 0
+    for index < order.len() {
+        let _2: bool = doc.chunk(order[index], bodies[index])
+        index += 1
+    }
+    let _3: bool = doc.tail(tail)
+    let out: StreamCase = stream_case(name, doc.text(), true)
+    for fault: string in doc.faults { out.faults.push(fault) }
+    return out
+}
+
+fn stream_cases() -> List<StreamCase> {
+    var out: List<StreamCase> = []
+    // A string interpolation may not carry an escaped quote, so the
+    // placeholders are named first. They come from `slot_placeholder` rather
+    // than being spelled here, so a change to the placeholder's shape shows up
+    // as one diff in this file rather than as eight.
+    let h0: string = slot_placeholder("s0")
+    let h1: string = slot_placeholder("s1")
+    let h2: string = slot_placeholder("s2")
+
+    // One hole. The smallest thing that streams at all.
+    out.push(built("one",
+        "<div id=\"a\">{h0}</div>", ["s0"],
+        ["s0"], ["<p>late</p>"], "<hr>"))
+
+    // Three holes filled in the order they were promised.
+    out.push(built("three",
+        "<ul>{h0}{h1}{h2}</ul>",
+        ["s0", "s1", "s2"], ["s0", "s1", "s2"],
+        ["<li>a</li>", "<li>b</li>", "<li>c</li>"], "<footer>end</footer>"))
+
+    // The same three filled BACKWARDS. Which region finishes first is the
+    // host's business and nothing about the framing may depend on it.
+    out.push(built("backwards",
+        "<ul>{h0}{h1}{h2}</ul>",
+        ["s0", "s1", "s2"], ["s2", "s1", "s0"],
+        ["<li>c</li>", "<li>b</li>", "<li>a</li>"], "<footer>end</footer>"))
+
+    // A chunk with nothing in it. The placeholder still has to go.
+    out.push(built("empty",
+        "<div>{h0}|</div>", ["s0"], ["s0"], [""], ""))
+
+    // Content that the tokenizer has to hold across a split for reasons that
+    // are nothing to do with the framing: entities, an attribute with a `>`
+    // in its value, and a comment.
+    out.push(built("awkward",
+        "<div>{h0}</div>", ["s0"], ["s0"],
+        ["<b title=\"a &gt; b\">&amp;&lt;&quot;</b><!-- x --><em>done</em>"], "<p>tail</p>"))
+
+    // A chunk whose CONTENT carries the next hole. The outer region rendered a
+    // component that was itself not ready, which is the ordinary shape for a
+    // page with a slow list inside a slow panel.
+    out.push(built("nested",
+        "<main>{h0}</main>", ["s0", "s1"], ["s0", "s1"],
+        ["<section>{h1}</section>", "<p>deep</p>"], ""))
+
+    // A chunk for a hole the head never left. `StreamDocument` refuses to
+    // WRITE one, so this is hand-framed: it is what a host that assembled the
+    // bytes itself would put on the wire, and both halves have to say the same
+    // thing about it.
+    out.push(stream_case("no-placeholder",
+        "<div>x</div><latte-chunk for=\"s9\"><p>orphan</p></latte-chunk><latte-seal for=\"s9\"></latte-seal><p>after</p>",
+        true))
+
+    // A chunk whose seal never arrived. `assemble_chunks` sees the whole event
+    // stream and can say the document ended mid-chunk; a BROWSER cannot, and
+    // must leave the chunk exactly where it is, because the next byte may be
+    // the rest of it. That difference is the seal's entire reason for
+    // existing, so the case is here with `sealed` false and the browser leg
+    // asserts the opposite thing about it.
+    out.push(stream_case("unsealed",
+        "<div>{h0}</div><latte-chunk for=\"s0\"><p>half",
+        false))
+
+    return move out
+}
+
+/// The id probes. `stream_id_is_safe` decides what may be written into the
+/// framing, and latte.js reads an id straight back out of an attribute and
+/// into an attribute SELECTOR — so the two copies of the rule are compared.
+fn stream_id_probes() -> List<string> {
+    var out: List<string> = []
+    out.push("s0")
+    out.push("S0")
+    out.push("a-b_c9")
+    out.push("0")
+    out.push("_")
+    out.push("-")
+    out.push("")
+    out.push("a b")
+    out.push("a\"b")
+    out.push("a]b")
+    out.push("a[b")
+    out.push("a'b")
+    out.push("a\\b")
+    out.push("a.b")
+    out.push("a:b")
+    out.push("a/b")
+    out.push("caf\u{e9}")
+    out.push("a\nb")
+    // Exactly at MAX_STREAM_ID, and one past it.
+    out.push("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    out.push("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    return move out
+}
+
+// ------------------------------------------------------------ virtual lists
+
+class WindowCase {
+    pub rows: int = 0
+    pub row_height: int = 0
+    pub overscan: int = 0
+    pub cap: int = 0
+    pub scroll_top: int = 0
+    pub viewport: int = 0
+    pub start: int = 0
+    pub count: int = 0
+    pub fn init() {}
+}
+
+fn window_case(rows: int, height: int, overscan: int, cap: int,
+               scroll_top: int, viewport: int) -> WindowCase {
+    var g: VirtualGeometry = new VirtualGeometry()
+    g.total = rows
+    g.row_height = height
+    g.overscan = overscan
+    g.max_window = cap
+    let where: Placement = g.window_at(scroll_top, viewport)
+    var out: WindowCase = new WindowCase()
+    out.rows = rows
+    out.row_height = height
+    out.overscan = overscan
+    out.cap = cap
+    out.scroll_top = scroll_top
+    out.viewport = viewport
+    out.start = where.start
+    out.count = where.shown
+    return out
+}
+
+/// Every scroll position the two halves have to agree on.
+///
+/// It is not a handful of round numbers: the sweep walks a 50,000-row list a
+/// pixel at a time across two row boundaries, then a page at a time across the
+/// whole thing, then every hostile pair either end could produce. A mirror
+/// that agreed on the round numbers and disagreed one pixel before a boundary
+/// would render one row of blank on every scroll and pass a smaller table.
+fn window_cases() -> List<WindowCase> {
+    var out: List<WindowCase> = []
+    let rows: int = 50000
+    let height: int = 32
+    let scan: int = 4
+    let cap: int = 200
+
+    // A pixel at a time across the first two row boundaries and the last one.
+    var at: int = 0
+    for at <= 96 {
+        out.push(window_case(rows, height, scan, cap, at, 320))
+        at += 1
+    }
+    at = 1599900
+    for at <= 1600000 {
+        out.push(window_case(rows, height, scan, cap, at, 320))
+        at += 1
+    }
+    // A page at a time down the whole list.
+    at = 0
+    for at <= 1600000 {
+        out.push(window_case(rows, height, scan, cap, at, 320))
+        at += 3203
+    }
+    // Viewports: none, one pixel, one row, one under a row, one over, and one
+    // taller than the whole list — which is where the window cap has to bite.
+    for view: int in [0, 1, 31, 32, 33, 320, 6400, 1600000, 3200000] {
+        out.push(window_case(rows, height, scan, cap, 0, view))
+        out.push(window_case(rows, height, scan, cap, 16000, view))
+        out.push(window_case(rows, height, scan, cap, 1599999, view))
+    }
+    // Overscans, including 0 and one wider than the window cap.
+    for scan2: int in [0, 1, 4, 12, 99, 400] {
+        out.push(window_case(rows, height, scan2, cap, 16000, 320))
+        out.push(window_case(rows, height, scan2, cap, 0, 320))
+    }
+    // Hostile numbers from either end.
+    for bad: int in [-1, -32, -1600000, 1600001, 3200000, 9007199254740991] {
+        out.push(window_case(rows, height, scan, cap, bad, 320))
+        out.push(window_case(rows, height, scan, cap, 16000, bad))
+    }
+    // Short lists, where the clamp to what is left of the collection is the
+    // clamp that decides.
+    for few: int in [0, 1, 2, 3, 7, 199, 200, 201] {
+        out.push(window_case(few, height, scan, cap, 0, 320))
+        out.push(window_case(few, height, scan, cap, 64, 320))
+        out.push(window_case(few, height, scan, cap, few * height, 320))
+    }
+    // Geometries that cannot be laid out at all. Every one of these must
+    // answer the empty window on BOTH sides: a client that computed numbers
+    // from a row height of -1 would send a range built out of nonsense.
+    out.push(window_case(rows, 0, scan, cap, 100, 320))
+    out.push(window_case(rows, -1, scan, cap, 100, 320))
+    out.push(window_case(rows, height, -1, cap, 100, 320))
+    out.push(window_case(rows, height, scan, 0, 100, 320))
+    out.push(window_case(rows, height, scan, -5, 100, 320))
+    out.push(window_case(-2, height, scan, cap, 100, 320))
+    // Caps other than the default, so a mirror that hard-coded 200 fails.
+    for cap2: int in [1, 7, 50, 199, 200, 1000] {
+        out.push(window_case(rows, height, scan, cap2, 16000, 6400))
+    }
+    return move out
+}
+
+// ------------------------------------------------------------ upload progress
+
+class ProgressCase {
+    pub sent: int = 0
+    pub total: int = 0
+    pub want_sent: int = 0
+    pub want_total: int = 0
+    pub want_percent: int = 0
+    pub want_changed: bool = false
+    pub fn init() {}
+}
+
+/// Every pair goes into a FRESH `UploadProgress`, except that `want_changed`
+/// records what a SECOND identical report answers — which is the whole point
+/// of the return value: a browser firing `progress` sixty times a second for
+/// the same two numbers must not re-render a page sixty times.
+fn progress_cases() -> List<ProgressCase> {
+    var out: List<ProgressCase> = []
+    // Every number here is inside the range a double represents exactly.
+    // Beyond it neither half can produce a value at all: latte.js passes every
+    // number through `wireInt`, which clamps at 9007199254740991, and Beans'
+    // own i64 rows are gated in tests/w6_upload.b where a double is not in the
+    // way.
+    var pairs: List<List<int>> = []
+    pairs.push([0, 0])
+    pairs.push([0, 100])
+    pairs.push([1, 100])
+    pairs.push([49, 100])
+    pairs.push([50, 100])
+    pairs.push([99, 100])
+    pairs.push([100, 100])
+    pairs.push([101, 100])
+    pairs.push([1000000, 100])
+    pairs.push([-1, 100])
+    pairs.push([-1, -1])
+    pairs.push([50, -1])
+    pairs.push([0, 1])
+    pairs.push([1, 3])
+    pairs.push([2, 3])
+    pairs.push([1, 7])
+    pairs.push([1, 1000000])
+    pairs.push([999999, 1000000])
+    pairs.push([4194304, 4194304])
+    pairs.push([2097152, 4194304])
+    // Where the halving loop runs on BOTH sides, for different reasons.
+    pairs.push([9007199254740991, 9007199254740991])
+    pairs.push([4503599627370495, 9007199254740991])
+    pairs.push([90071992547409, 9007199254740991])
+    pairs.push([9007199254740991, 90071992547409])
+    for pair: List<int> in pairs {
+        var p: UploadProgress = new UploadProgress()
+        var row: ProgressCase = new ProgressCase()
+        row.sent = pair[0]
+        row.total = pair[1]
+        let _1: bool = p.report(pair[0], pair[1])
+        row.want_sent = p.sent
+        row.want_total = p.total
+        row.want_percent = p.percent()
+        row.want_changed = p.report(pair[0], pair[1])
+        out.push(move row)
+    }
+    return move out
+}
+
+// ------------------------------------------------------------ emitting them
+
+fn emit_w6(out: fmt.StringBuilder) {
+    out.push("var LATTE_STREAM = \{\"ids\":[")
+    var probes: List<string> = stream_id_probes()
+    var index: int = 0
+    for index < probes.len() {
+        if index > 0 { out.push(",") }
+        out.push("[")
+        write_json_string(out, probes[index])
+        if stream_id_is_safe(probes[index]) { out.push(",true]") }
+        else { out.push(",false]") }
+        index += 1
+    }
+    out.push("],\"docs\":[\n")
+    var first: bool = true
+    for kase: StreamCase in stream_cases() {
+        if !first { out.push(",\n") }
+        first = false
+        out.push("\{\"name\":")
+        write_json_string(out, kase.name)
+        out.push(",\"doc\":")
+        write_json_string(out, kase.doc)
+        out.push(",\"want\":")
+        write_json_string(out, kase.want)
+        out.push(",\"sealed\":")
+        if kase.sealed { out.push("true") } else { out.push("false") }
+        out.push(",\"faults\":")
+        emit_faults(out, kase.faults)
+        out.push("\}")
+    }
+    out.push("\n]\};\n")
+
+    // The two caps. `circuit.b` ENDS a circuit for a range over the first and
+    // `hello` does not carry it, so latte.js holds a copy — and a copy that
+    // drifted would kill a tab on its first scroll.
+    var options: CircuitOptions = new CircuitOptions()
+    out.push("var LATTE_CAPS = \{\"wire\":{options.max_window},\"renderer\":{VIRTUAL_MAX_WINDOW},\"initialRows\":{VIRTUAL_INITIAL_ROWS},\"maxStreamId\":{MAX_STREAM_ID}\};\n")
+
+    out.push("var LATTE_VIRTUAL = [\n")
+    first = true
+    for row: WindowCase in window_cases() {
+        if !first { out.push(",\n") }
+        first = false
+        out.push("[{row.rows},{row.row_height},{row.overscan},{row.cap},{row.scroll_top},{row.viewport},{row.start},{row.count}]")
+    }
+    out.push("\n];\n")
+
+    out.push("var LATTE_PROGRESS = [\n")
+    first = true
+    for row: ProgressCase in progress_cases() {
+        if !first { out.push(",\n") }
+        first = false
+        var changed: string = "false"
+        if row.want_changed { changed = "true" }
+        out.push("[{row.sent},{row.total},{row.want_sent},{row.want_total},{row.want_percent},{changed}]")
+    }
+    out.push("\n];\n")
+}
+
 fn main() {
     var cases: List<Case> = []
     cases.push(case_page())
@@ -712,6 +1106,7 @@ fn main() {
     malformed_cases(cases)
     var out: fmt.StringBuilder = new fmt.StringBuilder()
     emit_tables(out)
+    emit_w6(out)
     io.print(out.to_string())
     io.print(emit(cases))
 }

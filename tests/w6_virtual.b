@@ -374,6 +374,9 @@ fn main() {
     io.println("== 5 the circuit hands a range to the list ==")
     section_five(r)
     io.println("")
+    io.println("== 6 the four numbers the browser reporter reads ==")
+    section_six(r)
+    io.println("")
     io.println("{r.checks} checks, {r.bad} bad")
 }
 
@@ -573,7 +576,7 @@ fn section_two(r: Report) {
             io.println("html at row 1000, three rows:")
             io.println("  {html}")
             r.eq("the html", html,
-                "<div class=\"sheet\" data-latte-virtual=\"0\" data-latte-rows=\"50000\" data-latte-row-height=\"32\"><div data-latte-spacer=\"top\" style=\"height:32000px\"></div><div class=\"row\">row 1000</div><div class=\"row\">row 1001</div><div class=\"row\">row 1002</div><div data-latte-spacer=\"bottom\" style=\"height:1567904px\"></div></div>")
+                "<div class=\"sheet\" data-latte-virtual=\"0\" data-latte-rows=\"50000\" data-latte-row-height=\"32\" data-latte-overscan=\"4\"><div data-latte-spacer=\"top\" style=\"height:32000px\"></div><div class=\"row\">row 1000</div><div class=\"row\">row 1001</div><div class=\"row\">row 1002</div><div data-latte-spacer=\"bottom\" style=\"height:1567904px\"></div></div>")
             r.eqi("and the serializer raised nothing", writer.faults.len(), 0)
         }
     }
@@ -835,7 +838,15 @@ fn broken_html(height: int, overscan: int, cap: int, count: int) -> string {
     return renderer.html()
 }
 
-const SOUND_HTML: string = "<div data-latte-virtual=\"0\" data-latte-rows=\"3\" data-latte-row-height=\"10\"><div data-latte-spacer=\"top\" style=\"height:0px\"></div>012<div data-latte-spacer=\"bottom\" style=\"height:0px\"></div></div>"
+/// What a SOUND three-row list renders, for a given overscan.
+///
+/// It is a function of the overscan because the element carries it: the
+/// browser reporter needs the author's number to compute the same band the
+/// server would, and a positive control whose overscan differed from the case
+/// beside it would be comparing two different pages.
+fn sound_html(overscan: int) -> string {
+    return "<div data-latte-virtual=\"0\" data-latte-rows=\"3\" data-latte-row-height=\"10\" data-latte-overscan=\"{overscan}\"><div data-latte-spacer=\"top\" style=\"height:0px\"></div>012<div data-latte-spacer=\"bottom\" style=\"height:0px\"></div></div>"
+}
 
 fn virtual_sites() -> List<VSite> {
     var out: List<VSite> = []
@@ -844,37 +855,37 @@ fn virtual_sites() -> List<VSite> {
         fn() -> string { return broken(0, 4, 200, 3) },
         "a virtual list needs a positive row height, not 0",
         fn() -> string { return broken(10, 4, 200, 3) },
-        fn() -> string { return broken_html(10, 4, 200, 3) }, SOUND_HTML))
+        fn() -> string { return broken_html(10, 4, 200, 3) }, sound_html(4)))
 
     out.push(new VSite(V_RENDER, "a negative row height",
         fn() -> string { return broken(-1, 4, 200, 3) },
         "a virtual list needs a positive row height, not -1",
         fn() -> string { return broken(10, 4, 200, 3) },
-        fn() -> string { return broken_html(10, 4, 200, 3) }, SOUND_HTML))
+        fn() -> string { return broken_html(10, 4, 200, 3) }, sound_html(4)))
 
     out.push(new VSite(V_RENDER, "a negative overscan",
         fn() -> string { return broken(10, -1, 200, 3) },
         "a virtual list cannot overscan -1 rows",
         fn() -> string { return broken(10, 0, 200, 3) },
-        fn() -> string { return broken_html(10, 0, 200, 3) }, SOUND_HTML))
+        fn() -> string { return broken_html(10, 0, 200, 3) }, sound_html(0)))
 
     out.push(new VSite(V_RENDER, "a window cap of zero",
         fn() -> string { return broken(10, 4, 0, 3) },
         "a virtual list needs a positive window cap, not 0",
         fn() -> string { return broken(10, 4, 1, 3) },
-        fn() -> string { return broken_html(10, 4, 200, 3) }, SOUND_HTML))
+        fn() -> string { return broken_html(10, 4, 200, 3) }, sound_html(4)))
 
     out.push(new VSite(V_RENDER, "a negative row count",
         fn() -> string { return broken(10, 4, 200, -2) },
         "a virtual list cannot hold -2 rows",
         fn() -> string { return broken(10, 4, 200, 0) },
-        fn() -> string { return broken_html(10, 4, 200, 3) }, SOUND_HTML))
+        fn() -> string { return broken_html(10, 4, 200, 3) }, sound_html(4)))
 
     out.push(new VSite(V_RENDER, "every parameter wrong at once",
         fn() -> string { return broken(0, -1, 0, -2) },
         "a virtual list needs a positive row height, not 0 | a virtual list cannot overscan -1 rows | a virtual list needs a positive window cap, not 0 | a virtual list cannot hold -2 rows",
         fn() -> string { return broken(10, 4, 200, 3) },
-        fn() -> string { return broken_html(10, 4, 200, 3) }, SOUND_HTML))
+        fn() -> string { return broken_html(10, 4, 200, 3) }, sound_html(4)))
 
     return move out
 }
@@ -1054,4 +1065,46 @@ fn hostile_placement_sound(c: Circuit) -> bool {
         some(list) => { return list.placement.sound() }
         none => { return false }
     }
+}
+
+// ============================================================== 6
+//
+// The element is the whole contract between `virtual.b` and `js/latte.js`.
+// The client cannot ask the server what the geometry is — there is no message
+// for it and `hello` carries three fields — so every number `window_at` needs
+// has to be readable off the DOM, and each has to be readable as ITSELF.
+//
+// Every number here is deliberately different from every other and from the
+// defaults, so an attribute that carried the wrong one of the four would show
+// up as a wrong value rather than as a coincidence. With rows=7,
+// row_height=13, overscan=12 there is no pair that could be swapped without
+// the string changing.
+
+fn section_six(r: Report) {
+    let renderer: Renderer = new Renderer()
+    var list: Virtual = new Virtual()
+    list.count = 7
+    list.row_height = 13
+    list.overscan = 12
+    list.row = fn(b: Builder, index: int) { b.text(0, "{index}") }
+    renderer.mount(list)
+    let html: string = renderer.html()
+    io.println("the reporter's element: {html}")
+    r.eq("all four numbers are on the element", html,
+        "<div data-latte-virtual=\"0\" data-latte-rows=\"7\" data-latte-row-height=\"13\" data-latte-overscan=\"12\"><div data-latte-spacer=\"top\" style=\"height:0px\"></div>0123456<div data-latte-spacer=\"bottom\" style=\"height:0px\"></div></div>")
+
+    // The overscan is the author's and it MOVES. A list rendered with a
+    // different one must say so, or a client reading the attribute would
+    // compute the same band for two lists that are not the same list.
+    var wider: Virtual = new Virtual()
+    wider.count = 7
+    wider.row_height = 13
+    wider.overscan = 1
+    wider.row = fn(b: Builder, index: int) { b.text(0, "{index}") }
+    let second: Renderer = new Renderer()
+    second.mount(wider)
+    r.yes("a different overscan renders a different element",
+          second.html().contains("data-latte-overscan=\"1\""))
+    r.no("and not the first one's number",
+         second.html().contains("data-latte-overscan=\"12\""))
 }
