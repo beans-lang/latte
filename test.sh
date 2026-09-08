@@ -726,6 +726,7 @@ run_examples_leg
 # shaped differently, the audit has moved and that is a failure, not a shrug.
 refusal_coverage_for() {
     local file="$1" golden="$2" suite="$3"
+    classified="$classified $file"
     local source="$ROOT/$file"
     local recorded="$ROOT/$golden"
     if [[ ! -f "$source" || ! -f "$recorded" ]]; then
@@ -777,6 +778,7 @@ refusal_coverage_for() {
 # This is what notices.
 refusal_coverage_none() {
     local file="$1"
+    classified="$classified $file"
     local source="$ROOT/$file"
     if [[ ! -f "$source" ]]; then
         echo "--- refusal-coverage FAILED: $file is missing ---" >&2
@@ -804,6 +806,7 @@ refusal_coverage_none() {
 # are the only ones in latte's core with no case — lanes/W1.md, SIXTH AGENT.
 refusal_coverage_pending() {
     local file="$1" recorded="$2"
+    classified="$classified $file"
     local source="$ROOT/$file"
     if [[ ! -f "$source" ]]; then
         echo "--- refusal-coverage FAILED: $file is missing ---" >&2
@@ -826,24 +829,71 @@ refusal_coverage_pending() {
     pending=$((pending + sites))
 }
 
+# Every OTHER `.b` in the package: discovered, not listed.
+#
+# The three rows above are a hardcoded list, and a hardcoded list goes stale the
+# moment a lane adds a file. It did: `pages.b` grew 8 report sites and
+# `circuit.b` grew 3 while this leg named six files and neither of them was one,
+# so eleven refusals had no tally, no ratchet and no way to be noticed — the
+# same blindness the `refusal_coverage_none` rows were added to fix, one level
+# up. A file nobody names is worse than a file with no tally: at least the
+# second one is on the list.
+#
+# So the rule is now a rule about the TREE and not about a list: every `.b` in
+# the shipped package is either audited, recorded-and-pending, or proven to have
+# zero report sites. `tests/` and `probes/` are excluded because they are not
+# the package; `examples/` is swept, because an example that grew a refusal
+# would be a library concern wearing an app's clothes.
+refusal_coverage_sweep() {
+    local source rel sites
+    while IFS= read -r source; do
+        rel=${source#"$ROOT"/}
+        case " $classified " in *" $rel "*) continue ;; esac
+        sites=$(grep -c 'self\.faults\.push' "$source" || true)
+        if [[ "$sites" -ne 0 ]]; then
+            echo "--- refusal-coverage FAILED: $rel has $sites report site(s) and this leg does not name it ---" >&2
+            echo "    A refusal nothing exercises is invisible in a green run. Give it a" >&2
+            echo "    trip case with the exact fault text and a positive control beside it," >&2
+            echo "    a label in probes/delete_faults.sh, and a refusal_coverage_for row" >&2
+            echo "    here — or, if the cases belong to another lane, a" >&2
+            echo "    refusal_coverage_pending row with the count, so it cannot grow." >&2
+            failed=1
+            uncovered=$((uncovered + 1))
+        else
+            swept=$((swept + 1))
+        fi
+    done < <(find "$ROOT" -name '*.b' \
+                  -not -path "$ROOT/tests/*" \
+                  -not -path "$ROOT/probes/*" | sort)
+}
+
 run_refusal_coverage_leg() {
     local covered=0
     local uncovered=0
     local pending=0
+    local swept=0
+    local classified=""
     refusal_coverage_for builder.b   tests/frames.out    "tests/frames.b § 13"
     refusal_coverage_for apply.b     tests/w1_faults.out "tests/w1_faults.b § 1"
     refusal_coverage_for serialize.b tests/w1_faults.out "tests/w1_faults.b § 3"
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
     refusal_coverage_pending render.b 2
-    # One line, and only when all three files passed. A partial "ok … all 16"
-    # printed beside a FAILED line for a fourth file is exactly the shape
-    # RULES.md calls out under "a green count can mean two different things":
-    # a reader grepping for `ok refusal-coverage` would find one either way.
+    refusal_coverage_pending pages.b 8
+    refusal_coverage_pending circuit.b 3
+    refusal_coverage_sweep
+    # One line, and only when every file passed. A partial "ok … all 42" printed
+    # beside a FAILED line for a seventh file is exactly the shape RULES.md
+    # calls out under "a green count can mean two different things": a reader
+    # grepping for `ok refusal-coverage` would find one either way.
+    #
+    # It says all FOUR states for the same reason. "ok refusal-coverage" on its
+    # own reads identically whether a file is audited, deliberately empty,
+    # recorded but unaudited, or merely swept.
     if [[ $uncovered -eq 0 ]]; then
-        echo "ok refusal-coverage — all $covered report sites in builder.b, apply.b and serialize.b have a case and a control; frames.b and diff.b still have none; render.b's $pending are recorded and NOT audited (lanes/W1.md)"
+        echo "ok refusal-coverage — $covered report sites in builder.b, apply.b and serialize.b have a case and a control; frames.b and diff.b deliberately have none; render.b, pages.b and circuit.b hold $pending that are recorded and NOT audited (lanes/W1.md); $swept other .b file(s) swept and confirmed empty"
     else
-        echo "--- refusal-coverage FAILED: $uncovered of the 6 core source files are not covered ---" >&2
+        echo "--- refusal-coverage FAILED: $uncovered source file(s) are not covered ---" >&2
     fi
 }
 

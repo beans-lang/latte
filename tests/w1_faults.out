@@ -402,6 +402,36 @@ ok remove-handler-with-the-cursor-on-a-mount: what the refusal left
 ok remove-handler-with-the-cursor-on-a-mount: the control raises nothing
 ok remove-handler-with-the-cursor-on-a-mount: and the control applied
 ok remove-handler-with-the-cursor-on-a-mount: and the control changed the tree
+-- insert-with-the-cursor-on-a-text-node
+   site:    wrong_kind / OP needs a WANT node, not a GOT node
+   faults:  component 0: step_in 0 needs a container node, not a text node | component 0: insert needs a container node, not a text node
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root"><b>INSnew</b>head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok insert-with-the-cursor-on-a-text-node: the exact faults
+ok insert-with-the-cursor-on-a-text-node: what the refusal left
+ok insert-with-the-cursor-on-a-text-node: the control raises nothing
+ok insert-with-the-cursor-on-a-text-node: and the control applied
+ok insert-with-the-cursor-on-a-text-node: and the control changed the tree
+-- remove-with-the-cursor-on-a-text-node
+   site:    wrong_kind / OP needs a WANT node, not a GOT node
+   faults:  component 0: step_in 2 needs a container node, not a text node | component 0: remove needs a container node, not a text node
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p><b></b>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok remove-with-the-cursor-on-a-text-node: the exact faults
+ok remove-with-the-cursor-on-a-text-node: what the refusal left
+ok remove-with-the-cursor-on-a-text-node: the control raises nothing
+ok remove-with-the-cursor-on-a-text-node: and the control applied
+ok remove-with-the-cursor-on-a-text-node: and the control changed the tree
+-- relocate-with-the-cursor-on-a-markup-node
+   site:    wrong_kind / OP needs a WANT node, not a GOT node
+   faults:  component 0: step_in 3 needs a container node, not a markup node | component 0: relocate needs a container node, not a markup node
+   left:    <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+   control: <div id="root">head<p class="row">one</p>tail<b>twoone</b><em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
+ok relocate-with-the-cursor-on-a-markup-node: the exact faults
+ok relocate-with-the-cursor-on-a-markup-node: what the refusal left
+ok relocate-with-the-cursor-on-a-markup-node: the control raises nothing
+ok relocate-with-the-cursor-on-a-markup-node: and the control applied
+ok relocate-with-the-cursor-on-a-markup-node: and the control changed the tree
 -- the sites in apply.b, and how many shapes reach each
    2x insert / insert at N of M
    4x insert / no staged subtree at N
@@ -415,7 +445,7 @@ ok remove-handler-with-the-cursor-on-a-mount: and the control changed the tree
    2x run / the edit stream ended N level(s) deep
    2x step_in / step_in N of M
    2x step_out / step_out at the root
-   5x wrong_kind / OP needs a WANT node, not a GOT node
+   8x wrong_kind / OP needs a WANT node, not a GOT node
    7x wrong_kind_at / OP N needs a WANT node, not a GOT node
 ok every fault site in apply.b has a case
 == 2 the kind rule, shape by shape
@@ -435,17 +465,17 @@ ok set_text at a markup node: and the tree is untouched
 ok set_markup at a text node: the exact refusal
 ok set_markup at a text node: and the tree is untouched
 -- set_attr with the cursor on a text node
-   faults: component 0: step_in 0 needs a container node, not a text node
+   faults: component 0: step_in 0 needs a container node, not a text node | component 0: set_attr needs a element node, not a text node
    after:  <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
 ok set_attr with the cursor on a text node: the exact refusal
 ok set_attr with the cursor on a text node: and the tree is untouched
 -- set_handler with the cursor on a text node
-   faults: component 0: step_in 0 needs a container node, not a text node
+   faults: component 0: step_in 0 needs a container node, not a text node | component 0: set_handler needs a element node, not a text node
    after:  <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
 ok set_handler with the cursor on a text node: the exact refusal
 ok set_handler with the cursor on a text node: and the tree is untouched
 -- remove_attr with the cursor on a text node
-   faults: component 0: step_in 0 needs a container node, not a text node
+   faults: component 0: step_in 0 needs a container node, not a text node | component 0: set_attr needs a element node, not a text node | component 0: remove_attr needs a element node, not a text node
    after:  <div id="root">head<p class="row">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0
 ok remove_attr with the cursor on a text node: the exact refusal
 ok remove_attr with the cursor on a text node: and the tree is untouched
@@ -742,4 +772,4 @@ ok with no stray the serializer raises nothing
 ok and both walkers read the same two children
 ok which is the same page the stray cases produced
 == summary
-checks: 362, failed: 0
+checks: 377, failed: 0

@@ -172,6 +172,14 @@ fn stage_b_with_handler(pool: Frames) {
 /// A text node — the kind `set_text` needs.
 fn stage_text(pool: Frames) { pool.push(Frame.text(9, "INS")) }
 
+/// An element with TWO children, so `relocate` has something to reorder.
+fn stage_b_two_kids(pool: Frames) {
+    pool.push(Frame.open(9, "b"))
+    pool.push(Frame.text(0, "one"))
+    pool.push(Frame.text(1, "two"))
+    pool.push(Frame.close)
+}
+
 /// A markup node — the kind `set_markup` needs. `constant` rather than `raw`
 /// so the control does not also depend on the author-bypass flag.
 fn stage_markup(pool: Frames) { pool.push(Frame.constant(9, "<i>mk</i>")) }
@@ -935,6 +943,63 @@ fn apply_sites() -> List<ASite> {
                                     Edit.step_out, Edit.step_out])
         }, "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em><b>new</b></div> roots= 0 attrs=2 binds=1 sfaults=0"))
 
+    // The three that reach `WANT_CONTAINER` on the cursor from an ORDINARY
+    // edit stream, and they exist because a refused `step_in` descends into
+    // the leaf rather than a placeholder. A fresh node is a container, so
+    // substituting one would make the cursor a container on every reachable
+    // path and these three refusals would be dead code — the shape RULES.md
+    // calls "the refusal that never runs", built by hand.
+    //
+    // TWO faults each: the descent, and the edit that had no business below
+    // it. Each control is the same pair of edits with a CONTAINER at the index
+    // the descent was refused at, so only the kind moved.
+    out.push(new ASite(A_KIND, "insert-with-the-cursor-on-a-text-node",
+        fn(batch: Batch) {
+            stage_text(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.step_in(0),
+                                    Edit.insert(0, 0),
+                                    Edit.step_out, Edit.step_out])
+        },
+        "component 0: step_in 0 needs a container node, not a text node | component 0: insert needs a container node, not a text node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            stage_b(batch.reference)
+            stage_text(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(0, 0),
+                                    Edit.step_in(0), Edit.insert(0, 3),
+                                    Edit.step_out, Edit.step_out])
+        }, "<div id=\"root\"><b>INSnew</b>head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
+    out.push(new ASite(A_KIND, "remove-with-the-cursor-on-a-text-node",
+        fn(batch: Batch) {
+            at_component(batch, 0, [Edit.step_in(0), Edit.step_in(2),
+                                    Edit.remove(0),
+                                    Edit.step_out, Edit.step_out])
+        },
+        "component 0: step_in 2 needs a container node, not a text node | component 0: remove needs a container node, not a text node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            stage_b(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(2, 0),
+                                    Edit.step_in(2), Edit.remove(0),
+                                    Edit.step_out, Edit.step_out])
+        }, "<div id=\"root\">head<p class=\"row\">one</p><b></b>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
+    out.push(new ASite(A_KIND, "relocate-with-the-cursor-on-a-markup-node",
+        fn(batch: Batch) {
+            at_component(batch, 0, [Edit.step_in(0), Edit.step_in(3),
+                                    Edit.relocate(0, 1),
+                                    Edit.step_out, Edit.step_out])
+        },
+        "component 0: step_in 3 needs a container node, not a markup node | component 0: relocate needs a container node, not a markup node",
+        "<div id=\"root\">head<p class=\"row\">one</p>tail<em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0",
+        fn(batch: Batch) {
+            stage_b_two_kids(batch.reference)
+            at_component(batch, 0, [Edit.step_in(0), Edit.insert(3, 0),
+                                    Edit.step_in(3), Edit.relocate(0, 1),
+                                    Edit.step_out, Edit.step_out])
+        }, "<div id=\"root\">head<p class=\"row\">one</p>tail<b>twoone</b><em>raw</em></div> roots= 0 attrs=2 binds=1 sfaults=0"))
+
     return move out
 }
 
@@ -1077,11 +1142,16 @@ fn the_kind_rule(r: Report) {
         at_component(batch, 0, [Edit.step_in(0), Edit.set_markup(0, "<b>x</b>"),
                                 Edit.step_out])
     })
-    // The three that a `step_in` refusal now answers first. The batch is
-    // unchanged from when this section recorded them as ACCEPTED; only the
-    // answer moved.
+    // The three that a `step_in` refusal now answers FIRST — and then answers
+    // again, because the refused descent goes into the text node itself rather
+    // than a placeholder. Two faults, not one, and the second is the attribute
+    // rule these three were written for. Substituting a fresh node would make
+    // the cursor a container on every path and the second fault would never
+    // appear: the edit would land on a throwaway and be discarded in silence.
+    // The batches are unchanged from when this section recorded them as
+    // ACCEPTED; only the answers moved.
     names.push("set_attr with the cursor on a text node")
-    faults.push("component 0: step_in 0 needs a container node, not a text node")
+    faults.push("component 0: step_in 0 needs a container node, not a text node | component 0: set_attr needs a element node, not a text node")
     wants.push(seed_state)
     bodies.push(fn(batch: Batch) {
         at_component(batch, 0, [Edit.step_in(0), Edit.step_in(0),
@@ -1089,15 +1159,17 @@ fn the_kind_rule(r: Report) {
                                 Edit.step_out, Edit.step_out])
     })
     names.push("set_handler with the cursor on a text node")
-    faults.push("component 0: step_in 0 needs a container node, not a text node")
+    faults.push("component 0: step_in 0 needs a container node, not a text node | component 0: set_handler needs a element node, not a text node")
     wants.push(seed_state)
     bodies.push(fn(batch: Batch) {
         at_component(batch, 0, [Edit.step_in(0), Edit.step_in(0),
                                 Edit.set_handler(1, "click", 99),
                                 Edit.step_out, Edit.step_out])
     })
+    // Three: the descent, the set_attr that could not land, and the
+    // remove_attr that could not either.
     names.push("remove_attr with the cursor on a text node")
-    faults.push("component 0: step_in 0 needs a container node, not a text node")
+    faults.push("component 0: step_in 0 needs a container node, not a text node | component 0: set_attr needs a element node, not a text node | component 0: remove_attr needs a element node, not a text node")
     wants.push(seed_state)
     bodies.push(fn(batch: Batch) {
         at_component(batch, 0, [Edit.step_in(0), Edit.step_in(0),
@@ -1148,25 +1220,25 @@ fn the_kind_rule(r: Report) {
     r.eq("and the child's subtree is untouched", applier_state(a), mounted)
     r.no("the seed is not what any of this produced", mounted == start)
 
-    // ---- the CURSOR rule, and the one route left to it -------------------
+    // ---- the CURSOR rule, by the second route --------------------------
     //
     // `insert`, `remove` and `relocate` need a node that can hold children.
-    // Through `apply()` alone the cursor is never a leaf: it starts at the
-    // component's root, which `root_for` and `build` only ever make a MOUNT,
-    // and it moves only where `step_in` allows — a container, or the
-    // placeholder a refused `step_in` pushes, which is an element. So no edit
-    // stream reaches this refusal, well-formed or not, and recording it as
-    // "covered" without saying that would be the lie RULES.md calls "the
-    // refusal that never runs".
+    // The FIRST route to a leaf cursor is an ordinary edit stream — a `step_in`
+    // that was refused descends into the leaf anyway — and § 1 carries a shape
+    // for each of the three ops that way. This is the second route: a leaf
+    // planted directly in `Applier.roots`, which is `pub`, as is every field of
+    // `Node`. Both are here because the rule is ONE rule: a node that cannot
+    // hold children never gains any, however the applier got there.
     //
-    // It is reachable and it is not dead. `Applier.roots` is `pub` and so is
-    // every field of `Node`, so a host that plants one — or a future path that
-    // lets a leaf become a cursor — arrives here, exactly the way
-    // `serialize.b`'s "is not a child position" is reached through the public
-    // `Builder.frames`. The rule is ONE rule: a node that cannot hold children
-    // never gains any, however the applier got there. Before it, an `insert`
-    // at a leaf appended a child that `Applier.emit` then dropped on the way
-    // out — content accepted, and silently lost.
+    // It matters that the first route exists. If a refused `step_in` pushed a
+    // fresh placeholder instead, the cursor would be a container on every
+    // reachable path, these three refusals would be dead code, and an edit
+    // below a mis-stepped scope would land on a throwaway with nothing raised.
+    // That is why the placeholder is only for an INDEX that is out of range.
+    //
+    // Before the rule, an `insert` at a leaf appended a child that
+    // `Applier.emit` then dropped on the way out — content accepted, silently
+    // lost.
     io.println("-- a leaf planted as a component root")
     var ops: List<string> = ["insert", "remove", "relocate"]
     var trips: List<fn(Batch)> = [
