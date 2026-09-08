@@ -274,6 +274,13 @@ async function main() {
     // Without it, `anonymous_circuits = true` could be set on the smoke
     // server one day to make something else go green and every other check
     // here would stay green with the binding gone.
+    //
+    // A browser cannot read the 403 or its body — the WebSocket API gives an
+    // error event and nothing else — so WHERE it was refused is pinned by the
+    // server's own arithmetic instead, in `w8b_smoke.sh`: espresso counts an
+    // upgrade the moment the route matches, so `upgrades` must be one MORE
+    // than the sockets the browser opened, `circuits` must equal them, and
+    // `faults` must be 0. Route matched, no circuit opened, nothing broke.
     const naked = await browser.newContext();
     const nakedPage = await naked.newPage();
     const nakedSockets = [];
