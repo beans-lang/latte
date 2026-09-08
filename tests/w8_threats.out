@@ -99,6 +99,9 @@ ok row6.expiry-is-covered-by-the-mac
 ok row6.no-boundary-collision
 ok row6.control-boundary-pair-checks-out
 ok row6.boundary-pair-does-not-cross
+ok row6.a-separator-inside-the-session-does-not-collide
+ok row6.control-the-separator-pair-checks-out
+ok row6.the-separator-pair-does-not-cross
 ok row6.another-key-does-not-verify
 ok row6.another-key-signs-differently
 ok row6.control-compare-equal
@@ -338,7 +341,7 @@ row 2 XSS through attribute context: covered (20 checks)
 row 3 XSS through a URL attribute: covered (16 checks)
 row 4 XSS through a raw-text element: covered (14 checks)
 row 5 XSS through an inline handler: covered (14 checks)
-row 6 CSRF on a form post: covered (26 checks)
+row 6 CSRF on a form post: covered (29 checks)
 row 7 cross-site WebSocket hijacking: partial — the Origin and session comparisons are inside CircuitEndpoint.upgrade, which takes `move stream: net.TcpStream`; the socket half of this row is tests/w4_upgrade.b (7 checks)
 row 8 circuit id theft or fixation: partial — PLAN.md says the id is rotated when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here (15 checks)
 row 9 authorization outliving its token: covered (29 checks)
@@ -353,4 +356,4 @@ row 17 information disclosure: covered (12 checks)
 row 18 clickjacking and script injection: covered (13 checks)
 
 18 rows: 14 covered, 0 covered-but-failing, 4 with a gap
-293 checks, 0 failed
+296 checks, 0 failed

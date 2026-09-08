@@ -882,10 +882,11 @@ fn row6_csrf(r: Report) {
          describe_token(anti.check(extended, "session-one", "CheckoutForm", 1000)),
          "the antiforgery token does not match this session and form")
 
-    // The payload is length-prefixed, so no two different (session, form)
-    // pairs can produce the same signed string by moving the boundary. Naive
-    // concatenation would sign "ab" + "c" and "a" + "bc" identically, and
-    // EVERY check above would still pass — a two-literal test cannot see it.
+    // The payload is `{len}:{session}|{len}:{form}|{expiry}`, so no two
+    // different (session, form) pairs can produce the same signed string by
+    // moving the boundary. Naive concatenation would sign "ab" + "c" and
+    // "a" + "bc" identically, and EVERY check above would still pass — a
+    // two-literal test cannot see it.
     let ab_c: string = anti.issue("ab", "c", 1000)
     let a_bc: string = anti.issue("a", "bc", 1000)
     r.no("row6.no-boundary-collision", ab_c == a_bc)
@@ -894,6 +895,26 @@ fn row6_csrf(r: Report) {
          "the token is valid")
     r.eq("row6.boundary-pair-does-not-cross",
          describe_token(anti.check(ab_c, "a", "bc", 1000)),
+         "the antiforgery token does not match this session and form")
+
+    // And the pair that proves the LENGTH PREFIXES rather than the `|`.
+    //
+    // The mutation probe found this: dropping `{len}:` from `payload` changed
+    // no answer above, because `"ab" + "|" + "c"` and `"a" + "|" + "bc"` are
+    // still different strings. The three checks above prove the SEPARATOR.
+    // A session id is a value the host chooses and latte constrains nowhere,
+    // so one containing the separator byte is an input, not a curiosity — and
+    // with `|` alone, `"a|b" + "|" + "c"` and `"a" + "|" + "b|c"` are the same
+    // eleven bytes. Only the prefixes tell them apart.
+    let pipe_left: string = anti.issue("a|b", "c", 1000)
+    let pipe_right: string = anti.issue("a", "b|c", 1000)
+    r.no("row6.a-separator-inside-the-session-does-not-collide",
+         pipe_left == pipe_right)
+    r.eq("row6.control-the-separator-pair-checks-out",
+         describe_token(anti.check(pipe_left, "a|b", "c", 1000)),
+         "the token is valid")
+    r.eq("row6.the-separator-pair-does-not-cross",
+         describe_token(anti.check(pipe_left, "a", "b|c", 1000)),
          "the antiforgery token does not match this session and form")
 
     // A second key signs differently: the MAC is keyed, not a bare digest.
