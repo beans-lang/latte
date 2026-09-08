@@ -6,24 +6,31 @@
 // component's own buffer.
 package cards
 
-import {Builder, Component, ParamWatch, param} from latte
+import {Builder, Component, param} from latte
 import {Badge} from shelf.atoms
 
 pub class Card extends Component {
     @param pub title: string = ""
     @param pub count: int = 0
     @param pub body: fn(Builder) = fn(b: Builder) {}
-    watch: ParamWatch = new ParamWatch()
     pub fn init() {}
 
-    /// `body` is a closure and cannot be compared, so it is deliberately not
-    /// in the snapshot: a card whose title and count are unchanged keeps its
-    /// frames even though its parent handed it a fresh closure every pass.
-    /// That is what makes the render counts in the consumer's golden small,
-    /// and it is only safe because a kept card also keeps the fragment it
-    /// already placed.
-    pub override fn on_params_set() { self.watch.record([self.title, "{self.count}"]) }
-    pub override fn should_render() -> bool { return self.watch.differs() }
+    /// **A component that takes child content must NOT implement
+    /// `should_render`, and this is the one rule a component-library author
+    /// has to know.**
+    ///
+    /// `Badge` below has only scalar parameters, so a `ParamWatch` can compare
+    /// them and a card whose parameters are unchanged could safely keep its
+    /// frames. `body` is a closure. It cannot be compared, and it closes over
+    /// the CALLER's state — here a list living two modules away. A card that
+    /// answered `should_render() == false` because its own `title` and `count`
+    /// were unchanged would keep the fragment it placed last time, and the
+    /// caller's list would silently stop updating: same HTML, no fault, no
+    /// error, wrong page.
+    ///
+    /// The consumer's golden is what says so. Renaming an item changes neither
+    /// the title nor the count, and the renamed row still appears — because
+    /// this component renders whenever its parent does.
 
     pub override fn render(b: Builder) {
         b.open(0, "div")

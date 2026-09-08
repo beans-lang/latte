@@ -66,6 +66,10 @@ pub class Storefront extends Component {
     pub picked: string = ""
     pub picks: int = 0
     pub stock: List<string> = []
+    /// State that touches nothing below this component. It is what makes the
+    /// "a page-only change renders one component" pass possible, and that pass
+    /// is the only thing in this file that `Panel.should_render` decides.
+    pub views: int = 0
     pub fn init() {}
 
     /// `on_init` runs after the route has bound `tab` — `open_page` applies
@@ -82,6 +86,30 @@ pub class Storefront extends Component {
     /// item count then changes, which is the ONLY thing three levels down
     /// `Badge` watches — so this is the pass where the leaf re-renders and the
     /// two clicks before it are the passes where it does not.
+    /// A change that no component below can see. `notify()` marks this page
+    /// dirty; `Panel`'s parameters are unchanged, so it keeps its frames and
+    /// so does everything under it.
+    pub fn view() {
+        self.views += 1
+        self.notify()
+    }
+
+    /// A change to the ITEMS that leaves the count alone. `Panel` re-renders
+    /// because its `items` differ; `Card` re-renders because a component
+    /// holding child content never skips; `Badge` does not, because the count
+    /// it watches did not move.
+    pub fn rename(from: string, to: string) {
+        var index: int = 0
+        for index < self.stock.len() {
+            if self.stock[index] == from {
+                self.stock[index] = to
+                self.notify()
+                return
+            }
+            index += 1
+        }
+    }
+
     pub fn drop_picked() {
         var index: int = 0
         for index < self.stock.len() {
@@ -108,6 +136,10 @@ pub class Storefront extends Component {
             panel.on_pick = some(new Callback<string>(
                 self, fn(item: string) { self.took(item) }))
         })
+        b.open(3, "p")
+        b.attr(4, "class", "views")
+        b.text(5, "views: {self.views}")
+        b.close()
         b.close()
     }
 
@@ -275,6 +307,34 @@ fn main() {
             io.println(r.html())
             io.println("the tree:")
             tree(r)
+
+            io.println("")
+            io.println("== a page-only change: nothing below re-renders ==")
+            io.println("   the view counter lives in this page's own markup")
+            match page_of(r) {
+                some(shop) => {
+                    shop.view()
+                    io.println("renders this pass: {r.flush()} of {r.ids().len()} mounted components")
+                    io.println(r.html())
+                    io.println("the tree:")
+                    tree(r)
+                }
+                none => { io.println("the page is not mounted") }
+            }
+
+            io.println("")
+            io.println("== renaming an item: the count does not move ==")
+            io.println("   Panel and Card re-render, Badge does not")
+            match page_of(r) {
+                some(shop) => {
+                    shop.rename("kettle", "kettle (last one)")
+                    io.println("renders this pass: {r.flush()} of {r.ids().len()} mounted components")
+                    io.println(r.html())
+                    io.println("the tree:")
+                    tree(r)
+                }
+                none => { io.println("the page is not mounted") }
+            }
 
             io.println("")
             io.println("== dropping the picked item, from outside any event ==")
