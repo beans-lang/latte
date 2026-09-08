@@ -744,7 +744,7 @@
     };
 
     // The child at `index`, checked for range and then for kind. `want` is the
-    // kind this edit needs, or -1 for "any container".
+    // kind this edit needs.
     Applier.prototype.kid = function (parent, index, component, op, want) {
         if (index < 0 || index >= parent.kids.length) {
             this.fault('component ' + component + ': ' + op + ' ' + index +
@@ -752,16 +752,44 @@
             return null;
         }
         var node = parent.kids[index];
-        if (want === -1) {
-            if (!isContainer(node.kind)) {
-                this.faultChildKind(component, op, index, 'container', node.kind);
-                return null;
-            }
-            return node;
-        }
         if (node.kind !== want) {
             this.faultChildKind(component, op, index, kindName(want), node.kind);
             return null;
+        }
+        return node;
+    };
+
+    // `step_in` at a child that is not a container. The two failures it can
+    // have are answered DIFFERENTLY, and the difference is load-bearing:
+    //
+    //   index out of range  ->  descend into a fresh placeholder, because
+    //                           there is no node to descend into and the
+    //                           matching `step_out` still has to balance.
+    //                           This is what apply.b already does.
+    //   kind mismatch       ->  descend into THE NODE ITSELF. It exists; it
+    //                           simply cannot hold what follows.
+    //
+    // Descending into the node is what makes the rest of the contract
+    // reachable. A placeholder is a fresh `Node`, and a fresh Node's kind is
+    // SPAN_ELEMENT — so with a placeholder here, the CURRENT node is a
+    // container on every path (the root is a mount, and `step_in` only ever
+    // pushes a container or that element-shaped placeholder), the
+    // `insert`/`remove`/`relocate` container checks could never fire, and
+    // `set_attr` inside a mis-stepped scope would quietly succeed against a
+    // throwaway with no fault at all. Stepping into the leaf instead makes
+    // every one of those refusals live and every edit under it loud, and it
+    // still cannot mutate the leaf: all five attribute edits want an element,
+    // all three list edits want a container, and `set_text`/`set_markup`/
+    // `step_in` see a childless node and fault on the index.
+    Applier.prototype.stepInto = function (parent, index, component) {
+        if (index < 0 || index >= parent.kids.length) {
+            this.fault('component ' + component + ': step_in ' + index +
+                       ' of ' + parent.kids.length);
+            return makeNode();
+        }
+        var node = parent.kids[index];
+        if (!isContainer(node.kind)) {
+            this.faultChildKind(component, 'step_in', index, 'container', node.kind);
         }
         return node;
     };
@@ -819,12 +847,7 @@
         var node, index, host, anchor, span;
 
         if (op === 'si') {
-            index = edit[1];
-            node = this.kid(cur, index, component, 'step_in', -1);
-            // Descend into a placeholder rather than skipping, so the matching
-            // step_out still balances and the rest of the stream is not
-            // silently reinterpreted against the wrong node.
-            stack.push(node === null ? makeNode() : node);
+            stack.push(this.stepInto(cur, edit[1], component));
             return;
         }
 
@@ -1538,10 +1561,20 @@
         var href = el.getAttribute('href');
         if (!href || !navTargetIsLocal(href)) { return; }
         event.preventDefault();
-        if (typeof history !== 'undefined' && history.pushState) {
-            history.pushState(null, '', href);
-        }
+        // The address bar is the client's job — the server answers a `nav`
+        // with a batch, not with a redirect — but `pushState` THROWS on an
+        // opaque origin (a sandboxed iframe, a `file://` page) and a throw
+        // here would leave the click prevented and the message unsent, which
+        // is a link that does nothing at all. The message goes first and the
+        // address bar is best-effort.
         this.send({ t: 'nav', u: href });
+        if (typeof history !== 'undefined' && history.pushState) {
+            try {
+                history.pushState(null, '', href);
+            } catch (err) {
+                this.log.warn('latte: this document may not change its history entry');
+            }
+        }
     };
 
     // ---------------------------------------------------------------- boot
