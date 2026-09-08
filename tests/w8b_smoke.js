@@ -193,24 +193,27 @@ async function main() {
        'count 0');
     eq('7.2 the browser opened a second socket', sockets.length, 2);
 
-    // ---- 8. the timer, and why a fake one hid this ----------------------
+    // ---- 8. the timer, and why a fake one hid it for so long ------------
     //
-    // `latte.js` keeps the browser's timer as a bare reference —
+    // This leg found the bug this check now guards. `latte.js` used to keep
+    // the browser's timer as a bare reference —
     //
     //     this.setTimeout = options.setTimeout ||
-    //         (typeof setTimeout !== 'undefined' ? setTimeout : null);   // :1191
+    //         (typeof setTimeout !== 'undefined' ? setTimeout : null);
     //
-    // — and then calls it as `this.setTimeout(fn, ms)`. That hands `window`'s
-    // own method a `Circuit` as its receiver, which every browser refuses with
+    // — and then call it as `this.setTimeout(fn, ms)`, which hands `window`'s
+    // own method a `Circuit` as its receiver; every browser refuses that with
     // `TypeError: Illegal invocation`. `tests/js_apply.js` injects a fake
-    // timer, so the only way to reach the real one is a real page: this is the
-    // check that could not have existed before this leg.
+    // timer, so the only way to reach the real one is a real page in a real
+    // browser, which is this leg and nothing else in the repo.
     //
-    // What it costs, exactly: `armFence` and `retry` are the two callers.
-    // So the B11 fence never arms — `outstanding` grows and a stalled server
-    // is never noticed — and `retry` never runs, so a dropped socket is never
-    // reconnected. Both throw out of an event handler, which is why the
-    // pageerrors below are uncaught.
+    // What it cost, exactly, while it stood: `armFence` and `retry` are the
+    // two callers. The B11 fence never armed — `outstanding` grew and a
+    // stalled server was never noticed — and `retry` never ran, so a dropped
+    // socket was never reconnected. Both threw out of an event handler, so
+    // 8.2 counted seven uncaught pageerrors in one run. It is fixed on main
+    // (`js/latte.js` now wraps both in a function of its own); if 8.1 goes
+    // red again with `Illegal invocation`, that fix has been reverted.
     const timer = await page.evaluate(() => {
         if (!window.latte || !window.latte.current) { return 'no circuit'; }
         try {
@@ -219,8 +222,8 @@ async function main() {
             return 'ok';
         } catch (err) { return String(err && err.message ? err.message : err); }
     });
-    eq('8.1 the circuit can arm its own timer (js/latte.js:1191 keeps a bare ' +
-       'window.setTimeout and calls it with the Circuit as receiver)', timer, 'ok');
+    eq('8.1 the circuit can arm its own timer (a bare window.setTimeout called ' +
+       'with the Circuit as receiver is Illegal invocation)', timer, 'ok');
     eq('8.2 the page logged nothing at all', console_lines.join(' | '), '');
 
     // ---- 9. a dropped socket comes back ---------------------------------
@@ -253,7 +256,50 @@ async function main() {
            'no reconnect was attempted', 'count 1');
     }
 
+    // ---- 10. the session the handshake carried, and the refusal ---------
+    //
+    // W4 bound a circuit to a session: `CircuitEndpoint.upgrade` answers 403
+    // to a handshake with no `latte_session` cookie, because a circuit id is
+    // only worth binding if it is bound to something, and `""` shared by
+    // everyone is not something. Every check above depends on that having
+    // gone the other way — the browser carried the cookie the page route set
+    // through a WebSocket handshake, which nothing else in this repo does;
+    // `tests/w4_upgrade.b` asserts the same rule with a hand-built client.
+    //
+    // So this is the negative half of the pair, from a real browser. A fresh
+    // context has no cookie jar; it loads `/no-session`, which is served from
+    // this same origin and deliberately sets nothing, and opens the socket
+    // from there. Same origin, same endpoint, one difference: no session.
+    //
+    // Without it, `anonymous_circuits = true` could be set on the smoke
+    // server one day to make something else go green and every other check
+    // here would stay green with the binding gone.
+    const naked = await browser.newContext();
+    const nakedPage = await naked.newPage();
+    const nakedSockets = [];
+    nakedPage.on('websocket', ws => nakedSockets.push(ws));
+    await nakedPage.goto(url + 'no-session', { waitUntil: 'domcontentloaded' });
+    const refusal = await nakedPage.evaluate((wsUrl) => new Promise((resolve) => {
+        let sock;
+        try { sock = new WebSocket(wsUrl); }
+        catch (err) { resolve('threw: ' + err); return; }
+        const done = setTimeout(() => resolve('neither opened nor closed'), 10000);
+        sock.onopen = () => { clearTimeout(done); resolve('opened'); };
+        sock.onerror = () => { clearTimeout(done); resolve('refused'); };
+        sock.onclose = () => { clearTimeout(done); resolve('refused'); };
+    }), url.replace(/^http:/, 'ws:').replace(/\/$/, '') + '/_latte/ws');
+    eq('10.1 a browser on this origin with no session cookie is refused the circuit',
+       refusal, 'refused');
+    eq('10.2 and the browser really did put a handshake on the wire for it',
+       nakedSockets.length, 1);
+    await naked.close();
+
+    // Two counts, not one. espresso increments `upgrades` when the route
+    // matches, BEFORE the handler decides — so the refused handshake in § 10
+    // is an upgrade that never became a circuit, and the shell leg needs both
+    // numbers to cross-check the server's totals against the browser's.
     console.log('W8B-SMOKE-JS-SOCKETS ' + sockets.length);
+    console.log('W8B-SMOKE-JS-REFUSED ' + nakedSockets.length);
     await browser.close();
 
     console.log('');

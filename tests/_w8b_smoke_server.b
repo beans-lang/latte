@@ -44,6 +44,20 @@
 //      connect to a deployment that has not named itself. The list is filled
 //      in after `bind`, because the port is the kernel's to choose.
 //
+//   4. **The page route mints a session cookie, and the endpoint is left on
+//      its default `anonymous_circuits = false`.** W4 made a handshake with
+//      no session a 403: a circuit id is only worth binding if the binding is
+//      to something, and `""` shared by everyone is not something. This
+//      server therefore does what `map_pages` does — reads `latte_session`,
+//      mints one when the request carried none, and sets it — rather than
+//      turning the refusal off. That choice is the point: it is the only
+//      place in this repo where a REAL browser carries a session cookie
+//      through a WebSocket handshake, so § 10 below can assert that the
+//      circuit was opened for a real session and not for the empty one.
+//      `secure` is false on the cookie because the smoke speaks plain HTTP to
+//      127.0.0.1 and a browser silently drops a `Secure` cookie over http —
+//      the one property that would make this leg fail with no message.
+//
 // The port is printed, once, on a line of its own, because a harness outside
 // this process has to find it and a fixed port is a false green when something
 // else is listening.
@@ -63,8 +77,8 @@ import std.io
 import {Builder, Circuit, CircuitOptions, CircuitSet, Component, InputEvent,
         MouseEvent, NO_POLLER_MESSAGE} from latte
 import {run} from latte.boundary
-import {CircuitSeam, EndpointOptions, fresh_id, has_fiber_poller,
-        map_circuit} from latte.web
+import {CircuitSeam, EndpointOptions, SESSION_COOKIE, fresh_id,
+        has_fiber_poller, map_circuit} from latte.web
 
 // ============================================================== the page
 
@@ -157,6 +171,21 @@ pub class Wiring {
     pub scripts_served: int = 0
     pub circuits_opened: int = 0
     pub adopted_id: string = ""
+    /// Sessions the page route has minted, and sessions circuits were opened
+    /// for. They must be the same one string: the browser carried the cookie
+    /// through the WebSocket handshake, or it did not.
+    pub sessions_minted: int = 0
+    pub page_session: string = ""
+    /// Circuits opened for the empty session. W4 refuses those at the
+    /// handshake unless `anonymous_circuits` is on, and it is not, so this
+    /// must stay 0 — but it is counted rather than assumed, because a count
+    /// of 0 that nothing computes is not a check.
+    pub anonymous_opened: int = 0
+    /// Distinct non-empty sessions circuits were opened for.
+    pub circuit_sessions: List<string> = []
+    /// How many times `/no-session` was served — the page § 10 opens its
+    /// refused socket from.
+    pub naked_pages: int = 0
     /// Filled in after `bind`, because a `ServerControl` does not exist before
     /// one. `/_stop` uses it so the harness can end the run cleanly and read
     /// the summary; killing the process would lose every server-side fact.
@@ -222,6 +251,21 @@ fn main() {
                 wiring.adopted_id = wiring.pending_id
                 wiring.pending_id = ""
             }
+            // What the handshake actually carried. `CircuitEndpoint.upgrade`
+            // has already refused an empty session by this point (W4), so a
+            // non-zero `anonymous_opened` would mean that refusal stopped
+            // working — which is exactly the kind of thing a count nobody
+            // computes stops noticing.
+            let opened_for: string = mine.get("session").or("")
+            if opened_for == "" {
+                wiring.anonymous_opened += 1
+            } else {
+                var known: bool = false
+                for seen: string in wiring.circuit_sessions {
+                    if seen == opened_for { known = true }
+                }
+                if !known { wiring.circuit_sessions.push(opened_for) }
+            }
             wiring.circuits_opened += 1
             return set.open(mine, now_ms)
         }
@@ -235,6 +279,12 @@ fn main() {
     endpoint.poll_ms = 100
     endpoint.socket_ms = 30000
     endpoint.no_poller_message = NO_POLLER_MESSAGE
+    // Named rather than defaulted, and `anonymous_circuits` left off. Both are
+    // W4's defaults today; naming the cookie is how this file says out loud
+    // that the page route above and the handshake below have to agree about
+    // one string. When W4 changed these two fields under this lane, nothing
+    // failed to compile — the server just refused every browser.
+    endpoint.session_cookie = SESSION_COOKIE
 
     let builder: espresso.WebApplicationBuilder =
         new espresso.WebApplicationBuilder()
@@ -250,7 +300,41 @@ fn main() {
         if path == "/" {
             let id: string = fresh_id()?
             wiring.pending_id = id
+            // The session, exactly as `map_pages` does it. Without this the
+            // handshake carries no `latte_session` cookie, `CircuitEndpoint`
+            // answers 403 with NO_SESSION_MESSAGE, and every check below the
+            // socket fails with no hint of why. See the header, item 4.
+            match context.request.cookie(SESSION_COOKIE) {
+                some(value) => { wiring.page_session = value }
+                none => {
+                    let session: string = fresh_id()?
+                    wiring.page_session = session
+                    wiring.sessions_minted += 1
+                    var cookie: espresso.CookieOptions = new espresso.CookieOptions()
+                    cookie.http_only = true
+                    // Plain HTTP on 127.0.0.1: a `Secure` cookie is dropped by
+                    // the browser and never comes back on the handshake.
+                    cookie.secure = false
+                    cookie.same_site = espresso.SameSite.lax
+                    cookie.path = "/"
+                    context.response.set_cookie(SESSION_COOKIE, session, cookie)?
+                }
+            }
             context.response.text_body(200, "OK", shell(id), "text/html; charset=utf-8")
+            return ok(true)
+        }
+        // A page on this origin that sets NO session cookie, so a browser
+        // loading it can open a WebSocket the way any page can and be refused
+        // for the one reason under test. It is the negative half of the pair
+        // RULES.md asks for: § 2 is the accept, § 10 is the refusal, and the
+        // two differ in exactly one thing — whether `/` was loaded first.
+        // Without it, `anonymous_circuits = true` could be switched on here
+        // one day and every remaining check would stay green.
+        if path == "/no-session" {
+            wiring.naked_pages += 1
+            context.response.text_body(200, "OK",
+                "<!doctype html><html><head><meta charset=\"utf-8\"><title>no session</title></head><body>no session</body></html>\n",
+                "text/html; charset=utf-8")
             return ok(true)
         }
         // Chrome asks for this on every navigation with no prompting, and a
@@ -307,6 +391,10 @@ fn main() {
     io.eprintln("W8B-SMOKE-PAGES {wiring.pages_served}")
     io.eprintln("W8B-SMOKE-SCRIPTS {wiring.scripts_served}")
     io.eprintln("W8B-SMOKE-CIRCUITS {wiring.circuits_opened}")
+    io.eprintln("W8B-SMOKE-SESSIONS-MINTED {wiring.sessions_minted}")
+    io.eprintln("W8B-SMOKE-CIRCUIT-SESSIONS {wiring.circuit_sessions.len()}")
+    io.eprintln("W8B-SMOKE-ANON-CIRCUITS {wiring.anonymous_opened}")
+    io.eprintln("W8B-SMOKE-NAKED-PAGES {wiring.naked_pages}")
     io.eprintln("W8B-SMOKE-STOPS {wiring.stops}")
     io.eprintln("W8B-SMOKE-HELD {set.count()}")
     io.eprintln("W8B-SMOKE-FAULTS {set.faults.len()}")
