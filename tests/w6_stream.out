@@ -1,77 +1,355 @@
-== 1. a streamed page and a buffered page ==
+== 1 a streamed page and a buffered page ==
 slots: 3 [s0, s1, footer]
 head: <main id="app"><h1>Sales</h1><latte-slot id="s0"></latte-slot><aside><latte-slot id="s1"></latte-slot></aside><latte-slot id="footer"></latte-slot></main>
+ok the slots, in mount order
+ok the head carries a placeholder per slot
 chunk s0: <latte-chunk for="s0"><section class="totals">revenue 41 &amp; rising</section></latte-chunk><latte-seal for="s0"></latte-seal>
 chunk s1: <latte-chunk for="s1"><p>a slow note</p></latte-chunk><latte-seal for="s1"></latte-seal>
 chunk footer: <latte-chunk for="footer"><footer>done</footer></latte-chunk><latte-seal for="footer"></latte-seal>
 tail: </body></html>
-page ok: true
+ok the tail is what the host handed in
+ok the page raised nothing
 render counts by mount order: 1 3 3 2
+ok one page render, and no extra pass for an author-named region
 assembly faults: 0
+ok the assembly raised nothing
+ok a streamed page and a buffered page are the same page
 streamed == buffered: true
 
-== 2. every split of every shape ==
-a real page, three chunks: 482 bytes, 965 splits, 0 wrong
-one chunk, no tail: 116 bytes, 233 splits, 0 wrong
-an empty chunk: 104 bytes, 209 splits, 0 wrong
-near misses either side: 391 bytes, 783 splits, 0 wrong
-a 1-byte id and a 64-byte id: 392 bytes, 785 splits, 0 wrong
-a chunk that contains another slot's placeholder: 240 bytes, 481 splits, 0 wrong
-two-way and uniform sweeps disagreeing: 0
-three-way splits of the 104-byte shape: 5565, wrong 0
+== 2 every split of every shape ==
+a real page, three chunks: 482 bytes, 965 splits
+ok a real page, three chunks: every split agrees
+ok a real page, three chunks: the sweep is exhaustive
+one chunk, no tail: 116 bytes, 233 splits
+ok one chunk, no tail: every split agrees
+ok one chunk, no tail: the sweep is exhaustive
+an empty chunk: 104 bytes, 209 splits
+ok an empty chunk: every split agrees
+ok an empty chunk: the sweep is exhaustive
+near misses either side: 391 bytes, 783 splits
+ok near misses either side: every split agrees
+ok near misses either side: the sweep is exhaustive
+a 1-byte id and a 64-byte id: 392 bytes, 785 splits
+ok a 1-byte id and a 64-byte id: every split agrees
+ok a 1-byte id and a 64-byte id: the sweep is exhaustive
+a chunk that contains another slot's placeholder: 240 bytes, 481 splits
+ok a chunk that contains another slot's placeholder: every split agrees
+ok a chunk that contains another slot's placeholder: the sweep is exhaustive
+two-way and uniform splits exercised: 3456
+three-way splits of the 104-byte shape: 5565
+ok every three-way split agrees
+ok the three-way sweep is exhaustive
 
-== 3. the reader is incremental ==
+== 3 the reader is incremental ==
 events in one feed: 12, byte at a time: 258
-a byte-at-a-time read is more events: true
-peak hold 37 bytes over a 482-byte document, bound 96: true
+ok a byte-at-a-time read is more events, so the reader is not a buffer
+peak hold 37 bytes over a 482-byte document, bound 96
+ok the undecided hold stays inside its bound
+ok and it is far short of the document
 
-== 4. reader refusals, each with a control ==
-control, a whole document          ok: markup[<latte-slot id="s0"></latte-slot>] open[s0] body[<b>ok</b>] sealed[s0 9] done[1]
-cut before the seal                refused: the chunk "s0" was never sealed, so a reader could never know it was whole
-cut inside the body                refused: the stream ended inside the chunk "s0"
-cut inside the opening tag         refused: the stream ended inside a chunk's opening tag
-a seal for another slot            refused: the chunk "s0" is sealed as "s9"
-no seal at all                     refused: the chunk "s0" is not followed by its seal
-the same slot twice                refused: the chunk "s0" arrived twice
-an id with a space                 refused: a chunk names "a b", which is not a usable slot id
-an empty id                        refused: a chunk names "", which is not a usable slot id
-an id one byte too long            refused: a chunk names "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", which is not a usable slot id
-an id exactly at the limit         ok: open[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa] body[x] sealed[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1] done[1]
-bytes after finish                 refused: bytes arrived after the stream was finished
-finish twice                       refused: a stream is finished once, and this is the second
+== 4 every fault site in stream.b ==
+-- two heads
+   site:    head / a streamed document has one head
+   faults:  a streamed document has one head, and this is the second
+ok two heads: the exact fault
+ok two heads: the control raises nothing
+ok two heads: and the control produced its document
+ok two heads: and what it produced is not empty
+-- a slot id with a space
+   site:    head / ID is not a usable slot id
+   faults:  "a b" is not a usable slot id: one to 64 bytes of letters, digits, '-' and '_'
+ok a slot id with a space: the exact fault
+ok a slot id with a space: the control raises nothing
+ok a slot id with a space: and the control produced its document
+ok a slot id with a space: and what it produced is not empty
+-- a slot id one byte over the limit
+   site:    head / ID is not a usable slot id
+   faults:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" is not a usable slot id: one to 64 bytes of letters, digits, '-' and '_'
+ok a slot id one byte over the limit: the exact fault
+ok a slot id one byte over the limit: the control raises nothing
+ok a slot id one byte over the limit: and the control produced its document
+ok a slot id one byte over the limit: and what it produced is not empty
+-- one slot promised twice
+   site:    head / the slot ID is promised twice by one page
+   faults:  the slot "s0" is promised twice by one page
+ok one slot promised twice: the exact fault
+ok one slot promised twice: the control raises nothing
+ok one slot promised twice: and the control produced its document
+ok one slot promised twice: and what it produced is not empty
+-- a head that opens a chunk of its own
+   site:    head / the page's head carries chunk framing of its own
+   faults:  the page's head carries chunk framing of its own, so a reader could not tell it from a real chunk
+ok a head that opens a chunk of its own: the exact fault
+ok a head that opens a chunk of its own: the control raises nothing
+ok a head that opens a chunk of its own: and the control produced its document
+ok a head that opens a chunk of its own: and what it produced is not empty
+-- a chunk before the head
+   site:    chunk / the chunk for ID was written before the page's head
+   faults:  the chunk for "s0" was written before the page's head
+ok a chunk before the head: the exact fault
+ok a chunk before the head: the control raises nothing
+ok a chunk before the head: and the control produced its document
+ok a chunk before the head: and what it produced is not empty
+-- a chunk after the tail
+   site:    chunk / the chunk for ID was written after the document ended
+   faults:  the chunk for "s0" was written after the document ended
+ok a chunk after the tail: the exact fault
+ok a chunk after the tail: the control raises nothing
+ok a chunk after the tail: and the control produced its document
+ok a chunk after the tail: and what it produced is not empty
+-- a chunk for a slot nobody opened
+   site:    chunk / ID is not a slot this page left open
+   faults:  "nope" is not a slot this page left open
+ok a chunk for a slot nobody opened: the exact fault
+ok a chunk for a slot nobody opened: the control raises nothing
+ok a chunk for a slot nobody opened: and the control produced its document
+ok a chunk for a slot nobody opened: and what it produced is not empty
+-- one slot filled twice
+   site:    chunk / the slot ID was filled twice
+   faults:  the slot "s0" was filled twice
+ok one slot filled twice: the exact fault
+ok one slot filled twice: the control raises nothing
+ok one slot filled twice: and the control produced its document
+ok one slot filled twice: and what it produced is not empty
+-- a chunk that closes itself
+   site:    chunk / the chunk for ID carries chunk framing of its own
+   faults:  the chunk for "s0" carries chunk framing of its own, which would end it early and hand the rest of the page to the reader as document text
+ok a chunk that closes itself: the exact fault
+ok a chunk that closes itself: the control raises nothing
+ok a chunk that closes itself: and the control produced its document
+ok a chunk that closes itself: and what it produced is not empty
+-- a tail before the head
+   site:    tail / a streamed document ended before it had a head
+   faults:  a streamed document ended before it had a head
+ok a tail before the head: the exact fault
+ok a tail before the head: the control raises nothing
+ok a tail before the head: and the control produced its document
+ok a tail before the head: and what it produced is not empty
+-- two tails
+   site:    tail / a streamed document ends once
+   faults:  a streamed document ends once, and this is the second end
+ok two tails: the exact fault
+ok two tails: the control raises nothing
+ok two tails: and the control produced its document
+ok two tails: and what it produced is not empty
+-- a tail that seals a chunk of its own
+   site:    tail / the page's tail carries chunk framing of its own
+   faults:  the page's tail carries chunk framing of its own, so a reader could not tell it from a real chunk
+ok a tail that seals a chunk of its own: the exact fault
+ok a tail that seals a chunk of its own: the control raises nothing
+ok a tail that seals a chunk of its own: and the control produced its document
+ok a tail that seals a chunk of its own: and what it produced is not empty
+-- a tail with two slots unfilled
+   site:    tail / the document ended with N slot(s) never filled
+   faults:  the document ended with 2 slot(s) never filled: s0, s1
+ok a tail with two slots unfilled: the exact fault
+ok a tail with two slots unfilled: the control raises nothing
+ok a tail with two slots unfilled: and the control produced its document
+ok a tail with two slots unfilled: and what it produced is not empty
+-- cut before the seal
+   site:    ChunkReader.refuse / the one funnel every reader refusal goes through
+   faults:  the chunk "s0" was never sealed, so a reader could never know it was whole
+ok cut before the seal: the exact fault
+ok cut before the seal: the control raises nothing
+ok cut before the seal: and the control produced its document
+ok cut before the seal: and what it produced is not empty
+-- cut inside the body
+   site:    ChunkReader.refuse / the one funnel every reader refusal goes through
+   faults:  the stream ended inside the chunk "s0"
+ok cut inside the body: the exact fault
+ok cut inside the body: the control raises nothing
+ok cut inside the body: and the control produced its document
+ok cut inside the body: and what it produced is not empty
+-- cut inside the opening tag
+   site:    ChunkReader.refuse / the one funnel every reader refusal goes through
+   faults:  the stream ended inside a chunk's opening tag
+ok cut inside the opening tag: the exact fault
+ok cut inside the opening tag: the control raises nothing
+ok cut inside the opening tag: and the control produced its document
+ok cut inside the opening tag: and what it produced is not empty
+-- a seal for another slot
+   site:    ChunkReader.refuse / the one funnel every reader refusal goes through
+   faults:  the chunk "s0" is sealed as "s9"
+ok a seal for another slot: the exact fault
+ok a seal for another slot: the control raises nothing
+ok a seal for another slot: and the control produced its document
+ok a seal for another slot: and what it produced is not empty
+-- no seal at all
+   site:    ChunkReader.refuse / the one funnel every reader refusal goes through
+   faults:  the chunk "s0" is not followed by its seal
+ok no seal at all: the exact fault
+ok no seal at all: the control raises nothing
+ok no seal at all: and the control produced its document
+ok no seal at all: and what it produced is not empty
+-- the same slot twice
+   site:    ChunkReader.refuse / the one funnel every reader refusal goes through
+   faults:  the chunk "s0" arrived twice
+ok the same slot twice: the exact fault
+ok the same slot twice: the control raises nothing
+ok the same slot twice: and the control produced its document
+ok the same slot twice: and what it produced is not empty
+-- an id with a space
+   site:    ChunkReader.refuse / the one funnel every reader refusal goes through
+   faults:  a chunk names "a b", which is not a usable slot id
+ok an id with a space: the exact fault
+ok an id with a space: the control raises nothing
+ok an id with a space: and the control produced its document
+ok an id with a space: and what it produced is not empty
+-- an empty id
+   site:    ChunkReader.refuse / the one funnel every reader refusal goes through
+   faults:  a chunk names "", which is not a usable slot id
+ok an empty id: the exact fault
+ok an empty id: the control raises nothing
+ok an empty id: and the control produced its document
+ok an empty id: and what it produced is not empty
+-- an opening tag that never names a slot
+   site:    ChunkReader.refuse / the one funnel every reader refusal goes through
+   faults:  a chunk's opening tag runs past 64 bytes without naming a slot
+ok an opening tag that never names a slot: the exact fault
+ok an opening tag that never names a slot: the control raises nothing
+ok an opening tag that never names a slot: and the control produced its document
+ok an opening tag that never names a slot: and what it produced is not empty
+-- an id one byte too long
+   site:    ChunkReader.refuse / the one funnel every reader refusal goes through
+   faults:  a chunk names "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", which is not a usable slot id
+ok an id one byte too long: the exact fault
+ok an id one byte too long: the control raises nothing
+ok an id one byte too long: and the control produced its document
+ok an id one byte too long: and what it produced is not empty
+-- a page opened twice
+   site:    open / a streamed page is opened once
+   faults:  a streamed page is opened once, and this is the second
+ok a page opened twice: the exact fault
+ok a page opened twice: the control raises nothing
+ok a page opened twice: and the control produced its document
+ok a page opened twice: and what it produced is not empty
+-- a region the author named "a b"
+   site:    open / the region named X cannot be a slot id
+   faults:  the region named "a b" cannot be a slot id: one to 64 bytes of letters, digits, '-' and '_'
+ok a region the author named "a b": the exact fault
+ok a region the author named "a b": the control raises nothing
+ok a region the author named "a b": and the control produced its document
+ok a region the author named "a b": and what it produced is not empty
+-- two regions with one name
+   site:    open / two regions on this page are both named X
+   faults:  two regions on this page are both named "same"
+ok two regions with one name: the exact fault
+ok two regions with one name: the control raises nothing
+ok two regions with one name: and the control produced its document
+ok two regions with one name: and what it produced is not empty
+-- regions with no @stream
+   site:    open / N streamed region(s) but no @stream
+   faults:  latte$entry.Unmarked holds 1 streamed region(s) but is not annotated @stream, so nothing would ever fill them
+ok regions with no @stream: the exact fault
+ok regions with no @stream: the control raises nothing
+ok regions with no @stream: and the control produced its document
+ok regions with no @stream: and what it produced is not empty
+-- @stream with nothing to defer
+   site:    open / @stream but no StreamRegion
+   faults:  latte$entry.Barren is annotated @stream but holds no StreamRegion, so it would be delivered in chunks that carry nothing
+ok @stream with nothing to defer: the exact fault
+ok @stream with nothing to defer: the control raises nothing
+ok @stream with nothing to defer: and the control produced its document
+ok @stream with nothing to defer: and what it produced is not empty
+-- a slot this page never had
+   site:    resolve / ID is not a region of this page
+   faults:  "not-a-slot" is not a region of this page
+ok a slot this page never had: the exact fault
+ok a slot this page never had: the control raises nothing
+ok a slot this page never had: and the control produced its document
+ok a slot this page never had: and what it produced is not empty
+-- a slot pointing at a mount that does not exist
+   site:    gone / the region ID is no longer mounted
+   faults:  the region "ghost" is no longer mounted
+ok a slot pointing at a mount that does not exist: the exact fault
+ok a slot pointing at a mount that does not exist: the control raises nothing
+ok a slot pointing at a mount that does not exist: and the control produced its document
+ok a slot pointing at a mount that does not exist: and what it produced is not empty
+-- a slot pointing at the page itself
+   site:    emit / the region ID is no longer a StreamRegion
+   faults:  the region "fake" is no longer a StreamRegion
+ok a slot pointing at the page itself: the exact fault
+ok a slot pointing at the page itself: the control raises nothing
+ok a slot pointing at the page itself: and the control produced its document
+ok a slot pointing at the page itself: and what it produced is not empty
+-- a region whose raw text could close its <style>
+   site:    emit / a fault the serializer raised on the region's frames
+   faults:  raw inside <style> could close it
+ok a region whose raw text could close its <style>: the exact fault
+ok a region whose raw text could close its <style>: the control raises nothing
+ok a region whose raw text could close its <style>: and the control produced its document
+ok a region whose raw text could close its <style>: and what it produced is not empty
+-- a page closed before it was opened
+   site:    close / a streamed page was closed before it was opened
+   faults:  a streamed page was closed before it was opened
+ok a page closed before it was opened: the exact fault
+ok a page closed before it was opened: the control raises nothing
+ok a page closed before it was opened: and the control produced its document
+ok a page closed before it was opened: and what it produced is not empty
+-- the sites in stream.b, and how many shapes reach each
+   10x ChunkReader.refuse / the one funnel every reader refusal goes through
+   1x chunk / ID is not a slot this page left open
+   1x chunk / the chunk for ID carries chunk framing of its own
+   1x chunk / the chunk for ID was written after the document ended
+   1x chunk / the chunk for ID was written before the page's head
+   1x chunk / the slot ID was filled twice
+   1x close / a streamed page was closed before it was opened
+   1x emit / a fault the serializer raised on the region's frames
+   1x emit / the region ID is no longer a StreamRegion
+   1x gone / the region ID is no longer mounted
+   2x head / ID is not a usable slot id
+   1x head / a streamed document has one head
+   1x head / the page's head carries chunk framing of its own
+   1x head / the slot ID is promised twice by one page
+   1x open / @stream but no StreamRegion
+   1x open / N streamed region(s) but no @stream
+   1x open / a streamed page is opened once
+   1x open / the region named X cannot be a slot id
+   1x open / two regions on this page are both named X
+   1x resolve / ID is not a region of this page
+   1x tail / a streamed document ended before it had a head
+   1x tail / a streamed document ends once
+   1x tail / the document ended with N slot(s) never filled
+   1x tail / the page's tail carries chunk framing of its own
+ok every fault site in stream.b has a case
 
-== 5. writer refusals, each with a control ==
-control, head chunk tail           ok: <latte-slot id="s0"></latte-slot><latte-chunk for="s0"><b>x</b></latte-chunk><latte-seal for="s0"></latte-seal>!
-a chunk for a slot nobody opened   refused: "nope" is not a slot this page left open
-the same slot filled twice         refused: the slot "s0" was filled twice
-a slot promised twice              refused: the slot "s0" is promised twice by one page
-an unusable slot id                refused: "a b" is not a usable slot id: one to 64 bytes of letters, digits, '-' and '_'
-a chunk before the head            refused: the chunk for "s0" was written before the page's head
-two heads                          refused: a streamed document has one head, and this is the second
-a tail with a slot unfilled        refused: the document ended with 1 slot(s) never filled: s0
-two tails                          refused: a streamed document ends once, and this is the second end
-a chunk after the tail             refused: the chunk for "s0" was written after the document ended
-a head that forges the framing     refused: the page's head carries chunk framing of its own, so a reader could not tell it from a real chunk
-a chunk whose content forges it    refused: the chunk for "s0" carries chunk framing of its own, which would end it early and hand the rest of the page to the reader as document text
-a tail that forges the framing     refused: the page's tail carries chunk framing of its own, so a reader could not tell it from a real chunk
-near-miss text passes through      ok: <latte-slot id="s0"></latte-slot><latte-chunk for="s0"><code>&lt;latte-chunk for=&quot;x&quot;&gt;</code><em>latte-chunk for=</em><b>&lt;/latte-chun</b></latte-chunk><latte-seal for="s0"></latte-seal>
-stream_id_is_safe: empty false one true limit true over false space false quote false dash true
-html_forges_framing: plain false open true close true seal true upper true near false
-
-== 6. @stream is load-bearing ==
+== 5 the annotation, the scan and the assembler ==
 type_streams Dashboard true Unmarked false Barren true
-control, @stream with regions      true
-regions with no @stream            refused: latte$entry.Unmarked holds 1 streamed region(s) but is not annotated @stream, so nothing would ever fill them
-@stream with no regions            refused: latte$entry.Barren is annotated @stream but holds no StreamRegion, so it would be delivered in chunks that carry nothing
-two regions with one name          refused: two regions on this page are both named "same"
-opened twice                       refused: a streamed page is opened once, and this is the second
-closed before it was opened        refused: a streamed page was closed before it was opened
-a region nobody resolved           refused: the document ended with 2 slot(s) never filled: s1, footer
-a slot this page never had         refused: "not-a-slot" is not a region of this page
-author's name and generated ones   [s1, s0, s2]
-  head <div><latte-slot id="s1"></latte-slot><latte-slot id="s0"></latte-slot><latte-slot id="s2"></latte-slot></div>
+ok @stream is visible on a page that carries it
+ok and absent on one that does not
+ok and visible on a page with nothing to defer
+stream_id_is_safe: empty false one true limit true over false space false quote false dash true
+ok an empty id
+ok one byte
+ok exactly the limit
+ok one byte over
+ok a space
+ok a quote
+ok a dash, an underscore and a digit
+html_forges_framing: plain false open true close true seal true upper true near false
+ok plain html forges nothing
+ok an opening tag does
+ok a closing tag does
+ok a seal does
+ok and case does not save it
+ok escaped near-misses do not
+author's name and generated ones: [s1, s0, s2]
+ok a generated id steps over the author's
   assembled <div>firstnamed s0third</div>
-  faults 0 page ok true
+ok and it still assembles in place
+ok with nothing raised
+ok and the page is clean
 stream_scan found 1:
   latte$entry.NotAComponent is annotated @stream but does not extend latte.Component, so it has nothing to stream
-NotAComponent is a type NotAComponent
+ok one @stream in this program can never stream
+ok and the scan names it
+ok a chunk with no placeholder is reported
+ok and named
+ok and the markup is left as it was
+ok an unsealed chunk is reported
+ok and named
+ok and its placeholder is left standing
+ok the control assembles
+ok and reports nothing
+
+191 checks, 0 bad

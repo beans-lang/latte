@@ -11,6 +11,7 @@
 #   builder.b     24 sites   tests/frames.b § 13
 #   apply.b       14 sites   tests/w1_faults.b § 1
 #   serialize.b    4 sites   tests/w1_faults.b § 3
+#   stream.b      24 sites   tests/w6_stream.b § 4
 #
 # Run it with no argument for all three, or name one source file to run just
 # that one: `probes/delete_faults.sh apply.b`.
@@ -120,6 +121,36 @@ FILES = [
         ],
     },
     {
+        "source": "stream.b",
+        "suite": "tests/w6_stream.b",
+        "labels": [
+            "head / a streamed document has one head",
+            "head / ID is not a usable slot id",
+            "head / the slot ID is promised twice by one page",
+            "head / the page's head carries chunk framing of its own",
+            "chunk / the chunk for ID was written before the page's head",
+            "chunk / the chunk for ID was written after the document ended",
+            "chunk / ID is not a slot this page left open",
+            "chunk / the slot ID was filled twice",
+            "chunk / the chunk for ID carries chunk framing of its own",
+            "tail / a streamed document ended before it had a head",
+            "tail / a streamed document ends once",
+            "tail / the page's tail carries chunk framing of its own",
+            "tail / the document ended with N slot(s) never filled",
+            "ChunkReader.refuse / the one funnel every reader refusal goes through",
+            "open / a streamed page is opened once",
+            "open / the region named X cannot be a slot id",
+            "open / two regions on this page are both named X",
+            "open / N streamed region(s) but no @stream",
+            "open / @stream but no StreamRegion",
+            "resolve / ID is not a region of this page",
+            "gone / the region ID is no longer mounted",
+            "emit / the region ID is no longer a StreamRegion",
+            "emit / a fault the serializer raised on the region's frames",
+            "close / a streamed page was closed before it was opened",
+        ],
+    },
+    {
         "source": "serialize.b",
         "suite": "tests/w1_faults.b",
         "labels": [
@@ -135,7 +166,7 @@ if only:
     FILES = [entry for entry in FILES if entry["source"] == only]
     if not FILES:
         print(f"no source file named {only}; this script knows builder.b, "
-              f"apply.b and serialize.b", file=sys.stderr)
+              f"apply.b, serialize.b and stream.b", file=sys.stderr)
         sys.exit(1)
 
 
