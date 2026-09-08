@@ -1,0 +1,324 @@
+
+-- row 1: XSS through interpolated text
+ok row1.serializer-escapes-text
+ok row1.applier-escapes-text
+ok row1.control-plain-text-untouched
+ok row1.control-plain-text-applier
+ok row1.escape-text-all-three
+ok row1.escape-text-ampersand-first
+ok row1.control-escape-text-nothing
+ok row1.html-bypass-passes-markup
+ok row1.html-bypass-applier
+ok row1.no-fault-for-escaping
+
+-- row 2: XSS through attribute context
+ok row2.serializer-escapes-quote
+ok row2.applier-escapes-quote
+ok row2.serializer-escapes-apostrophe
+ok row2.always-quoted
+ok row2.control-plain-value
+ok row2.control-plain-value-applier
+ok row2.escape-attribute-all-five
+ok row2.control-escape-attribute-nothing
+ok row2.refused-attribute-name
+ok row2.refused-attribute-name-dropped
+ok row2.control-attribute-name-accepted
+ok row2.control-attribute-name-written
+ok row2.name-predicate-refuses-space
+ok row2.name-predicate-refuses-angle
+ok row2.name-predicate-refuses-quote
+ok row2.control-name-predicate-accepts
+ok row2.refused-tag-name
+ok row2.refused-tag-substituted
+ok row2.tag-predicate-refuses
+ok row2.control-tag-predicate-accepts
+
+-- row 3: XSS through a URL attribute
+ok row3.every-url-attribute-refuses-javascript
+ok row3.every-url-attribute-goes-inert
+ok row3.inert-value
+ok row3.control-https-is-kept
+ok row3.control-non-url-attribute-keeps-value
+ok row3.control-non-url-attribute-no-fault
+ok row3.evasions-all-inert
+ok row3.scheme-predicate-refuses-each
+ok row3.control-allowed-schemes
+ok row3.url-attribute-href
+ok row3.url-attribute-xlink
+ok row3.control-url-attribute-title
+ok row3.splat-refuses-javascript
+ok row3.splat-goes-inert
+ok row3.control-splat-https
+ok row3.control-splat-https-written
+
+-- row 4: XSS through a raw-text element
+ok row4.script-body-dropped
+ok row4.script-body-fault
+ok row4.style-comment-dropped
+ok row4.style-comment-fault
+ok row4.control-script-body-verbatim
+ok row4.control-script-body-no-fault
+ok row4.textarea-escapes
+ok row4.title-escapes
+ok row4.control-textarea-plain
+ok row4.raw-text-predicate-refuses-close
+ok row4.raw-text-predicate-refuses-comment
+ok row4.control-raw-text-predicate-accepts
+ok row4.raw-text-predicate-case-insensitive
+ok row4.control-raw-text-other-tag
+
+-- row 5: XSS through an inline handler
+ok row5.onclick-refused
+ok row5.onclick-dropped
+ok row5.every-on-shape-dropped
+ok row5.control-two-byte-on-kept
+ok row5.control-two-byte-on-no-fault
+ok row5.control-contains-on-kept
+ok row5.handler-predicate-onclick
+ok row5.handler-predicate-uppercase
+ok row5.control-handler-predicate-on
+ok row5.control-handler-predicate-data-on
+ok row5.splat-refuses-handler
+ok row5.splat-keeps-the-rest
+ok row5.handler-is-an-id-not-a-string
+ok row5.control-handler-frame-carries-no-script
+
+-- row 6: CSRF on a form post
+ok row6.control-a-genuine-token-is-valid
+ok row6.no-token
+ok row6.no-session
+ok row6.malformed-no-dot
+ok row6.malformed-expiry-not-a-number
+ok row6.malformed-empty-mac
+ok row6.control-one-second-before-expiry
+ok row6.expired-at-expiry
+ok row6.cross-session
+ok row6.cross-form
+ok row6.one-flipped-mac-byte
+ok row6.expiry-is-covered-by-the-mac
+ok row6.no-boundary-collision
+ok row6.control-boundary-pair-checks-out
+ok row6.boundary-pair-does-not-cross
+ok row6.another-key-does-not-verify
+ok row6.another-key-signs-differently
+ok row6.control-compare-equal
+ok row6.compare-differs-at-the-end
+ok row6.compare-differs-at-the-start
+ok row6.compare-prefix-is-not-equal
+ok row6.compare-suffix-is-not-equal
+ok row6.token-does-not-carry-the-session
+ok row6.token-does-not-carry-the-form
+ok row6.a-signer-that-cannot-sign-refuses
+ok row6.token-field-name
+
+-- row 8: circuit id theft or fixation
+   NO CONTROL IN LATTE: PLAN.md says the id is rotated when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here
+ok row8.id-is-64-hex-characters
+ok row8.two-ids-differ
+ok row8.id-is-hex
+ok row8.short-id-refused
+ok row8.short-id-fault
+ok row8.control-sixteen-is-accepted
+ok row8.duplicate-id-refused
+ok row8.duplicate-id-fault
+ok row8.attach-with-another-id-ends-the-circuit
+ok row8.control-attach-with-its-own-id-attaches
+ok row8.control-attach-with-its-own-id-does-not-end
+ok row8.a-stolen-id-does-not-adopt-across-sessions
+ok row8.cross-session-resume-fault
+ok row8.control-the-same-session-does-adopt
+ok row8.control-the-same-session-raises-no-fault
+
+-- row 9: authorization outliving its token
+   NO CONTROL IN LATTE: PLAN.md says auth is revalidated on an interval; Circuit.tick does not revalidate anything, so the interval clause has no case here
+ok row9.the-page-scan-refused-nothing
+ok row9.the-private-page-is-in-the-map
+ok row9.anonymous-does-not-open
+ok row9.anonymous-is-challenged
+ok row9.the-wrong-role-does-not-open
+ok row9.the-wrong-role-is-forbidden
+ok row9.control-the-right-role-opens
+ok row9.control-the-right-role-has-no-problem
+ok row9.control-an-open-page-is-in-the-map
+ok row9.control-an-open-page-opens-for-anonymous
+ok row9.mount-is-not-cached
+ok row9.control-the-attach-mounts-while-the-role-holds
+ok row9.control-the-attach-does-not-end
+ok row9.navigation-re-checks-authorization
+ok row9.control-navigation-with-the-role-still-held
+ok row9.a-tick-revalidates-authorization
+
+-- row 10: mass assignment
+ok row10.the-model-is-in-the-map
+ok row10.control-annotated-fields-bind
+ok row10.control-a-clean-body-is-ok
+ok row10.control-a-clean-body-ignores-nothing
+ok row10.unannotated-names-are-ignored
+ok row10.the-model-was-not-mass-assigned
+ok row10.the-annotated-field-in-the-same-body-bound
+ok row10.a-hostile-body-is-still-ok
+ok row10.the-plan-names-only-the-annotated-fields
+ok row10.the-plan-has-no-entry-for-is-admin
+ok row10.control-the-plan-has-an-entry-for-email
+ok row10.a-handler-frame-carries-a-slot-number
+ok row10.a-handler-frame-carries-no-method-name
+ok row10.a-handler-frame-carries-no-closure
+ok row10.an-unknown-slot-does-not-end-the-circuit
+ok row10.an-unknown-slot-is-logged-and-dropped
+
+-- row 11: virtual range abuse
+ok row11.control-an-ordinary-window
+ok row11.control-an-ordinary-window-is-sound
+ok row11.a-count-over-the-cap-is-trimmed
+ok row11.a-trimmed-window-is-sound
+ok row11.a-window-past-the-end-is-trimmed
+ok row11.a-start-past-the-end-shows-nothing
+ok row11.a-negative-start-clamps-to-zero
+ok row11.a-negative-count-clamps-to-zero
+ok row11.the-largest-int-as-a-start
+ok row11.the-largest-int-is-still-sound
+ok row11.the-largest-int-as-a-count
+ok row11.sound-can-answer-false
+ok row11.sound-refuses-a-negative-spacer
+ok row11.a-range-over-the-wire-cap-ends-the-circuit
+ok row11.control-a-range-at-the-cap-is-accepted
+ok row11.a-negative-range-is-refused-at-the-decoder
+
+-- row 12: upload abuse
+   NO CONTROL IN LATTE: PLAN.md names a disk quota; latte's store keeps no total and std.fs cannot delete a file (BLOCKERS.md B13), so there is no quota to cross
+ok row12.control-a-body-inside-every-cap
+ok row12.a-part-over-the-part-cap
+ok row12.control-a-part-at-the-part-cap
+ok row12.two-parts-over-the-total-cap
+ok row12.control-two-parts-under-the-total-cap
+ok row12.more-parts-than-the-cap
+ok row12.a-filename-over-the-cap
+ok row12.control-a-filename-at-the-cap
+ok row12.the-storage-id-is-not-the-submitted-name
+ok row12.the-storage-id-has-no-path-separator
+ok row12.the-storage-id-has-no-dot-dot
+ok row12.control-the-submitted-name-is-kept-as-metadata
+ok row12.two-parts-with-one-name-get-two-ids
+ok row12.an-upload-controls-configuration-refusals
+ok row12.control-a-default-upload-control-is-ok
+ok row12.control-the-default-size-cap
+ok row12.control-the-default-file-cap
+
+-- row 13: compression amplification
+ok row13.an-oversized-message-is-refused-before-the-parse
+ok row13.the-size-check-runs-before-the-syntax-check
+ok row13.control-a-message-under-the-limit-decodes
+ok row13.control-and-it-decoded-the-url
+ok row13.the-default-message-cap
+ok row13.the-default-string-cap
+ok row13.the-default-depth-cap
+ok row13.the-default-item-cap
+ok row13.nesting-over-the-depth-cap
+ok row13.control-nesting-at-the-depth-cap
+ok row13.an-array-over-the-item-cap
+ok row13.control-an-array-at-the-item-cap
+ok row13.an-object-over-the-item-cap
+ok row13.control-an-object-at-the-item-cap
+ok row13.a-string-over-the-text-cap
+ok row13.control-a-string-at-the-text-cap
+
+-- row 14: DoS: flooding, render loops, retention
+   NO CONTROL IN LATTE: PLAN.md names a per-circuit rate limit; CircuitOptions has no rate and Circuit.accept counts no messages per unit time, so that clause has no case here
+ok row14.control-the-clicks-landed-on-a-handler
+ok row14.a-client-that-never-acks-is-ended
+ok row14.and-the-reason-names-the-window
+ok row14.control-the-acking-clients-clicks-landed
+ok row14.control-a-client-that-acks-is-not-ended
+ok row14.control-a-spinning-page-mounts-without-looping
+ok row14.a-boundary-catches-the-render-loop
+ok row14.and-the-client-is-told-through-err
+ok row14.and-the-log-names-the-render-cap
+ok row14.an-unguarded-render-loop-ends-the-circuit
+ok row14.and-the-reason-is-panic
+ok row14.and-that-log-names-the-render-cap-too
+ok row14.control-a-component-that-settles-is-not-stopped
+ok row14.control-and-it-logged-nothing
+ok row14.control-just-inside-the-idle-window
+ok row14.past-the-idle-window-the-circuit-ends
+ok row14.and-the-reason-is-idle
+ok row14.the-third-circuit-was-opened
+ok row14.the-oldest-disconnected-circuit-was-evicted
+ok row14.the-newer-one-was-kept
+ok row14.a-full-set-of-live-circuits-refuses
+ok row14.and-says-so
+ok row14.control-no-live-circuit-was-evicted
+ok row14.control-a-dropped-circuit-is-kept-inside-the-window
+ok row14.control-and-is-still-there
+ok row14.past-the-retention-window-it-is-swept
+ok row14.and-is-gone
+
+-- row 15: prototype pollution in the applier
+ok row15.hostile-keys-parse-as-data
+ok row15.and-are-ordinary-members
+ok row15.and-nothing-else-changed
+ok row15.an-absent-field-answers-the-fallback
+ok row15.an-absent-text-field-answers-the-fallback
+ok row15.an-unknown-kind-is-refused
+ok row15.control-a-known-kind-decodes
+ok row15.control-and-carries-its-batch
+ok row15.control-all-seven-kinds-decode
+ok row15.an-array-is-not-a-message
+ok row15.a-string-is-not-a-message
+ok row15.a-number-is-not-a-message
+ok row15.an-unknown-event-name-does-not-decode-clean
+ok row15.a-string-handler-id-does-not-decode-clean
+ok row15.an-update-for-an-unmounted-component-is-a-fault
+ok row15.control-an-update-for-the-root-is-not-a-fault
+
+-- row 16: open redirect and SSRF through navigation
+ok row16.every-hostile-target-is-refused
+ok row16.control-every-local-target-is-accepted
+ok row16.control-dot-dot-in-a-query-is-not-a-path-segment
+ok row16.control-dot-dot-in-a-fragment-is-not-a-path-segment
+ok row16.but-dot-dot-in-the-path-is
+ok row16.a-hostile-nav-ends-the-circuit
+ok row16.control-a-local-nav-does-not-end-the-circuit
+ok row16.the-server-cannot-navigate-off-origin
+ok row16.control-the-server-can-navigate-locally
+
+-- row 17: information disclosure
+ok row17.the-wire-does-not-carry-the-panic-message
+ok row17.the-wire-carries-a-trace-id
+ok row17.the-log-carries-the-panic-message
+ok row17.the-trace-id-on-the-wire-matches-the-log
+ok row17.control-an-ordinary-click-logs-nothing
+ok row17.control-an-ordinary-click-sends-no-err
+ok row17.control-an-ordinary-click-does-not-end
+ok row17.an-unguarded-panic-ends-the-circuit
+ok row17.and-still-does-not-carry-the-message
+ok row17.and-still-carries-a-trace-id
+ok row17.and-the-unguarded-log-carries-the-message
+ok row17.the-end-reason-is-a-fixed-word
+
+-- row 18: clickjacking and script injection
+ok row18.latte-ships-a-security-header-middleware
+ok row18.a-rendered-page-writes-no-inline-handler
+ok row18.a-rendered-page-writes-no-inline-script
+ok row18.a-rendered-page-writes-no-javascript-url
+
+== the threat table, row by row ==
+row 1 XSS through interpolated text: covered (10 checks)
+row 2 XSS through attribute context: covered (20 checks)
+row 3 XSS through a URL attribute: covered (16 checks)
+row 4 XSS through a raw-text element: covered (14 checks)
+row 5 XSS through an inline handler: covered (14 checks)
+row 6 CSRF on a form post: covered (26 checks)
+row 8 circuit id theft or fixation: partial — PLAN.md says the id is rotated when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here (15 checks)
+row 9 authorization outliving its token: partial — PLAN.md says auth is revalidated on an interval; Circuit.tick does not revalidate anything, so the interval clause has no case here (16 checks)
+row 10 mass assignment: covered (16 checks)
+row 11 virtual range abuse: covered (16 checks)
+row 12 upload abuse: partial — PLAN.md names a disk quota; latte's store keeps no total and std.fs cannot delete a file (BLOCKERS.md B13), so there is no quota to cross (17 checks)
+row 13 compression amplification: covered (16 checks)
+row 14 DoS: flooding, render loops, retention: partial — PLAN.md names a per-circuit rate limit; CircuitOptions has no rate and Circuit.accept counts no messages per unit time, so that clause has no case here (27 checks)
+row 15 prototype pollution in the applier: covered (16 checks)
+row 16 open redirect and SSRF through navigation: covered (9 checks)
+row 17 information disclosure: covered (12 checks)
+row 18 clickjacking and script injection: covered (4 checks)
+
+17 rows: 13 covered, 0 covered-but-failing, 4 with a gap
+264 checks, 0 failed

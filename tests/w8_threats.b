@@ -35,16 +35,17 @@ import espresso
 import std.io
 import std.reflect
 import {Antiforgery, Anonymous, Applier, Batch, Builder, Circuit,
-        CircuitOptions, CircuitSet, ClientMessage, Component, Differ,
+        CircuitOptions, CircuitSet, ClientMessage, Component, ComponentUpdate,
+        Differ,
         FormField, FormMap, FormPlan, FormResult, Layout, MouseEvent, PageMap,
         PageInstance, PageMatch, PagePlan, Placement, Principal, SeamSigner,
-        Serializer,
+        Serializer, ErrorBoundary,
         Signer, TokenOutcome, Upload, UploadFile, Virtual, VirtualGeometry,
         WireLimits, INERT_URL, TOKEN_FIELD, UPLOAD_MAX_BYTES,
         UPLOAD_MAX_FILES, VIRTUAL_MAX_WINDOW,
         attribute_is_inline_handler, attribute_name_is_safe, decode_client,
         describe_outcome, describe_token, escape_attribute, escape_text,
-        is_url_attribute, nav_target_is_local, open_page, parse_json,
+        is_url_attribute, nav_target_is_local, open_page, parse_int, parse_json,
         raw_text_is_safe, scan_forms, scan_pages, scheme_is_allowed,
         tag_name_is_safe, authorize, page, form, field, required} from latte
 import {fresh_id, hmac_signer, same_bytes} from latte.web
@@ -201,6 +202,35 @@ fn serializer_faults(b: Builder) -> string {
 
 /// A builder's faults, joined. Empty when it raised none.
 fn faults_of(b: Builder) -> string { return b.faults.join(" | ") }
+
+/// The handler slot the first batch bound for `click`, read OUT OF the batch.
+///
+/// A hard-coded slot number is the quiet failure this file nearly shipped: a
+/// click on a slot nothing bound lands nowhere, the circuit logs "no handler
+/// bound to slot N" and carries on, and every assertion about what the click
+/// caused then passes for the wrong reason. Three sections were doing that.
+/// `control_click_landed` below is the check that says it did not happen again.
+fn click_slot(batch: string) -> int {
+    let mark: string = "\"click\","
+    match batch.find(mark) {
+        none => { return -1 }
+        some(at) => {
+            var index: int = at + mark.len()
+            var digits: string = ""
+            for index < batch.len() {
+                let byte: int = batch.byte_at(index)
+                if byte < 48 || byte > 57 { break }
+                digits = "{digits}{batch.slice(index, index + 1)}"
+                index += 1
+            }
+            match parse_int(digits) { some(found) => { return found } none => { return -1 } }
+        }
+    }
+}
+
+fn click_on(slot: int) -> string {
+    return "\{\"t\":\"ev\",\"h\":{slot},\"k\":\"click\",\"p\":\{\"b\":0,\"x\":1,\"y\":2\}\}"
+}
 
 /// `latte.web.fresh_id()`, with its `Result` unwrapped into a string a check
 /// can compare. A CSPRNG failure becomes a value no assertion below accepts,
@@ -1266,9 +1296,13 @@ fn row10_mass_assignment(r: Report) {
         b.on_click(1, fn(e: MouseEvent) {})
         b.close()
     })
+    // `describe_frame` prints a handler frame as `{seq} on:{event} -> {id}`
+    // (frames.b). The arrow's right-hand side is a slot NUMBER this end minted;
+    // nothing in the frame names the method, the field or the closure.
     let dump: string = handled.dump_tree()
-    r.yes("row10.a-handler-frame-carries-a-slot-number", dump.contains("handler"))
+    r.yes("row10.a-handler-frame-carries-a-slot-number", dump.contains("on:click -> "))
     r.no("row10.a-handler-frame-carries-no-method-name", dump.contains("on_click"))
+    r.no("row10.a-handler-frame-carries-no-closure", dump.contains("fn("))
 
     // An event for a slot this page never bound reaches nothing, and does not
     // end the circuit: a stale click from a client mid-reconnect is ordinary.
@@ -1277,8 +1311,10 @@ fn row10_mass_assignment(r: Report) {
     c.open(0)
     c.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
     let _: List<string> = c.take_outbox()
-    c.accept("\{\"t\":\"ev\",\"h\":9999,\"k\":\"click\",\"p\":\{\"b\":0,\"x\":1,\"y\":2\}\}", 2)
+    c.accept(click_on(9999), 2)
     r.no("row10.an-unknown-slot-does-not-end-the-circuit", c.ending())
+    r.eq("row10.an-unknown-slot-is-logged-and-dropped", c.log.join(" | "),
+         "no handler bound to slot 9999")
 }
 
 // ======================================================================= 11
@@ -1403,7 +1439,7 @@ fn row12_upload(r: Report) {
     // is one the store opened.
     r.eq("row12.control-a-body-inside-every-cap",
          upload_of(limits, one_file("a.txt", "0123456789")),
-         "file f \"a.txt\" text/plain form=10 stored=10")
+         "fields=0 | file f \"a.txt\" text/plain form=10 stored=10")
 
     // Per-part size.
     r.eq("row12.a-part-over-the-part-cap",
@@ -1411,7 +1447,7 @@ fn row12_upload(r: Report) {
          "refused: a multipart part exceeds the 16-byte limit")
     r.eq("row12.control-a-part-at-the-part-cap",
          upload_of(limits, one_file("a.txt", "0123456789abcdef")),
-         "file f \"a.txt\" text/plain form=16 stored=16")
+         "fields=0 | file f \"a.txt\" text/plain form=16 stored=16")
 
     // Total size, crossed by two parts that are each under the part cap. A
     // suite that only ever posted one part could not tell the two caps apart.
@@ -1422,7 +1458,7 @@ fn row12_upload(r: Report) {
     r.eq("row12.control-two-parts-under-the-total-cap",
          upload_of(limits, two_files("a.txt", "0123456789ab",
                                      "b.txt", "0123456789ab")),
-         "file f \"a.txt\" text/plain form=12 stored=12 | file f \"b.txt\" text/plain form=12 stored=12")
+         "fields=0 | file f \"a.txt\" text/plain form=12 stored=12 | file f \"b.txt\" text/plain form=12 stored=12")
 
     // Part count.
     r.eq("row12.more-parts-than-the-cap",
@@ -1437,7 +1473,7 @@ fn row12_upload(r: Report) {
          "refused: a submitted filename is longer than 8 bytes")
     r.eq("row12.control-a-filename-at-the-cap",
          upload_of(limits, one_file("aaaa.txt", "x")),
-         "file f \"aaaa.txt\" text/plain form=1 stored=1")
+         "fields=0 | file f \"aaaa.txt\" text/plain form=1 stored=1")
 
     // The storage id is GENERATED and is not the submitted filename. This is
     // the path-traversal defence: a part calling itself `../../etc/passwd`
@@ -1562,10 +1598,13 @@ fn row13_compression(r: Report) {
     // `[[[[…` is a recursive-descent reader's cheapest target.
     var deep: WireLimits = new WireLimits()
     deep.max_depth = 4
+    // The cap is charged to EVERY value, a scalar included, so at
+    // `max_depth = 4` the deepest literal that reads is three brackets around
+    // a number: the `1` inside four brackets is itself a value at depth 4.
     r.eq("row13.nesting-over-the-depth-cap",
-         parse_fault("[[[[[1]]]]]", deep), "nesting deeper than 4")
+         parse_fault("[[[[1]]]]", deep), "nesting deeper than 4")
     r.eq("row13.control-nesting-at-the-depth-cap",
-         parse_fault("[[[[1]]]]", deep), "")
+         parse_fault("[[[1]]]", deep), "")
 
     var wide: WireLimits = new WireLimits()
     wide.max_items = 3
@@ -1618,11 +1657,13 @@ fn row14_dos(r: Report) {
         fn(url: string) -> Option<Component> { return some(new Ticker()) })
     c.open(0)
     c.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
+    let boot: int = click_slot(c.take_outbox().join(" "))
     var step: int = 0
     for step < 8 {
-        c.accept("\{\"t\":\"ev\",\"h\":1,\"k\":\"click\",\"p\":\{\"b\":0,\"x\":0,\"y\":0\}\}", 2 + step)
+        c.accept(click_on(boot), 2 + step)
         step += 1
     }
+    r.eq("row14.control-the-clicks-landed-on-a-handler", c.log.join(" | "), "")
     r.yes("row14.a-client-that-never-acks-is-ended", c.ending())
     r.eq("row14.and-the-reason-names-the-window", c.end_reason(), "limit")
 
@@ -1632,32 +1673,63 @@ fn row14_dos(r: Report) {
         fn(url: string) -> Option<Component> { return some(new Ticker()) })
     c2.open(0)
     c2.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
+    let boot2: int = click_slot(c2.take_outbox().join(" "))
     var step2: int = 0
     for step2 < 8 {
-        c2.accept("\{\"t\":\"ev\",\"h\":1,\"k\":\"click\",\"p\":\{\"b\":0,\"x\":0,\"y\":0\}\}", 2 + step2 * 2)
+        c2.accept(click_on(boot2), 2 + step2 * 2)
         c2.accept("\{\"t\":\"ack\",\"b\":{c2.batch_count()}\}", 3 + step2 * 2)
         step2 += 1
     }
+    r.eq("row14.control-the-acking-clients-clicks-landed", c2.log.join(" | "), "")
     r.no("row14.control-a-client-that-acks-is-not-ended", c2.ending())
 
     // Render loops. A component that dirties itself from its own render would
-    // spin forever; the cap is charged per EVENT and surfaces it in the
-    // nearest error boundary instead.
+    // spin forever on the circuit's fiber. The cap is charged in `settle()`,
+    // which runs on an EVENT — `on_attach` publishes and does not settle — so
+    // a spinning page mounts once and only loops when something is clicked.
+    // That is PLAN.md's reading, "a cap on render passes per event".
+    //
+    // With a boundary above it the failure SURFACES THERE and the circuit
+    // lives, which is the clause PLAN.md actually states.
     var loop_options: CircuitOptions = new CircuitOptions()
     loop_options.max_renders = 4
     let c3: Circuit = new Circuit("aaaaaaaaaaaaaaaaaaaa", loop_options,
-        fn(url: string) -> Option<Component> { return some(new Spinner()) })
+        fn(url: string) -> Option<Component> { return some(new SpinShell()) })
     c3.open(0)
     c3.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
-    r.yes("row14.a-component-that-dirties-itself-is-stopped", c3.ending())
-    r.eq("row14.and-the-reason-names-the-render-cap", c3.end_reason(), "limit")
+    let boot3: int = click_slot(c3.take_outbox().join(" "))
+    r.no("row14.control-a-spinning-page-mounts-without-looping", c3.ending())
+    c3.accept(click_on(boot3), 2)
+    let spun: string = c3.take_outbox().join(" ")
+    r.no("row14.a-boundary-catches-the-render-loop", c3.ending())
+    r.yes("row14.and-the-client-is-told-through-err", spun.contains("\"t\":\"err\""))
+    r.yes("row14.and-the-log-names-the-render-cap",
+          c3.log.join(" | ").contains("a component re-rendered itself 4 times without settling"))
+
+    // With NO boundary the circuit ends instead of spinning. The kind is
+    // `panic` and not a limit word, because the render cap routes through the
+    // same containment a panic does — which is what makes the boundary case
+    // above possible at all.
+    let c3b: Circuit = new Circuit("aaaaaaaaaaaaaaaaaaaa", loop_options,
+        fn(url: string) -> Option<Component> { return some(new Spinner()) })
+    c3b.open(0)
+    c3b.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
+    let boot3b: int = click_slot(c3b.take_outbox().join(" "))
+    c3b.accept(click_on(boot3b), 2)
+    r.yes("row14.an-unguarded-render-loop-ends-the-circuit", c3b.ending())
+    r.eq("row14.and-the-reason-is-panic", c3b.end_reason(), "panic")
+    r.yes("row14.and-that-log-names-the-render-cap-too",
+          c3b.log.join(" | ").contains("a component re-rendered itself 4 times without settling"))
 
     // The control: a component that settles renders and the circuit lives.
     let c4: Circuit = new Circuit("aaaaaaaaaaaaaaaaaaaa", loop_options,
         fn(url: string) -> Option<Component> { return some(new Ticker()) })
     c4.open(0)
     c4.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
+    let boot4: int = click_slot(c4.take_outbox().join(" "))
+    c4.accept(click_on(boot4), 2)
     r.no("row14.control-a-component-that-settles-is-not-stopped", c4.ending())
+    r.eq("row14.control-and-it-logged-nothing", c4.log.join(" | "), "")
 
     // The idle timeout.
     var idle: CircuitOptions = new CircuitOptions()
@@ -1748,6 +1820,19 @@ pub class Ticker extends Component {
     }
 }
 
+/// The same spinner behind an error boundary, which is where PLAN.md says the
+/// failure must surface.
+pub class SpinShell extends ErrorBoundary {
+    pub inner: Spinner = new Spinner()
+    pub fn init() {
+        super.init()
+        self.body = fn(b: Builder) {
+            b.component_made<Spinner>(0, fn() -> Spinner { return self.inner },
+                                      fn(c: Spinner) {})
+        }
+    }
+}
+
 /// A component that marks itself dirty from inside its own render. Without the
 /// cap this is an infinite loop on the circuit's fiber.
 pub class Spinner extends Component {
@@ -1756,8 +1841,9 @@ pub class Spinner extends Component {
     pub override fn render(b: Builder) {
         self.count += 1
         self.notify()
-        b.open(0, "p")
-        b.text(1, "{self.count}")
+        b.open(0, "button")
+        b.on_click(1, fn(e: MouseEvent) {})
+        b.text(2, "{self.count}")
         b.close()
     }
 }
@@ -1799,8 +1885,10 @@ fn row15_prototype_pollution(r: Report) {
     // fixed table of seven names and everything else is refused.
     let hostile: ClientMessage =
         decode_client("\{\"t\":\"__proto__\",\"h\":1\}", limits)
+    // The message does not quote the kind back. That is deliberate on the
+    // information-disclosure row's own logic and it is what `wire.b` says.
     r.eq("row15.an-unknown-kind-is-refused", hostile.fault,
-         "an unknown message kind \"__proto__\"")
+         "unknown message kind")
 
     // The control, differing only in the kind: one of the seven decodes.
     let known: ClientMessage = decode_client("\{\"t\":\"ack\",\"b\":3\}", limits)
@@ -1845,12 +1933,28 @@ fn row15_prototype_pollution(r: Report) {
         decode_client("\{\"t\":\"ev\",\"h\":\"__proto__\",\"k\":\"click\",\"p\":\{\}\}", limits)
     r.no("row15.a-string-handler-id-does-not-decode-clean", stringy.fault == "")
 
-    // The applier's own opcode table: an edit naming an opcode that is not in
-    // it is a fault, and the batch that follows still applies. `apply.b`'s
-    // sites are audited by `tests/w1_faults.b`; what this asserts is the row's
-    // claim — that the table is FIXED, so a wire opcode reaches no property.
-    let dumped: string = new Applier().dump()
-    r.eq("row15.an-empty-applier-holds-nothing", dumped, "")
+    // On the Beans side the opcode table is an ENUM, so an unknown opcode is
+    // unrepresentable and the row's "fixed opcode table" clause is a claim
+    // about `js/latte.js` — which `test.sh`'s browser-apply leg checks against
+    // a real DOM. What this side can assert is the other clause: a component
+    // is addressed by an INTEGER this end minted, and an update naming one
+    // that was never mounted is a fault rather than a root the wire created.
+    var stray: Applier = new Applier()
+    var stray_batch: Batch = new Batch()
+    stray_batch.updates.push(new ComponentUpdate(42))
+    stray.apply(stray_batch)
+    r.eq("row15.an-update-for-an-unmounted-component-is-a-fault",
+         stray.faults.join(" | "),
+         "update for component 42 arrived before its mount")
+
+    // The control, differing only in the component id: an update for the page
+    // root, which every applier holds, raises nothing.
+    var mounted: Applier = new Applier()
+    var mount_batch: Batch = new Batch()
+    mount_batch.updates.push(new ComponentUpdate(0))
+    mounted.apply(mount_batch)
+    r.eq("row15.control-an-update-for-the-root-is-not-a-fault",
+         mounted.faults.join(" | "), "")
 }
 
 // ======================================================================= 16
@@ -1956,8 +2060,8 @@ fn row17_information_disclosure(r: Report) {
     c.guard = fn(body: fn() -> bool) -> string { return run(body) }
     c.open(0)
     c.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
-    let _: List<string> = c.take_outbox()
-    c.accept("\{\"t\":\"ev\",\"h\":1,\"k\":\"click\",\"p\":\{\"b\":0,\"x\":0,\"y\":0\}\}", 2)
+    let slot: int = click_slot(c.take_outbox().join(" "))
+    c.accept(click_on(slot), 2)
     let sent: string = c.take_outbox().join(" ")
 
     r.no("row17.the-wire-does-not-carry-the-panic-message", sent.contains(secret))
@@ -1984,10 +2088,10 @@ fn row17_information_disclosure(r: Report) {
     c2.guard = fn(body: fn() -> bool) -> string { return run(body) }
     c2.open(0)
     c2.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
-    let _2: List<string> = c2.take_outbox()
-    c2.accept("\{\"t\":\"ev\",\"h\":1,\"k\":\"click\",\"p\":\{\"b\":0,\"x\":0,\"y\":0\}\}", 2)
+    let slot2: int = click_slot(c2.take_outbox().join(" "))
+    c2.accept(click_on(slot2), 2)
     let sent2: string = c2.take_outbox().join(" ")
-    r.no("row17.control-an-ordinary-click-logs-nothing", c2.log.len() > 0)
+    r.eq("row17.control-an-ordinary-click-logs-nothing", c2.log.join(" | "), "")
     r.no("row17.control-an-ordinary-click-sends-no-err", sent2.contains("\"t\":\"err\""))
     r.no("row17.control-an-ordinary-click-does-not-end", c2.ending())
 
@@ -1998,12 +2102,14 @@ fn row17_information_disclosure(r: Report) {
     c3.guard = fn(body: fn() -> bool) -> string { return run(body) }
     c3.open(0)
     c3.accept("\{\"t\":\"attach\",\"c\":\"aaaaaaaaaaaaaaaaaaaa\",\"u\":\"/\"\}", 1)
-    let _3: List<string> = c3.take_outbox()
-    c3.accept("\{\"t\":\"ev\",\"h\":1,\"k\":\"click\",\"p\":\{\"b\":0,\"x\":0,\"y\":0\}\}", 2)
+    let slot3: int = click_slot(c3.take_outbox().join(" "))
+    c3.accept(click_on(slot3), 2)
     let sent3: string = c3.take_outbox().join(" ")
     r.yes("row17.an-unguarded-panic-ends-the-circuit", c3.ending())
     r.no("row17.and-still-does-not-carry-the-message", sent3.contains(secret))
     r.yes("row17.and-still-carries-a-trace-id", sent3.contains("\"t\":\"bye\""))
+    r.yes("row17.and-the-unguarded-log-carries-the-message",
+          c3.log.join(" | ").contains(secret))
 
     // Every `bye` reason is a short fixed word, not a sentence about this
     // server. The message beside it is latte's own text, which is why the two
@@ -2012,18 +2118,36 @@ fn row17_information_disclosure(r: Report) {
 }
 
 /// A page with an error boundary and a handler that panics inside it.
-pub class Guarded extends Component {
+///
+/// The boundary is a mounted COMPONENT and not a frame: `b.boundary(seq)`
+/// writes a frame, but `Circuit.nearest_boundary` walks the MOUNT tree looking
+/// for a component that is an `ErrorBoundary`. A page that only wrote the
+/// frame has no boundary at all, and its panic ends the circuit — which is
+/// what the first draft of this section measured while claiming otherwise.
+pub class Guarded extends ErrorBoundary {
+    pub inner: Fragile = new Fragile()
+    pub fn init(secret: string) {
+        super.init()
+        self.inner.secret = secret
+        self.body = fn(b: Builder) {
+            b.component_made<Fragile>(0, fn() -> Fragile { return self.inner },
+                                      fn(c: Fragile) {})
+        }
+    }
+}
+
+/// The button whose handler panics. Separate from the boundary because a
+/// boundary catches what is BELOW it, and a component cannot be below itself.
+pub class Fragile extends Component {
     pub secret: string = ""
-    pub fn init(secret: string) { self.secret = secret }
+    pub fn init() {}
     pub override fn render(b: Builder) {
-        b.boundary(0)
-        b.open(1, "button")
+        b.open(0, "button")
         b.on_click(1, fn(e: MouseEvent) {
             if self.secret != "" { panic(self.secret) }
         })
         b.text(2, "go")
         b.close()
-        b.end_boundary()
     }
 }
 
