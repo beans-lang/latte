@@ -44,6 +44,135 @@ pub class Node {
     pub fn init() {}
 }
 
+// ---- the kind rule ---------------------------------------------------------
+//
+// An edit names a POSITION. It does not name what is at that position, so the
+// applier has to ask, and until it did, an edit landed on whatever was there.
+//
+// `diff.b`'s seven `SPAN_*` values are the node kinds and they split two ways.
+// Two are LEAVES — a text node and a markup node hold a string and no children.
+// The other five are CONTAINERS: an element, a mount, a region, a fragment and
+// a boundary all hold children. Only an element carries attributes and
+// handlers — `Applier.emit` writes an attribute run for `SPAN_ELEMENT` and for
+// nothing else, so a slot stored anywhere else is written and then dropped.
+//
+// A kind-mismatched edit is DROPPED, one fault is recorded, the rest of the
+// stream applies, and nothing ends. That is the same drop-and-record the
+// eleven index and lookup refusals in `run` already use, and it is the rule
+// `latte.js` applies to a real DOM with the SAME sentence, byte for byte —
+// lanes/W5.md, THE APPLIER CONTRACT. Two appliers that answer a malformed
+// batch differently are two appliers, and gate 3 exists to compare them.
+//
+// What it closes, and this is why it is a rule and not a nicety:
+//
+//   * `set_text` at a `raw` markup node rewrote `node.html` while `node.raw`
+//     stayed true, so `emit` wrote the new bytes back out through `Frame.raw`
+//     — UNESCAPED. `<img src=x onerror=alert(1)>` reached the page and nothing
+//     was raised. The escaping context changed under the value; it was never
+//     the harmless no-op the shape looks like.
+//   * `set_text` at the mount a component sits in is `textContent` in a
+//     browser, which WIPES that child's subtree. The child's next update
+//     carries only what CHANGED, so the page never comes back.
+//   * `insert` at a leaf appended a child to a text node and `emit` dropped it
+//     again: content accepted, then silently lost. With `step_in` refusing a
+//     descent into a leaf and `insert`/`relocate` refusing a leaf cursor, a
+//     leaf cannot acquire children at all any more.
+//
+// No well-formed batch trips any of this — `Differ.pair` reaches `set_text`
+// only under `SPAN_TEXT`, `set_markup` only under `SPAN_MARKUP`, `step_in`
+// only onto an element, region, fragment or boundary, and the attribute edits
+// only from `diff_element` after a `step_in` onto an element. So the sweep in
+// `tests/apply.b` § 4 must still report ZERO faults, and if it ever does not,
+// the check below is stricter than the differ and the check is wrong.
+
+/// What a node has to be for an edit to be allowed to address it.
+const WANT_ELEMENT: int = 0
+const WANT_TEXT: int = 1
+const WANT_MARKUP: int = 2
+const WANT_CONTAINER: int = 3
+/// The edit does not constrain the kind of the node it acts on.
+const WANT_ANY: int = 4
+
+fn want_name(want: int) -> string {
+    if want == WANT_ELEMENT { return "element" }
+    if want == WANT_TEXT { return "text" }
+    if want == WANT_MARKUP { return "markup" }
+    if want == WANT_CONTAINER { return "container" }
+    return "any"
+}
+
+/// The kind names the fault sentence carries — the same seven `latte.js`
+/// prints, because the two halves are diffed against each other.
+///
+/// `node_` and not `kind_name`, because `circuit.b` already has a `kind_name`
+/// for the client message opcodes and both are free functions in one package.
+fn node_kind_name(kind: int) -> string {
+    if kind == SPAN_ELEMENT { return "element" }
+    if kind == SPAN_TEXT { return "text" }
+    if kind == SPAN_MARKUP { return "markup" }
+    if kind == SPAN_MOUNT { return "mount" }
+    if kind == SPAN_REGION { return "region" }
+    if kind == SPAN_FRAGMENT { return "fragment" }
+    if kind == SPAN_BOUNDARY { return "boundary" }
+    // Unreachable today: a Node's kind is a Span's, which `read_span` sets from
+    // exactly those seven; a synthetic root is `SPAN_MOUNT`; a `step_in`
+    // placeholder takes the field default, `SPAN_ELEMENT`. It answers the
+    // NUMBER rather than folding into one of the seven, because a kind that
+    // does show up one day should read as the thing it is instead of lying
+    // about being a boundary.
+    return "kind {kind}"
+}
+
+fn kind_satisfies(kind: int, want: int) -> bool {
+    if want == WANT_CONTAINER { return kind != SPAN_TEXT && kind != SPAN_MARKUP }
+    if want == WANT_ELEMENT { return kind == SPAN_ELEMENT }
+    if want == WANT_TEXT { return kind == SPAN_TEXT }
+    if want == WANT_MARKUP { return kind == SPAN_MARKUP }
+    return true
+}
+
+/// What the CURRENT node has to be for this edit, or `WANT_ANY` when the edit
+/// does not act on the current node's own kind.
+///
+/// `insert`, `remove` and `relocate` rearrange the current node's children, so
+/// it has to be a node that can hold them. The five attribute and handler
+/// edits write into the run only an element has. `step_in`, `set_text` and
+/// `set_markup` address a CHILD and are checked against that child where they
+/// are applied; `step_out` addresses the stack and no node at all.
+fn cursor_want(edit: Edit) -> int {
+    match edit {
+        insert(_, _) => { return WANT_CONTAINER }
+        remove(_) => { return WANT_CONTAINER }
+        relocate(_, _) => { return WANT_CONTAINER }
+        set_attr(_, _, _) => { return WANT_ELEMENT }
+        set_flag(_, _, _) => { return WANT_ELEMENT }
+        remove_attr(_, _) => { return WANT_ELEMENT }
+        set_handler(_, _, _) => { return WANT_ELEMENT }
+        remove_handler(_, _) => { return WANT_ELEMENT }
+        _ => { return WANT_ANY }
+    }
+}
+
+/// An edit's opcode NAME. `describe_edit` spells an edit's ARGUMENTS for a
+/// dump — "in 3", "text 2 = x" — and a fault sentence carries the opcode, so
+/// this is a second spelling on purpose and not a duplicate of that one.
+fn edit_op(edit: Edit) -> string {
+    match edit {
+        step_in(_) => { return "step_in" }
+        step_out => { return "step_out" }
+        insert(_, _) => { return "insert" }
+        remove(_) => { return "remove" }
+        relocate(_, _) => { return "relocate" }
+        set_text(_, _) => { return "set_text" }
+        set_markup(_, _) => { return "set_markup" }
+        set_attr(_, _, _) => { return "set_attr" }
+        set_flag(_, _, _) => { return "set_flag" }
+        remove_attr(_, _) => { return "remove_attr" }
+        set_handler(_, _, _) => { return "set_handler" }
+        remove_handler(_, _) => { return "remove_handler" }
+    }
+}
+
 pub class Applier {
     /// Anything the edit stream asked for that the tree could not do. Every
     /// one of these is a differ bug or a batch applied out of order, so they
@@ -101,6 +230,16 @@ pub class Applier {
         stack.push(self.root_for(update.component))
         for edit: Edit in update.edits {
             let cur: Node = stack[stack.len() - 1]
+            // The kind rule, for every edit that acts on the CURRENT node. One
+            // gate rather than eight, because eight copies of a rule are eight
+            // chances to spell it differently — and `latte.js` has to spell it
+            // the same as this one. `step_in`, `set_text` and `set_markup`
+            // address a CHILD and are checked below, against that child.
+            let want: int = cursor_want(edit)
+            if !kind_satisfies(cur.kind, want) {
+                self.wrong_kind(update.component, edit_op(edit), want, cur.kind)
+                continue
+            }
             match edit {
                 step_in(index) => {
                     if index < 0 || index >= cur.kids.len() {
@@ -110,6 +249,34 @@ pub class Applier {
                         // the matching step_out still balances and the rest of
                         // the stream is not silently reinterpreted.
                         stack.push(new Node())
+                    } else if !kind_satisfies(cur.kids[index].kind, WANT_CONTAINER) {
+                        self.wrong_kind_at(update.component, "step_in", index,
+                                           WANT_CONTAINER, cur.kids[index].kind)
+                        // Descend into THAT node, not into a placeholder, and
+                        // the difference is not cosmetic.
+                        //
+                        // A fresh `Node` is an element, which is a container.
+                        // Substituting one would make the cursor a container on
+                        // every reachable path, so the `insert`/`remove`/
+                        // `relocate` container refusals would be dead code and
+                        // a `set_attr` inside a mis-stepped scope would succeed
+                        // SILENTLY against a throwaway — accepted, discarded,
+                        // nothing raised. RULES.md, "the refusal that never
+                        // runs", built by hand.
+                        //
+                        // Descending into the leaf costs nothing: every edit
+                        // that could mutate it is refused by the same rule —
+                        // `set_text`/`set_markup` find no child at any index,
+                        // and the eight cursor edits find a leaf. So a
+                        // mis-stepped scope raises one fault per edit that had
+                        // no business there, and the matching `step_out` still
+                        // balances. Only an INDEX-out-of-range `step_in` gets a
+                        // placeholder, because there is no node to descend into.
+                        //
+                        // lanes/W5.md, THE APPLIER CONTRACT: `latte.js` does
+                        // the same, so the two appliers fault identically on
+                        // one stream.
+                        stack.push(cur.kids[index])
                     } else {
                         stack.push(cur.kids[index])
                     }
@@ -164,13 +331,13 @@ pub class Applier {
                     }
                 }
                 set_text(index, body) => {
-                    match self.kid(cur, index, update.component, "set_text") {
+                    match self.kid(cur, index, update.component, "set_text", WANT_TEXT) {
                         some(node) => { node.html = body }
                         none => {}
                     }
                 }
                 set_markup(index, html) => {
-                    match self.kid(cur, index, update.component, "set_markup") {
+                    match self.kid(cur, index, update.component, "set_markup", WANT_MARKUP) {
                         some(node) => { node.html = html }
                         none => {}
                     }
@@ -226,28 +393,62 @@ pub class Applier {
         }
     }
 
-    /// The child at `index`, or a fault. It checks the INDEX and not the
-    /// KIND: `set_text` addressed at an element, a markup node or a mounted
-    /// child is accepted here and does nothing, and `set_markup` addressed at
-    /// a text node lands escaped. No well-formed batch contains one —
-    /// `Differ.pair` reaches `set_text` only under `o.kind == SPAN_TEXT` and
-    /// `set_markup` only under `SPAN_MARKUP` — so this is a differ bug or a
-    /// hand-built batch and nothing else, which is why the sweep has never
-    /// produced one.
+    /// The child at `index` when it is there AND it is the kind the edit needs
+    /// — otherwise a fault and `none`, and the caller does nothing.
     ///
-    /// It is a DIVERGENCE all the same, and `tests/w1_faults.b` § 2 pins every
-    /// shape of it with what each one actually does: `latte.js` applies the
-    /// same stream to a real DOM, where `textContent` on an element wipes its
-    /// children, and `set_text` at a `raw` node here rewrites it through
-    /// `Frame.raw`, unescaped. Removing it means a kind check here AND the
-    /// same refusal in `latte.js`, or the two halves disagree the other way —
-    /// a wire-contract change, which is why it is measured rather than patched.
-    fn kid(parent: Node, index: int, component: int, what: string) -> Option<Node> {
+    /// Two questions, and the second one is the kind rule above. `set_text`
+    /// only ever means a text node and `set_markup` only ever means a markup
+    /// node; addressed at anything else the edit is a differ bug or a
+    /// hand-built batch, because `Differ.pair` reaches `set_text` only under
+    /// `o.kind == SPAN_TEXT` and `set_markup` only under `SPAN_MARKUP`.
+    ///
+    /// The index is asked first because there is no kind to name at an index
+    /// that holds nothing, and because two faults for one edit would say the
+    /// stream was twice as wrong as it is.
+    fn kid(parent: Node, index: int, component: int, what: string,
+           want: int) -> Option<Node> {
         if index < 0 || index >= parent.kids.len() {
             self.faults.push("component {component}: {what} {index} of {parent.kids.len()}")
             return none
         }
-        return some(parent.kids[index])
+        let node: Node = parent.kids[index]
+        if !kind_satisfies(node.kind, want) {
+            self.wrong_kind_at(component, what, index, want, node.kind)
+            return none
+        }
+        return some(node)
+    }
+
+    /// A kind-mismatched edit that named a CHILD, and what that child really
+    /// is. `set_text`, `set_markup` and `step_in` all carry an index, and the
+    /// sentence names it, because "set_text needs a text node" against a node
+    /// with four children says nothing about which one was meant.
+    ///
+    /// The wording is fixed by lanes/W5.md, THE APPLIER CONTRACT: `latte.js`
+    /// emits this sentence byte for byte from the same stream, so a reword
+    /// here is a wire-contract change and breaks the two-appliers-one-answer
+    /// premise gate 3 rests on.
+    fn wrong_kind_at(component: int, op: string, index: int, want: int, got: int) {
+        self.faults.push(
+            "component {component}: {op} {index} needs a {want_name(want)} node, not a {node_kind_name(got)} node")
+    }
+
+    /// The same refusal for an edit that acts on the CURRENT node and has no
+    /// index to name: the three that rearrange children and the five that
+    /// write an attribute or a handler.
+    ///
+    /// Both wants are reachable from an ordinary edit stream, and keeping the
+    /// container one reachable is why a refused `step_in` descends into the
+    /// leaf instead of a placeholder. `WANT_ELEMENT` fires whenever the cursor
+    /// is a mount — which is what every component's root is — or a region, a
+    /// fragment or a boundary. `WANT_CONTAINER` fires below a `step_in` that
+    /// was refused, which is the only way a leaf becomes the cursor through
+    /// `apply()`; a leaf planted in the public `Applier.roots` is the second
+    /// way, and § 2 uses it, because the rule is one rule: a node that cannot
+    /// hold children never gains any, however the applier got there.
+    fn wrong_kind(component: int, op: string, want: int, got: int) {
+        self.faults.push(
+            "component {component}: {op} needs a {want_name(want)} node, not a {node_kind_name(got)} node")
     }
 
     // ---- building from frames ---------------------------------------------
