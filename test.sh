@@ -1395,6 +1395,14 @@ done
 # Each script owns its own controls, its own skip lines and its own summary,
 # and each is runnable alone for an edit loop. They are native-only, so
 # `--interp` says so on its own line rather than passing quietly.
+#
+# Gate 11's FOURTH part — the timing budgets — is `./w8b_budgets.sh` and is
+# deliberately NOT called from here. Every number it prints is a duration or a
+# byte count on one machine, and neither is a golden: a ceiling asserted in
+# this gate would go red on a loaded machine for no bug, and stay green on a
+# fast one after a real regression. It refuses to run at all while the machine
+# is busy. Run it by hand; `lanes/W8b.md` records the last numbers and the
+# conditions they were taken under.
 run_w8b_leg() {              # <label> <script>
     local label=$1 script=$2
     if [[ ! -x "$ROOT/$script" ]]; then
