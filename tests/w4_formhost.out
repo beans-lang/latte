@@ -12,7 +12,7 @@ ok   and path-wide
 ok   and not Secure over this plain-HTTP host
 ok   the page carries a token
 ok   issued against this clock: 1900.
-ok   the page: <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title"></p><p class="errors"></p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
+ok   the page: <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title"></p><p class="stars">0</p><p class="errors"></p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
 ok   a second GET in the same session: 200
 ok   sets no new cookie: 
 ok   and issues the same token for the same clock
@@ -28,12 +28,15 @@ ok   nobody is signed in: 401
 ok   signed in, wrong role: 403
 
 == 2. a post binds, validates and renders its errors ==
-ok   a clean post: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title">Hello</p><p class="errors"></p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
-ok   a post that fails both rules: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title">H</p><p class="errors">title: title must be 2 to 10 characters | stars: stars must be between 1 and 5</p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
-ok   a post missing a required field: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title"></p><p class="errors">title: title is required</p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
-ok   a post naming a field the author did not annotate: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title">Hello</p><p class="errors"></p><p class="ignored">owner</p><p class="owner">nobody</p></form></body></html>
+ok   a clean post: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title">Hello</p><p class="stars">4</p><p class="errors"></p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
+ok   a post that fails both rules: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title">H</p><p class="stars">9</p><p class="errors">title: title must be 2 to 10 characters | stars: stars must be between 1 and 5</p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
+ok   a post missing a required field: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title"></p><p class="stars">3</p><p class="errors">title: title is required</p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
+ok   a post naming a field the author did not annotate: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title">Hello</p><p class="stars">4</p><p class="errors"></p><p class="ignored">owner</p><p class="owner">nobody</p></form></body></html>
 ok   a posted value is escaped where it renders
 ok   and no tag reaches the document
+ok   a value an int cannot hold comes back as it was typed: 200 <html><body><form method="post" action="/notes/hello"><input type="hidden" name="__latte_token" value="<token>"><p class="title">Hi</p><p class="stars">twelve</p><p class="errors">stars: stars must be a whole number</p><p class="ignored"></p><p class="owner">nobody</p></form></body></html>
+ok   and an unparseable value is escaped where it comes back
+ok   no tag reaches the document from the echo either
 
 == 3. the antiforgery refusal, with the accepted case beside it ==
 ok   the control: the page's own token is accepted: 200
@@ -62,4 +65,4 @@ ok   and it says what refused it: latte did not start: the scan refused this app
 ok   a host with a thirty-second lifetime answers: 200
 ok   and its token expires in thirty seconds: 1030.
 
-51 checks, 0 bad
+54 checks, 0 bad

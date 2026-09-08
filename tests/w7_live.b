@@ -279,12 +279,19 @@ fn main() {
 
     // Two endpoints on one application, differing in exactly one field. That
     // is what makes 1.8 a control rather than a second suite.
+    // `websocket.Connection.connect` cannot send a `Cookie` header, so no
+    // client this suite can build has a session — and since 2026-09-08 an
+    // endpoint refuses a handshake it cannot bind to one. This suite is about
+    // the circuit, not the binding; `tests/w4_upgrade.b` owns the binding and
+    // asserts, in § 5, exactly what this line costs.
     var squeezed: EndpointOptions = new EndpointOptions()
+    squeezed.anonymous_circuits = true
     squeezed.poll_ms = 50
     squeezed.socket_ms = 30000
     squeezed.no_poller_message = NO_POLLER_MESSAGE
 
     var plain: EndpointOptions = new EndpointOptions()
+    plain.anonymous_circuits = true
     plain.poll_ms = 50
     plain.socket_ms = 30000
     plain.compress = false
