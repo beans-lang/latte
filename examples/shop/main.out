@@ -1,0 +1,79 @@
+== the scan found the page, in a module latte never heard of ==
+latte's base, named from the consumer: latte.Component
+does the page extend it: true
+shelf version: 1.0.0
+
+== GET /shop/all ==
+<main class="shop"><section class="panel"><div class="card"><h3>all — nothing picked</h3><span class="badge count">5</span><ul><li>ethiopia</li><li>colombia</li><li>grinder</li><li>kettle</li><li>scale</li></ul></div></section><p class="views">views: 0</p></main>
+the tree:
+  faults: 0
+  slot 0: Storefront (shop) — 1 render(s)
+    slot 1: Panel (shelf) — 1 render(s)
+      slot 2: Card (shelf.cards) — 1 render(s)
+        slot 3: Badge (shelf.atoms) — 1 render(s)
+
+== clicking the third row — an event across three modules ==
+the click found its handler: true
+renders this pass: 3 of 4 mounted components
+<main class="shop"><section class="panel"><div class="card"><h3>all — grinder (1)</h3><span class="badge count">5</span><ul><li>ethiopia</li><li>colombia</li><li>grinder</li><li>kettle</li><li>scale</li></ul></div></section><p class="views">views: 0</p></main>
+the tree:
+  faults: 0
+  slot 0: Storefront (shop) — 2 render(s)
+    slot 1: Panel (shelf) — 2 render(s)
+      slot 2: Card (shelf.cards) — 2 render(s)
+        slot 3: Badge (shelf.atoms) — 1 render(s)
+
+== clicking the same row again — the heading changes, the list does not ==
+renders this pass: 3
+<main class="shop"><section class="panel"><div class="card"><h3>all — grinder (2)</h3><span class="badge count">5</span><ul><li>ethiopia</li><li>colombia</li><li>grinder</li><li>kettle</li><li>scale</li></ul></div></section><p class="views">views: 0</p></main>
+the tree:
+  faults: 0
+  slot 0: Storefront (shop) — 3 render(s)
+    slot 1: Panel (shelf) — 3 render(s)
+      slot 2: Card (shelf.cards) — 3 render(s)
+        slot 3: Badge (shelf.atoms) — 1 render(s)
+
+== a page-only change: nothing below re-renders ==
+   the view counter lives in this page's own markup
+renders this pass: 1 of 4 mounted components
+<main class="shop"><section class="panel"><div class="card"><h3>all — grinder (2)</h3><span class="badge count">5</span><ul><li>ethiopia</li><li>colombia</li><li>grinder</li><li>kettle</li><li>scale</li></ul></div></section><p class="views">views: 1</p></main>
+the tree:
+  faults: 0
+  slot 0: Storefront (shop) — 4 render(s)
+    slot 1: Panel (shelf) — 3 render(s)
+      slot 2: Card (shelf.cards) — 3 render(s)
+        slot 3: Badge (shelf.atoms) — 1 render(s)
+
+== renaming an item: the count does not move ==
+   Panel and Card re-render, Badge does not
+renders this pass: 3 of 4 mounted components
+<main class="shop"><section class="panel"><div class="card"><h3>all — grinder (2)</h3><span class="badge count">5</span><ul><li>ethiopia</li><li>colombia</li><li>grinder</li><li>kettle (last one)</li><li>scale</li></ul></div></section><p class="views">views: 1</p></main>
+the tree:
+  faults: 0
+  slot 0: Storefront (shop) — 5 render(s)
+    slot 1: Panel (shelf) — 4 render(s)
+      slot 2: Card (shelf.cards) — 4 render(s)
+        slot 3: Badge (shelf.atoms) — 1 render(s)
+
+== dropping the picked item, from outside any event ==
+   the list shrinks, so the count Badge watches changes
+renders this pass: 4 of 4 mounted components
+<main class="shop"><section class="panel"><div class="card"><h3>all — grinder (2)</h3><span class="badge count">4</span><ul><li>ethiopia</li><li>colombia</li><li>kettle (last one)</li><li>scale</li></ul></div></section><p class="views">views: 1</p></main>
+the tree:
+  faults: 0
+  slot 0: Storefront (shop) — 6 render(s)
+    slot 1: Panel (shelf) — 5 render(s)
+      slot 2: Card (shelf.cards) — 5 render(s)
+        slot 3: Badge (shelf.atoms) — 2 render(s)
+
+== GET /shop/gear — the same page, a different parameter ==
+<main class="shop"><section class="panel"><div class="card"><h3>gear — nothing picked</h3><span class="badge count">3</span><ul><li>grinder</li><li>kettle</li><li>scale</li></ul></div></section><p class="views">views: 0</p></main>
+the tree:
+  faults: 0
+  slot 0: Storefront (shop) — 1 render(s)
+    slot 1: Panel (shelf) — 1 render(s)
+      slot 2: Card (shelf.cards) — 1 render(s)
+        slot 3: Badge (shelf.atoms) — 1 render(s)
+
+== GET /shop — no {tab} in the path ==
+no page is routed there — the host answers 404

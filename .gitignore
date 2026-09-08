@@ -5,3 +5,7 @@ build/
 .DS_Store
 tests/_w2_component_ok.b
 tests/_w2_component_bad.b
+
+# test.sh stages one of these inside each nested example module while it
+# runs the examples leg, and removes it again.
+examples/*/tests/_examples_cover.b
