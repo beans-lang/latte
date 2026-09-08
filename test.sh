@@ -1420,11 +1420,12 @@ done
 #                          (`browser-apply` uses fixtures, and `w8b_smoke.sh`
 #                          asserts its own root is empty), so until this leg
 #                          nothing exercised the attach path a
-#                          server-rendered page takes — and the applier
-#                          appended its render beside the server's for eight
-#                          lanes, leaving every shipped page inert under a
-#                          click. It is a leg and not a hand-run script for
-#                          exactly that reason.
+#                          server-rendered page takes — and from the day the
+#                          shell shipped the applier appended its render
+#                          beside the server's, leaving every served page
+#                          inert under a click with nothing red anywhere. It
+#                          is a leg and not a hand-run script for exactly
+#                          that reason.
 #
 # Each script owns its own controls, its own skip lines and its own summary,
 # and each is runnable alone for an edit loop. They are native-only, so
