@@ -1,0 +1,77 @@
+== 1. a streamed page and a buffered page ==
+slots: 3 [s0, s1, footer]
+head: <main id="app"><h1>Sales</h1><latte-slot id="s0"></latte-slot><aside><latte-slot id="s1"></latte-slot></aside><latte-slot id="footer"></latte-slot></main>
+chunk s0: <latte-chunk for="s0"><section class="totals">revenue 41 &amp; rising</section></latte-chunk><latte-seal for="s0"></latte-seal>
+chunk s1: <latte-chunk for="s1"><p>a slow note</p></latte-chunk><latte-seal for="s1"></latte-seal>
+chunk footer: <latte-chunk for="footer"><footer>done</footer></latte-chunk><latte-seal for="footer"></latte-seal>
+tail: </body></html>
+page ok: true
+render counts by mount order: 1 3 3 2
+assembly faults: 0
+streamed == buffered: true
+
+== 2. every split of every shape ==
+a real page, three chunks: 482 bytes, 965 splits, 0 wrong
+one chunk, no tail: 116 bytes, 233 splits, 0 wrong
+an empty chunk: 104 bytes, 209 splits, 0 wrong
+near misses either side: 391 bytes, 783 splits, 0 wrong
+a 1-byte id and a 64-byte id: 392 bytes, 785 splits, 0 wrong
+a chunk that contains another slot's placeholder: 240 bytes, 481 splits, 0 wrong
+two-way and uniform sweeps disagreeing: 0
+three-way splits of the 104-byte shape: 5565, wrong 0
+
+== 3. the reader is incremental ==
+events in one feed: 12, byte at a time: 258
+a byte-at-a-time read is more events: true
+peak hold 37 bytes over a 482-byte document, bound 96: true
+
+== 4. reader refusals, each with a control ==
+control, a whole document          ok: markup[<latte-slot id="s0"></latte-slot>] open[s0] body[<b>ok</b>] sealed[s0 9] done[1]
+cut before the seal                refused: the chunk "s0" was never sealed, so a reader could never know it was whole
+cut inside the body                refused: the stream ended inside the chunk "s0"
+cut inside the opening tag         refused: the stream ended inside a chunk's opening tag
+a seal for another slot            refused: the chunk "s0" is sealed as "s9"
+no seal at all                     refused: the chunk "s0" is not followed by its seal
+the same slot twice                refused: the chunk "s0" arrived twice
+an id with a space                 refused: a chunk names "a b", which is not a usable slot id
+an empty id                        refused: a chunk names "", which is not a usable slot id
+an id one byte too long            refused: a chunk names "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", which is not a usable slot id
+an id exactly at the limit         ok: open[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa] body[x] sealed[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1] done[1]
+bytes after finish                 refused: bytes arrived after the stream was finished
+finish twice                       refused: a stream is finished once, and this is the second
+
+== 5. writer refusals, each with a control ==
+control, head chunk tail           ok: <latte-slot id="s0"></latte-slot><latte-chunk for="s0"><b>x</b></latte-chunk><latte-seal for="s0"></latte-seal>!
+a chunk for a slot nobody opened   refused: "nope" is not a slot this page left open
+the same slot filled twice         refused: the slot "s0" was filled twice
+a slot promised twice              refused: the slot "s0" is promised twice by one page
+an unusable slot id                refused: "a b" is not a usable slot id: one to 64 bytes of letters, digits, '-' and '_'
+a chunk before the head            refused: the chunk for "s0" was written before the page's head
+two heads                          refused: a streamed document has one head, and this is the second
+a tail with a slot unfilled        refused: the document ended with 1 slot(s) never filled: s0
+two tails                          refused: a streamed document ends once, and this is the second end
+a chunk after the tail             refused: the chunk for "s0" was written after the document ended
+a head that forges the framing     refused: the page's head carries chunk framing of its own, so a reader could not tell it from a real chunk
+a chunk whose content forges it    refused: the chunk for "s0" carries chunk framing of its own, which would end it early and hand the rest of the page to the reader as document text
+a tail that forges the framing     refused: the page's tail carries chunk framing of its own, so a reader could not tell it from a real chunk
+near-miss text passes through      ok: <latte-slot id="s0"></latte-slot><latte-chunk for="s0"><code>&lt;latte-chunk for=&quot;x&quot;&gt;</code><em>latte-chunk for=</em><b>&lt;/latte-chun</b></latte-chunk><latte-seal for="s0"></latte-seal>
+stream_id_is_safe: empty false one true limit true over false space false quote false dash true
+html_forges_framing: plain false open true close true seal true upper true near false
+
+== 6. @stream is load-bearing ==
+type_streams Dashboard true Unmarked false Barren true
+control, @stream with regions      true
+regions with no @stream            refused: latte$entry.Unmarked holds 1 streamed region(s) but is not annotated @stream, so nothing would ever fill them
+@stream with no regions            refused: latte$entry.Barren is annotated @stream but holds no StreamRegion, so it would be delivered in chunks that carry nothing
+two regions with one name          refused: two regions on this page are both named "same"
+opened twice                       refused: a streamed page is opened once, and this is the second
+closed before it was opened        refused: a streamed page was closed before it was opened
+a region nobody resolved           refused: the document ended with 2 slot(s) never filled: s1, footer
+a slot this page never had         refused: "not-a-slot" is not a region of this page
+author's name and generated ones   [s1, s0, s2]
+  head <div><latte-slot id="s1"></latte-slot><latte-slot id="s0"></latte-slot><latte-slot id="s2"></latte-slot></div>
+  assembled <div>firstnamed s0third</div>
+  faults 0 page ok true
+stream_scan found 1:
+  latte$entry.NotAComponent is annotated @stream but does not extend latte.Component, so it has nothing to stream
+NotAComponent is a type NotAComponent
