@@ -122,11 +122,16 @@ echo ""
 
 # ---- B4 -------------------------------------------------------------------
 #
-# Two `ps` samples around a program that holds still between them. The program
+# Three `ps` samples around a program that holds still at each. The program
 # announces each point on stderr and then blocks on stdin; this end reads the
 # announcement, samples, and writes a line back. No sleeps: a sleep long enough
 # to be safe on a loaded machine is slow and one short enough to be quick is
 # wrong.
+#
+# The third sample is what makes the second one mean something. Circuits on an
+# ordinary page, then the same number on a three-node page, in a second set, on
+# top of the first — so the delta between the two says how much of "bytes per
+# idle circuit" is the circuit and how much is the page.
 echo "=== B4  resident memory per idle circuit — $stamp ==="
 if ! (cd "$ROOT" && "$BEANSC" build --release tests/_w8b_rss.b -o "$out/rss") \
         >"$out/rss.build" 2>&1; then
@@ -180,20 +185,36 @@ fi
 open_kb=$(sample)
 opened=$(awk -F'circuits=' '/W8B-RSS-OPEN/ { split($2, a, " "); print a[1]; exit }' "$out/rss.err")
 held=$(awk -F'held=' '/W8B-RSS-OPEN/ { split($2, a, " "); print a[1]; exit }' "$out/rss.err")
-echo "B4: open RSS $open_kb KB, with $opened circuit(s) open and $held held"
+echo "B4: open RSS $open_kb KB, with $opened circuit(s) on an ordinary page open and $held held"
+echo "" >&4
+
+if ! wait_for W8B-RSS-TINY; then
+    echo "--- w8b-budgets FAILED: the RSS probe never reached its third phase ---" >&2
+    cat "$out/rss.err" >&2
+    exit 1
+fi
+tiny_kb=$(sample)
+tiny_opened=$(awk -F'circuits=' '/W8B-RSS-TINY/ { split($2, a, " "); print a[1]; exit }' "$out/rss.err")
+echo "B4: tiny RSS $tiny_kb KB, after $tiny_opened more circuit(s) on the smallest page"
 echo "" >&4
 wait_for W8B-RSS-DONE || true
 
 if [[ -n "$base_kb" && -n "$open_kb" && -n "$opened" && "$opened" != "0" ]]; then
     delta_kb=$((open_kb - base_kb))
     per_circuit=$(( (delta_kb * 1024) / opened ))
-    echo "B4: $delta_kb KB for $opened circuits = $per_circuit bytes per idle circuit"
+    echo "B4: $delta_kb KB for $opened circuits on an ordinary page = $per_circuit bytes per idle circuit"
+    if [[ -n "$tiny_kb" && -n "$tiny_opened" && "$tiny_opened" != "0" ]]; then
+        tiny_delta_kb=$((tiny_kb - open_kb))
+        per_tiny=$(( (tiny_delta_kb * 1024) / tiny_opened ))
+        echo "B4: $tiny_delta_kb KB for $tiny_opened circuits on a THREE-NODE page = $per_tiny bytes per idle circuit"
+        echo "B4: so about $per_tiny B is the circuit's own floor and about $((per_circuit - per_tiny)) B is the page"
+    fi
     echo "B4: an idle circuit here is opened, attached, rendered once and its first"
     echo "B4: batch taken — a live component tree and the frame the differ compares"
     echo "B4: against. It holds NO socket; that memory is espresso's and std.websocket's."
     echo "B4: memory pool ON (the default a deployment runs with), --release build."
 else
-    echo "B4: NOT MEASURED — one of the two samples was empty (base='$base_kb' open='$open_kb' circuits='$opened')" >&2
+    echo "B4: NOT MEASURED — a sample was empty (base='$base_kb' open='$open_kb' tiny='$tiny_kb' circuits='$opened')" >&2
 fi
 grep 'W8B-RSS' "$out/rss.err" | sed 's/^/B4 probe: /'
 echo ""
