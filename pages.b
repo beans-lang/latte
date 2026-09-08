@@ -1098,16 +1098,44 @@ pub fn strip_type_arguments(name: string) -> string {
 
 /// Whether `described` is, or descends from, the type with this qualified name.
 ///
-/// It walks `base_type()` rather than asking `is_assignable_from`, and the
-/// reason is BLOCKERS.md **B8**: `type_of(T)` for an **imported** `T` reports
-/// the *importing* package's name joined to the simple name — `latte$entry
-/// .Component` in a consumer's entry file, a type that does not exist — while
-/// the inheritance chain reports the real `latte.Component`. The two disagree
-/// inside one program, so `is_assignable_from` answers **false** for a genuine
-/// base and subclass, on both backends. A scan written on it finds no pages.
+/// It walks `base_type()`, and the chain's names are always the real ones —
+/// they come from the runtime's own inheritance links and no name resolution
+/// happens on the way. `wanted` is the half a caller can get wrong.
 ///
-/// `wanted` must therefore be produced HERE, inside `latte`, where `type_of(
-/// Component)` is right — never handed in from a consumer's file.
+/// **BLOCKERS.md B10**, which supersedes the diagnosis in B8: a type name
+/// written **inside a string interpolation** is resolved without the file's
+/// named-import bindings and falls back to composing the asking package's own
+/// name with the simple name. So
+///
+/// ```beans
+/// extends_named(t, "{type_of(Component).qualified_name()}")   // latte$entry.Component — false, always
+/// let base: reflect.Type = type_of(Component)
+/// extends_named(t, base.qualified_name())                     // latte.Component — right
+/// ```
+///
+/// differ, in the same file, about the same type. The first names a type that
+/// does not exist, so every page a consumer owns fails the check and the scan
+/// finds nothing. It has nothing to do with which package asks: a named
+/// package gets the wrong answer inside an interpolation too, and the entry
+/// file gets the right one outside. `tests/pages.b` § 10 asserts both, on both
+/// backends, and goes red the day the compiler is fixed.
+///
+/// **Latte's own callers cannot trip it, and not because they are careful.**
+/// `Component` is declared in the package `pages.b` is written in, so the
+/// fallback name the bug composes — `<asking package>.Component` — is
+/// `latte.Component`, which is the right answer by coincidence. Rewriting
+/// `scan_pages`'s `let component_name` as an interpolation and running the
+/// whole gate fails nothing. Every consumer is a different story: their
+/// package is not `latte`, so the same spelling in their file yields a name
+/// that exists nowhere. That asymmetry is why this function takes the name
+/// from its caller and why § 10 measures it from an entry package, where
+/// latte's own file cannot.
+///
+/// This stays a chain walk
+/// rather than an `is_assignable_from` for a second reason that outlives B10:
+/// `strip_type_arguments` lets `Grid<Order>` match a `wanted` of `Grid`, which
+/// is what `generic_ancestor` needs and what an assignability test does not
+/// offer.
 ///
 /// This function is `pub` because a host package needs it; the caveat above is
 /// the whole reason its argument is a string rather than a `reflect.Type`.

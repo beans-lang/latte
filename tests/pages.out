@@ -161,4 +161,18 @@ ok   the hand-written version DID — that is the trap: 2
 ok   a parameter that changed re-renders Watched: 2
 ok   ParamWatch has been fed
 
+== 10. B10 — a type name inside a string interpolation loses this file's imports ==
+   bound to a let, then interpolated: latte.Component
+   written inside the interpolation:  latte$entry.Component
+ok   outside an interpolation, type_of(Component) is right: latte.Component
+ok   inside one, it composes the asking package's own name: latte$entry.Component
+ok   the right name names a type
+ok   the wrong one names nothing
+ok   control: a type declared here reads the same inside: latte$entry.Home
+ok   control: a dot-path type reads the same inside: std.reflect.Type
+ok   is_assignable_from is right outside an interpolation
+ok   and false inside one, for the same real subclass
+ok   extends_named answers true for the name latte produced
+ok   and false for the name a consumer's interpolation produces
+
 checks failed: 0
