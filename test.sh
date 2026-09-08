@@ -1023,6 +1023,104 @@ run_recorded_refusals_leg() {
 # Always runs, for the same reason as the leg above.
 run_recorded_refusals_leg
 
+# The browser half of gate 3. `tests/js_cases.b` is a gated suite already — it
+# prints a JavaScript fixture file, and both backends agree on it byte for
+# byte. That proves the ENCODER is consistent with itself. This leg is the
+# other half: it takes that same fixture into a real browser and requires the
+# real `js/latte.js` to land on the same HTML and the same frame dump as the
+# Beans applier, and to produce the same fault text on the same malformed
+# edits. A text test says the stream is self-consistent; only this says the two
+# appliers MEAN the same thing.
+#
+# Chrome absent is a SKIP and it says so on its own line, because a machine
+# without Chrome is a real thing. Chrome PRESENT and anything else wrong is a
+# FAILURE — an empty extraction, a fixture that will not generate, a diff. The
+# distinction is the one RULES.md draws under "a green count can mean two
+# different things", and it is why the verdict is diffed whole rather than
+# grepped for a count: the golden's last line is "338 checks, 0 bad", so a
+# harness that silently ran nine of them fails on the body long before the
+# count line.
+find_chrome() {
+    local c
+    for c in "${CHROME:-}" \
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+        "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+        "$(command -v google-chrome 2>/dev/null || true)" \
+        "$(command -v chromium 2>/dev/null || true)"; do
+        [[ -n "$c" && -x "$c" ]] && { printf '%s' "$c"; return 0; }
+    done
+    return 1
+}
+
+run_browser_apply_leg() {
+    local want="$ROOT/tests/js_apply.out"
+    local harness="$ROOT/tests/js_apply.js"
+    local applier="$ROOT/js/latte.js"
+
+    # Inputs missing is a FAILURE, never a skip. A gate that skips when its
+    # subject disappears is the shape this repo keeps getting bitten by.
+    local f
+    for f in "$want" "$harness" "$applier"; do
+        if [[ ! -f "$f" ]]; then
+            echo "--- browser-apply FAILED: ${f#$ROOT/} is missing ---" >&2
+            failed=1
+            return
+        fi
+    done
+
+    local chrome
+    if ! chrome=$(find_chrome); then
+        echo "SKIP browser-apply: no Chrome or Chromium found (set CHROME=/path/to/chrome). js/latte.js is NOT checked in this run."
+        skipped=$((skipped + 1))
+        return
+    fi
+
+    local d="$tmp/browser"
+    mkdir -p "$d"
+    if ! (cd "$ROOT" && "$BEANSC" run tests/js_cases.b) >"$d/fixtures.js" 2>"$d/gen.err"; then
+        echo "--- browser-apply FAILED: tests/js_cases.b would not generate the fixture ---" >&2
+        cat "$d/gen.err" >&2
+        failed=1
+        return
+    fi
+    cp "$applier" "$harness" "$d/"
+    printf '%s\n' '<!doctype html><html><head><meta charset="utf-8"></head><body>' \
+        '<script src="latte.js"></script><script src="fixtures.js"></script>' \
+        '<script src="js_apply.js"></script></body></html>' > "$d/page.html"
+
+    "$chrome" --headless=new --disable-gpu --no-sandbox --dump-dom \
+        "file://$d/page.html" >"$d/dom.html" 2>"$d/chrome.err" || true
+
+    # The verdict is printed into a <pre>, so the DOM dump carries it escaped.
+    sed -n '/@@LATTE-BEGIN@@/,/@@LATTE-END@@/p' "$d/dom.html" \
+        | sed -e '1d' -e '$d' \
+        | sed -e 's/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&#39;/'"'"'/g; s/&amp;/\&/g' \
+        > "$d/got.txt"
+
+    # An empty extraction means the page threw before printing anything — a
+    # JavaScript error in latte.js reads exactly like this and must not be
+    # mistaken for "no differences".
+    if [[ ! -s "$d/got.txt" ]]; then
+        echo "--- browser-apply FAILED: the page printed no verdict (latte.js threw, or the markers moved) ---" >&2
+        echo "    chrome: $chrome" >&2
+        sed -n '1,20p' "$d/chrome.err" >&2
+        failed=1
+        return
+    fi
+
+    if diff -u "$want" "$d/got.txt" >"$d/diff.txt"; then
+        echo "ok browser-apply — js/latte.js lands on the Beans applier's HTML, frame dump and fault text in $("$chrome" --version 2>/dev/null | head -1)"
+        legs=$((legs + 1))
+    else
+        echo "--- browser-apply FAILED: the browser applier and the Beans applier disagree ---" >&2
+        head -60 "$d/diff.txt" >&2
+        failed=1
+    fi
+}
+
+# Runs even for a single named suite, like the two legs above.
+run_browser_apply_leg
+
 for case in "$ROOT"/tests/*.b; do
     name=$(basename "$case" .b)
     # Scratch drivers are allowed in tests/ and are not gated: a name starting
