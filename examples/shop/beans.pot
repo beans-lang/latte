@@ -1,0 +1,12 @@
+module shop
+kind application
+
+# The consumer. It depends on latte for the page machinery and on `shelf` for
+# the components, and it never names shelf's internals: `import {Panel} from
+# shelf` is the whole surface.
+#
+# Both rows are relative to THIS manifest. The diamond is deliberate — shop
+# requires latte directly and also gets it transitively through shelf, which is
+# what every real application does the moment it uses two libraries.
+require path "../.."
+require path "../shelf"
