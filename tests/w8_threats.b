@@ -1234,23 +1234,25 @@ fn row9_authorization(r: Report) {
     r.yes("row9.a-shorter-interval-catches-it-sooner", c5.ending())
 
     // A NAVIGATION re-establishes it. `on_nav` runs the factory, so the clock
-    // must restart there: a page opened at 0 and navigated at 29,900 must not
-    // be revalidated 100 ms later. Without this the interval would be measured
-    // from the attach forever and a busy circuit would re-ask far too often.
+    // must restart there. The two times are chosen so that ONLY a clock that
+    // restarted answers correctly: 31,000 is past the interval measured from
+    // the attach at 1 and inside it measured from the nav at 15,000. A case
+    // that ticked at 30,000 would pass either way, which is how the first
+    // draft of this check let the mutation through.
     var ledger6: Ledger = new Ledger()
     ledger6.role = "staff"
     var asked6: Ledger = new Ledger()
     let c6: Circuit = watched_circuit(pages2, ledger6, asked6, new CircuitOptions())
     c6.open(0)
     c6.accept("\{\"t\":\"attach\",\"c\":\"ffffffffffffffffffff\",\"u\":\"/w8/private\"\}", 1)
-    c6.accept("\{\"t\":\"nav\",\"u\":\"/w8/private\"\}", 29900)
+    c6.accept("\{\"t\":\"nav\",\"u\":\"/w8/private\"\}", 15000)
     let asked6_after_nav: int = asked6.count
     let _14: List<string> = c6.take_outbox()
-    let _15: bool = c6.tick(30000)
+    let _15: bool = c6.tick(31000)
     r.eqi("row9.a-navigation-restarts-the-interval",
           asked6.count - asked6_after_nav, 0)
     // and the clock runs from the navigation, not from nothing.
-    let _16: bool = c6.tick(59901)
+    let _16: bool = c6.tick(45001)
     r.eqi("row9.control-the-interval-still-fires-after-a-navigation",
           asked6.count - asked6_after_nav, 1)
 
