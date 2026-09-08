@@ -1185,6 +1185,27 @@
         this.open = options.open || defaultOpen;
         this.log = options.log || defaultLog;
 
+        // The clock and the timer are injected for the same reason the socket
+        // is: a deadline that can only be observed by waiting is a deadline no
+        // gate can assert. `tests/js_apply.js` drives all three by hand.
+        this.setTimeout = options.setTimeout ||
+            (typeof setTimeout !== 'undefined' ? setTimeout : null);
+        this.clearTimeout = options.clearTimeout ||
+            (typeof clearTimeout !== 'undefined' ? clearTimeout : null);
+        this.now = options.now || function () { return Date.now(); };
+
+        // How long a fenced message may go unanswered before this end treats
+        // the socket as dead. See `fence` below for what that means and what
+        // it must exceed.
+        this.answerMs = options.answerMs || 15000;
+        this.sequence = 0;
+        // Fenced messages awaiting their `seen`, oldest first. The server
+        // answers in the order it received them, so only the head is ever
+        // checked and an answer for `n` retires everything at or before it.
+        this.outstanding = [];
+        this.fenceTimer = null;
+        this.onstall = options.onstall || null;
+
         this.applier = new Applier({
             document: this.document,
             host: this.host,
@@ -1241,13 +1262,29 @@
             return;
         }
         this.socket = socket;
-        socket.onmessage = function (event) { self.receive(event.data); };
-        socket.onclose = function () { self.dropped(); };
+        socket.onmessage = function (event) {
+            // A socket this end has already given up on may still deliver. Its
+            // frames belong to a circuit state that no longer exists.
+            if (self.socket !== socket) { return; }
+            self.receive(event.data);
+        };
+        // `stalled` closes the socket and reconnects immediately, and a close
+        // it started would otherwise arrive later and start a SECOND reconnect.
+        // Identity, not a flag: whatever detached this socket already did the
+        // deciding.
+        socket.onclose = function () {
+            if (self.socket !== socket) { return; }
+            self.dropped();
+        };
         socket.onerror = function () { /* onclose follows; one retry, not two */ };
     };
 
     Circuit.prototype.dropped = function () {
         this.socket = null;
+        // Nothing outstanding survives a socket. The reconnect re-attaches or
+        // resumes, and those carry their own fences; carrying the old ones
+        // over would time out a message the server can no longer answer.
+        this.clearFences();
         if (this.ended) { return; }
         this.retry();
     };
@@ -1259,7 +1296,8 @@
         // A little jitter, so a server that dropped every circuit at once does
         // not get all of them back in the same millisecond.
         wait = wait + Math.floor(Math.random() * (wait / 4));
-        this.timer = setTimeout(function () { self.connect(); }, wait);
+        if (!this.setTimeout) { return; }
+        this.timer = this.setTimeout(function () { self.connect(); }, wait);
     };
 
     Circuit.prototype.send = function (message) {
@@ -1274,6 +1312,115 @@
         }
         this.socket.send(text);
         return true;
+    };
+
+    // ------------------------------------------------------------ the fence
+    //
+    // BLOCKERS.md B11. Every server frame v1 had was a statement about the
+    // PAGE — `hello`, `batch`, `err`, `bye`, `js`, `nav` — and none of them
+    // said "I received your message and it changed nothing". So a click on a
+    // button whose row had already left the page produced no frame at all, and
+    // this end sat in `onmessage` with a live-looking socket and a page that
+    // never acknowledged the click. A browser cannot avoid sending such a
+    // message; a suite can, which is exactly why a suite never found it.
+    //
+    // `n` on an outgoing message asks the server for a fence. The server sends
+    // `{"t":"seen","n":n}` AFTER whatever else the message produced, so an
+    // answer means FINISHED and this end needs no case analysis over what else
+    // arrived in between.
+    //
+    // What the deadline must exceed: the longest a handler may occupy the
+    // circuit fiber, because the fence is sent after that handler returns.
+    // Crossing it is NOT treated as an error — the circuit is retained on the
+    // server for its retention window, so this end drops the socket and
+    // reconnects, and `resume` replays whatever it missed. A false positive
+    // therefore costs a reconnect, never the page.
+    Circuit.prototype.sendFenced = function (message) {
+        this.sequence += 1;
+        message.n = this.sequence;
+        if (!this.send(message)) {
+            // Nothing went out, so nothing is owed. Rolling the number back
+            // would be wrong — a message this end believes it sent and the
+            // server never saw must not reuse a number a later one will get.
+            return false;
+        }
+        this.outstanding.push({ n: this.sequence, t: message.t, at: this.now() });
+        this.armFence();
+        return true;
+    };
+
+    // With no timer at all — a host that has no `setTimeout` and none injected
+    // — there is no deadline. That is a real hole and it is stated rather than
+    // hidden: every browser has `setTimeout`, and `tests/js_apply.js` injects a
+    // fake one, so the only way to reach this branch is to pass `null` on
+    // purpose.
+    Circuit.prototype.armFence = function () {
+        if (!this.setTimeout || this.fenceTimer !== null) { return; }
+        if (this.outstanding.length === 0) { return; }
+        var self = this;
+        var waited = this.now() - this.outstanding[0].at;
+        var left = this.answerMs - waited;
+        if (left < 0) { left = 0; }
+        this.fenceTimer = this.setTimeout(function () {
+            self.fenceTimer = null;
+            self.checkFences();
+        }, left);
+    };
+
+    Circuit.prototype.disarmFence = function () {
+        if (this.fenceTimer !== null && this.clearTimeout) {
+            this.clearTimeout(this.fenceTimer);
+        }
+        this.fenceTimer = null;
+    };
+
+    Circuit.prototype.checkFences = function () {
+        if (this.ended || this.outstanding.length === 0) { return; }
+        var head = this.outstanding[0];
+        if (this.now() - head.at >= this.answerMs) {
+            this.stalled(head);
+            return;
+        }
+        this.armFence();
+    };
+
+    /// A fenced message went unanswered. The socket is up as far as this end
+    /// can see and the server has stopped answering, which is the one state
+    /// v1.0 could not distinguish from "nothing happened".
+    Circuit.prototype.stalled = function (head) {
+        this.log.error('latte: the server did not answer a ' + head.t +
+                       ' within ' + this.answerMs + ' ms — reconnecting');
+        this.clearFences();
+        if (this.onstall) { this.onstall(head); }
+        if (this.socket) {
+            var socket = this.socket;
+            this.socket = null;
+            try { socket.close(); } catch (err) { /* already closing */ }
+            // `close()` on a socket whose peer is gone may never fire
+            // `onclose`, so the retry is started here rather than waited for.
+            // `dropped` is idempotent about a socket that is already null.
+            this.retry();
+        }
+    };
+
+    Circuit.prototype.clearFences = function () {
+        this.outstanding = [];
+        this.disarmFence();
+    };
+
+    Circuit.prototype.onSeen = function (message) {
+        var number = wireInt(message.n);
+        var kept = [];
+        for (var i = 0; i < this.outstanding.length; i++) {
+            // The server answers in order, so an answer for `n` retires every
+            // message at or before it. Keeping the later ones by number rather
+            // than by position means a fence this end somehow missed cannot
+            // strand every message behind it forever.
+            if (this.outstanding[i].n > number) { kept.push(this.outstanding[i]); }
+        }
+        this.outstanding = kept;
+        this.disarmFence();
+        this.armFence();
     };
 
     Circuit.prototype.receive = function (data) {
@@ -1298,6 +1445,7 @@
             this.log.error('latte: ' + message.k + ' ' + message.m);
             return;
         }
+        if (kind === 'seen') { this.onSeen(message); return; }
         if (kind === 'bye') { this.onBye(message); return; }
         if (kind === 'js') { this.onJs(message); return; }
         if (kind === 'nav') { this.onNav(message); return; }
@@ -1323,9 +1471,9 @@
         this.attempt = 0;
         if (this.onhello) { this.onhello(message); }
         if (this.attached) {
-            this.send({ t: 'resume', c: this.id, a: wireInt(this.lastBatch) });
+            this.sendFenced({ t: 'resume', c: this.id, a: wireInt(this.lastBatch) });
         } else {
-            this.send({ t: 'attach', c: this.id, u: this.here() });
+            this.sendFenced({ t: 'attach', c: this.id, u: this.here() });
         }
     };
 
@@ -1352,7 +1500,11 @@
     Circuit.prototype.onBye = function (message) {
         this.ended = true;
         this.endKind = message.k;
-        if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+        // `bye` is the last frame on a circuit, so the server will never fence
+        // anything else. Every outstanding deadline is answered by it.
+        this.clearFences();
+        if (this.timer && this.clearTimeout) { this.clearTimeout(this.timer); }
+        this.timer = null;
         if (this.socket) {
             try { this.socket.close(); } catch (err) { /* already closing */ }
             this.socket = null;
@@ -1474,8 +1626,8 @@
                             // navigates away from the circuit.
                             event.preventDefault();
                         }
-                        this.send({ t: 'ev', h: wireInt(id), k: name,
-                                    p: payloadFor(name, event, el) });
+                        this.sendFenced({ t: 'ev', h: wireInt(id), k: name,
+                                          p: payloadFor(name, event, el) });
                         return;
                     }
                 }
@@ -1567,7 +1719,7 @@
         // here would leave the click prevented and the message unsent, which
         // is a link that does nothing at all. The message goes first and the
         // address bar is best-effort.
-        this.send({ t: 'nav', u: href });
+        this.sendFenced({ t: 'nav', u: href });
         if (typeof history !== 'undefined' && history.pushState) {
             try {
                 history.pushState(null, '', href);
