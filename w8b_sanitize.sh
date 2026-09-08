@@ -129,6 +129,13 @@ BAD='AddressSanitizer|UndefinedBehaviorSanitizer|LeakSanitizer|ThreadSanitizer|r
 #      compiler change, and it is not latte's to make. So this one is a LOUD
 #      SKIP that names what went unchecked, and it turns into an `ok` by
 #      itself on the day the emitter marks its functions.
+#
+#   C. The same question for TSan, asked separately because it is a separate
+#      attribute (`sanitize_thread`) and the answer could differ. It does not:
+#      400,000 unsynchronised writes to one word from two OS threads are not
+#      reported either. So the TSan lines below mean "no race in beans_rt.c,
+#      beans_fiber.c and the bridges", which is real coverage and is not the
+#      whole of what "TSan clean" sounds like.
 build_control() {                # <source stem>; builds and runs into $out
     local stem=$1
     local src="$ROOT/tests/$stem.b"
@@ -164,6 +171,42 @@ asan_runtime_control() {
         return
     fi
     echo "ok w8b-sanitize control A — ASan's allocator caught the deliberate double-free, so the sanitizer runtime IS under this build"
+}
+
+tsan_reach_control() {
+    local stem=_w8b_tsan_reach
+    local src="$ROOT/tests/$stem.b"
+    if [[ ! -f "$src" ]]; then
+        echo "--- w8b-sanitize FAILED: tests/$stem.b is missing ---" >&2
+        failed=1
+        return
+    fi
+    if ! (cd "$ROOT" && BEANS_SANITIZE=thread \
+            "$BEANSC" build "$src" -o "$out/$stem") >"$out/$stem.build" 2>&1; then
+        echo "--- w8b-sanitize FAILED: tests/$stem.b would not build under TSan ---" >&2
+        sed -n '1,40p' "$out/$stem.build" >&2
+        failed=1
+        return
+    fi
+    set +e
+    (cd "$ROOT" && TSAN_OPTIONS="halt_on_error=0" BEANS_NO_POOL=1 \
+        "$out/$stem") >"$out/$stem.stdout" 2>"$out/$stem.stderr"
+    set -e
+    if grep -q 'WARNING: ThreadSanitizer: data race' "$out/$stem.stderr"; then
+        echo "ok w8b-sanitize control C — TSan caught a data race in Beans-generated code (BLOCKERS.md B15 is fixed; this note can go)"
+        return
+    fi
+    echo "SKIP w8b-sanitize control C: beansc 0.1.40 emits no \`sanitize_thread\` attribute, so"
+    echo "   ThreadSanitizer instruments NONE of the code the compiler generated."
+    echo "   NOT CHECKED anywhere in this sweep: races between two pieces of BEANS code —"
+    echo "   the control ran 400,000 unsynchronised writes to one word from two OS"
+    echo "   threads and TSan said nothing. See BLOCKERS.md B15."
+    echo "   STILL CHECKED: every race inside beans_rt.c and beans_fiber.c — the ARC"
+    echo "   counters, the cycle collector, the allocator, the netpoller — and inside"
+    echo "   the net, websocket and zlib bridges, all of which ARE compiled from C"
+    echo "   and instrumented. That is where this workspace's last two runtime races"
+    echo "   lived, so the leg is worth running; it is just not everything."
+    skipped=$((skipped + 1))
 }
 
 asan_reach_control() {
@@ -304,6 +347,7 @@ if [[ $do_asan -eq 1 ]]; then
     done
 fi
 if [[ $do_tsan -eq 1 ]]; then
+    tsan_reach_control
     for name in "${SUITES[@]}"; do
         [[ -z "$only" || "$only" == "$name" ]] || continue
         run_tsan "$name"
