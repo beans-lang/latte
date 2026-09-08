@@ -485,6 +485,15 @@ fn serve(socket: websocket.Connection, seam: CircuitSeam,
 
     let clean: bool = circuit_loop(socket, handle, wake, link, seam)
 
+    // The socket is gone the moment this fiber stops serving it, and the
+    // circuit is marked disconnected HERE — before the close frame — so a
+    // client that reconnects the instant it sees that frame cannot have its
+    // freshly adopted circuit marked disconnected by this fiber's teardown.
+    // Nothing between `circuit_loop` returning and this line parks, so no
+    // other fiber on this worker runs in between.
+    let dropped: fn(int, int) -> bool = seam.disconnect
+    let kept: bool = dropped(handle, time.monotonic_millis())
+
     // Teardown, in the one order that cannot deadlock.
     //
     //  1. the flag, so the ticker stops after at most one more sleep;
@@ -503,9 +512,5 @@ fn serve(socket: websocket.Connection, seam: CircuitSeam,
     for pending.is_some() { pending = wake.try_receive() }
     let read_count: Result<int> = reader.join()
     let tick_count: Result<int> = ticker.join()
-
-    // The socket is gone; the circuit is retained so a reconnect can replay.
-    let dropped: fn(int, int) -> bool = seam.disconnect
-    let kept: bool = dropped(handle, time.monotonic_millis())
     return clean
 }
