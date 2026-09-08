@@ -503,12 +503,14 @@ fn main() {
         set.wake_fn())
 
     var squeezed: EndpointOptions = new EndpointOptions()
+    squeezed.anonymous_circuits = true
     squeezed.poll_ms = 50
     squeezed.socket_ms = 30000
     squeezed.compress = true
     squeezed.no_poller_message = NO_POLLER_MESSAGE
 
     var plain: EndpointOptions = new EndpointOptions()
+    plain.anonymous_circuits = true
     plain.poll_ms = 50
     plain.socket_ms = 30000
     plain.compress = false
