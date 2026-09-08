@@ -58,7 +58,7 @@ ok and the window never travels further than the scroll
 ok the sweep rendered both ways over the whole table
 ok and rendered five figures of rows
 html at row 1000, three rows:
-  <div class="sheet" data-latte-virtual="0" data-latte-rows="50000" data-latte-row-height="32"><div data-latte-spacer="top" style="height:32000px"></div><div class="row">row 1000</div><div class="row">row 1001</div><div class="row">row 1002</div><div data-latte-spacer="bottom" style="height:1567904px"></div></div>
+  <div class="sheet" data-latte-virtual="0" data-latte-rows="50000" data-latte-row-height="32" data-latte-overscan="4"><div data-latte-spacer="top" style="height:32000px"></div><div class="row">row 1000</div><div class="row">row 1001</div><div class="row">row 1002</div><div data-latte-spacer="bottom" style="height:1567904px"></div></div>
 ok the html
 ok and the serializer raised nothing
 ok the same range again moves nothing
@@ -105,6 +105,10 @@ ok and none of them was let through
 ok a hostile viewport is capped like a hostile count
 ok and the window it answers is still sound
 ok an honest viewport is not capped
+   the largest viewport at the end of the list: start=49996 shown=4 top=1599872 bottom=0
+ok a viewport that would overflow the add is bounded by the list
+ok and the window it answers is sound
+ok an honest viewport at the same offset answers the same window
    a negative row height, window(5,3): start=0 shown=0 top=0 bottom=0
    a negative row height, window_at:   start=0 shown=0 top=0 bottom=0
 ok a negative row height answers no window at all
@@ -208,4 +212,10 @@ ok the largest int as a start is clamped to the end
 ok and the circuit is alive
 ok and the window it landed on is sound
 
-137 checks, 0 bad
+== 6 the four numbers the browser reporter reads ==
+the reporter's element: <div data-latte-virtual="0" data-latte-rows="7" data-latte-row-height="13" data-latte-overscan="12"><div data-latte-spacer="top" style="height:0px"></div>0123456<div data-latte-spacer="bottom" style="height:0px"></div></div>
+ok all four numbers are on the element
+ok a different overscan renders a different element
+ok and not the first one's number
+
+143 checks, 0 bad
