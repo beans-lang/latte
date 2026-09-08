@@ -769,20 +769,81 @@ refusal_coverage_for() {
     return 0
 }
 
+# A source file that is supposed to have NO report sites at all. `frames.b` is
+# pure functions and `diff.b` has a `faults` field it never writes to, so every
+# `differ.faults.len() == 0` in the suites is a tautology today. That is fine
+# and it is also invisible: the day one of them grows a refusal, nothing above
+# would notice, because a file with no tally has nothing to compare against.
+# This is what notices.
+refusal_coverage_none() {
+    local file="$1"
+    local source="$ROOT/$file"
+    if [[ ! -f "$source" ]]; then
+        echo "--- refusal-coverage FAILED: $file is missing ---" >&2
+        failed=1
+        uncovered=$((uncovered + 1))
+        return 0
+    fi
+    local sites
+    sites=$(grep -c 'self\.faults\.push' "$source" || true)
+    if [[ "$sites" -ne 0 ]]; then
+        echo "--- refusal-coverage FAILED: $file has $sites report site(s) and no audit ---" >&2
+        echo "    $file had none when this leg was written, so it has no tally to" >&2
+        echo "    compare against. A refusal needs a trip case with the exact fault" >&2
+        echo "    text, a positive control beside it, and a label in" >&2
+        echo "    probes/delete_faults.sh — then give $file a row in" >&2
+        echo "    run_refusal_coverage_leg instead of this one." >&2
+        failed=1
+        uncovered=$((uncovered + 1))
+    fi
+}
+
+# A file whose report sites are known and NOT audited yet. It cannot get worse
+# quietly: the count is recorded here, and a new site fails the gate with the
+# same instructions as everywhere else. `render.b` is W4's, and its two sites
+# are the only ones in latte's core with no case — lanes/W1.md, SIXTH AGENT.
+refusal_coverage_pending() {
+    local file="$1" recorded="$2"
+    local source="$ROOT/$file"
+    if [[ ! -f "$source" ]]; then
+        echo "--- refusal-coverage FAILED: $file is missing ---" >&2
+        failed=1
+        uncovered=$((uncovered + 1))
+        return 0
+    fi
+    local sites
+    sites=$(grep -c 'self\.faults\.push' "$source" || true)
+    if [[ "$sites" -ne "$recorded" ]]; then
+        echo "--- refusal-coverage FAILED: $file has $sites report sites, $recorded were recorded and none are audited ---" >&2
+        echo "    Add a trip case with the exact fault text and a positive control" >&2
+        echo "    beside it, a label in probes/delete_faults.sh, and a row in" >&2
+        echo "    run_refusal_coverage_leg — or update the recorded count here. Do" >&2
+        echo "    not add a refusal nobody exercises." >&2
+        failed=1
+        uncovered=$((uncovered + 1))
+        return 0
+    fi
+    pending=$((pending + sites))
+}
+
 run_refusal_coverage_leg() {
     local covered=0
     local uncovered=0
+    local pending=0
     refusal_coverage_for builder.b   tests/frames.out    "tests/frames.b § 13"
     refusal_coverage_for apply.b     tests/w1_faults.out "tests/w1_faults.b § 1"
     refusal_coverage_for serialize.b tests/w1_faults.out "tests/w1_faults.b § 3"
+    refusal_coverage_none frames.b
+    refusal_coverage_none diff.b
+    refusal_coverage_pending render.b 2
     # One line, and only when all three files passed. A partial "ok … all 16"
     # printed beside a FAILED line for a fourth file is exactly the shape
     # RULES.md calls out under "a green count can mean two different things":
     # a reader grepping for `ok refusal-coverage` would find one either way.
     if [[ $uncovered -eq 0 ]]; then
-        echo "ok refusal-coverage — all $covered report sites in builder.b, apply.b and serialize.b have a case and a control"
+        echo "ok refusal-coverage — all $covered report sites in builder.b, apply.b and serialize.b have a case and a control; frames.b and diff.b still have none; render.b's $pending are recorded and NOT audited (lanes/W1.md)"
     else
-        echo "--- refusal-coverage FAILED: $uncovered of 3 source files are not fully covered ---" >&2
+        echo "--- refusal-coverage FAILED: $uncovered of the 6 core source files are not covered ---" >&2
     fi
 }
 
