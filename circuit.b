@@ -311,6 +311,27 @@ pub class Circuit {
     // ---- one client message ----------------------------------------------
 
     /// Consume one message from the client. Never panics, never parks.
+    ///
+    /// **Every accepted message that carries a sequence is answered.** The
+    /// dispatch below may produce a batch, an `err`, a `js`, a `nav` or
+    /// nothing at all; whatever it produced, a `seen` carrying the client's
+    /// own `n` goes out LAST. That is the fence, and it is what closes B11:
+    /// before it, a message that legally changed nothing — a click on a slot
+    /// the page had already disposed, an `ack`, a `range` that clamps to what
+    /// the client already holds — produced silence indistinguishable from a
+    /// dead socket, and `js/latte.js` sat in `onmessage` forever.
+    ///
+    /// Three properties make the client's deadline sound, and all three are
+    /// here rather than in the client:
+    ///
+    ///   * the fence is sent AFTER everything else the message produced, so
+    ///     "seen n" means *finished*, not *received*, and the client needs no
+    ///     case analysis over what else arrived;
+    ///   * it is sent exactly once per accepted message, so a client may hold
+    ///     several in flight and clear them by number;
+    ///   * it is NOT sent when the message ended the circuit, because `bye` is
+    ///     the last frame on a circuit and a frame after it would be a lie.
+    ///     A `bye` clears every outstanding deadline instead.
     pub fn accept(text: string, now_ms: int) {
         if self.ended { return }
         self.seen_ms = now_ms
@@ -319,6 +340,13 @@ pub class Circuit {
             self.stop("protocol", message.fault)
             return
         }
+        self.dispatch(message, now_ms)
+        if !self.ended && message.sequence > 0 {
+            self.outbox.push(encode_seen(message.sequence))
+        }
+    }
+
+    fn dispatch(message: ClientMessage, now_ms: int) {
         if message.kind == CLIENT_ATTACH { self.on_attach(message, now_ms); return }
         if message.kind == CLIENT_RESUME { self.on_resume(message, now_ms); return }
         if !self.attached {

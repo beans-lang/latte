@@ -354,26 +354,69 @@
 
     var CIRCUIT_ID = '0123456789abcdef0123';
 
+    // The clock and the timer queue are FAKE, and that is the point: the
+    // fence deadline (§ 5) is a property of elapsed time, and a gate that
+    // asserted it by really waiting would be slow, flaky, and unable to say
+    // which millisecond mattered. `advance` is the only thing that moves time
+    // here, so every timer that fires does so because a check asked it to.
     function newCircuit(options) {
         options = options || {};
         var host = freshHost();
         var sockets = [];
+        var clock = { t: 1000, next: 1 };
+        var timers = [];
+        var errors = [];
+        var stalls = [];
         var circuit = new latte.Circuit({
             url: 'ws://localhost/_latte/ws',
             id: CIRCUIT_ID,
             document: document,
             host: host,
             enhanceNav: options.enhanceNav,
+            answerMs: options.answerMs,
             open: function () {
                 var made = new FakeSocket();
                 sockets.push(made);
                 return made;
             },
-            log: { error: function () {}, warn: function () {} }
+            now: function () { return clock.t; },
+            setTimeout: function (fn, ms) {
+                var id = clock.next;
+                clock.next += 1;
+                timers.push({ id: id, at: clock.t + ms, fn: fn });
+                return id;
+            },
+            clearTimeout: function (id) {
+                for (var i = 0; i < timers.length; i++) {
+                    if (timers[i].id === id) { timers.splice(i, 1); return; }
+                }
+            },
+            onstall: function (head) { stalls.push(head); },
+            log: { error: function (text) { errors.push(text); },
+                   warn: function () {} }
         });
         circuit.start();
-        return { circuit: circuit, host: host, sockets: sockets,
-                 socket: sockets[sockets.length - 1] };
+        var rig = { circuit: circuit, host: host, sockets: sockets,
+                    socket: sockets[sockets.length - 1],
+                    clock: clock, timers: timers, errors: errors, stalls: stalls };
+        rig.advance = function (ms) {
+            clock.t += ms;
+            // Fire in due order, and take each one off the queue BEFORE
+            // calling it, because a handler may arm another.
+            for (var guard = 0; guard < 100; guard++) {
+                var due = -1;
+                for (var i = 0; i < timers.length; i++) {
+                    if (timers[i].at <= clock.t &&
+                        (due < 0 || timers[i].at < timers[due].at)) { due = i; }
+                }
+                if (due < 0) { return; }
+                var timer = timers[due];
+                timers.splice(due, 1);
+                timer.fn();
+            }
+        };
+        rig.current = function () { return sockets[sockets.length - 1]; };
+        return rig;
     }
 
     function hello(rig, version) {
@@ -391,7 +434,8 @@
     eq('the socket is open before hello', rig.socket.sent.length, 0);
     hello(rig);
     eqJson('hello is answered with attach', rig.socket.sent[0],
-           { t: 'attach', c: CIRCUIT_ID, u: location.pathname + location.search });
+           { t: 'attach', c: CIRCUIT_ID, u: location.pathname + location.search,
+             n: 1 });
 
     // --- a batch, applied and acked ---
     var pageBatch = caseNamed('page').steps[0].b;
@@ -406,7 +450,7 @@
                                                  clientX: 5, clientY: 7, button: 0 }));
     eqJson('a click sends the slot id the batch bound',
            rig.socket.sent[2],
-           { t: 'ev', h: 1, k: 'click', p: { b: 0, x: 5, y: 7 } });
+           { t: 'ev', h: 1, k: 'click', p: { b: 0, x: 5, y: 7 }, n: 2 });
 
     // --- a click on a descendant with no handler walks up to the one that has ---
     var inner = rig.host.querySelector('p');
@@ -414,7 +458,7 @@
                                                   clientX: 1, clientY: 2, button: 0 }));
     eqJson('a click inside walks up to the nearest bound element',
            rig.socket.sent[3],
-           { t: 'ev', h: 1, k: 'click', p: { b: 0, x: 1, y: 2 } });
+           { t: 'ev', h: 1, k: 'click', p: { b: 0, x: 1, y: 2 }, n: 3 });
 
     // --- an input event reads the control's live value ---
     var field = rig.host.querySelector('input[name=q]');
@@ -422,7 +466,7 @@
     field.dispatchEvent(new InputEvent('input', { bubbles: true }));
     eqJson('an input event carries the value and the checked flag',
            rig.socket.sent[4],
-           { t: 'ev', h: 2, k: 'input', p: { v: 'edited', c: false } });
+           { t: 'ev', h: 2, k: 'input', p: { v: 'edited', c: false }, n: 4 });
 
     // --- THE NO-CACHE RULE. The same element, a new handler id. ---
     feed(rig, { t: 'batch', b: 2, r: [], d: [],
@@ -431,7 +475,7 @@
                                                  clientX: 0, clientY: 0, button: 0 }));
     eqJson('a rebound handler sends the NEW id, not the one from the first batch',
            rig.socket.sent[6],
-           { t: 'ev', h: 99, k: 'click', p: { b: 0, x: 0, y: 0 } });
+           { t: 'ev', h: 99, k: 'click', p: { b: 0, x: 0, y: 0 }, n: 5 });
 
     // --- a removed handler sends nothing at all ---
     var before = rig.socket.sent.length;
@@ -456,13 +500,13 @@
     var inp = caphost.host.querySelector('input');
     inp.dispatchEvent(new FocusEvent('focus', { bubbles: false }));
     eqJson('focus does not bubble and is still delivered', last(caphost.socket.sent),
-           { t: 'ev', h: 4, k: 'focus', p: {} });
+           { t: 'ev', h: 4, k: 'focus', p: {}, n: 2 });
     box.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false, clientX: 3, clientY: 4 }));
     eqJson('mouseenter does not bubble and is still delivered', last(caphost.socket.sent),
-           { t: 'ev', h: 5, k: 'mouseenter', p: { b: 0, x: 3, y: 4 } });
+           { t: 'ev', h: 5, k: 'mouseenter', p: { b: 0, x: 3, y: 4 }, n: 3 });
     box.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter', repeat: true }));
     eqJson('a keyboard event carries the key and the repeat flag', last(caphost.socket.sent),
-           { t: 'ev', h: 6, k: 'keydown', p: { k: 'Enter', r: true } });
+           { t: 'ev', h: 6, k: 'keydown', p: { k: 'Enter', r: true }, n: 4 });
 
     function last(list) { return list[list.length - 1]; }
 
@@ -482,13 +526,13 @@
     var submit = new Event('submit', { bubbles: true, cancelable: true });
     form.dispatchEvent(submit);
     eqJson('a submit carries the successful controls only', last(formrig.socket.sent),
-           { t: 'ev', h: 7, k: 'submit', p: { f: { who: 'ada' } } });
+           { t: 'ev', h: 7, k: 'submit', p: { f: { who: 'ada' } }, n: 2 });
     eq('and the form post was prevented', submit.defaultPrevented, true);
     form.querySelector('input[name=ok]').checked = true;
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     eqJson('a checked box is submitted, an unchecked one is not',
            last(formrig.socket.sent),
-           { t: 'ev', h: 7, k: 'submit', p: { f: { who: 'ada', ok: 'on' } } });
+           { t: 'ev', h: 7, k: 'submit', p: { f: { who: 'ada', ok: 'on' } }, n: 3 });
 
     // --- enhanced navigation ---
     var navrig = newCircuit();
@@ -504,7 +548,7 @@
     var links = navrig.host.getElementsByTagName('a');
     links[0].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
     eqJson('a same-origin link becomes a nav message', last(navrig.socket.sent),
-           { t: 'nav', u: '/next' });
+           { t: 'nav', u: '/next', n: 2 });
     eq('and the browser navigation was prevented', lastClickPrevented, true);
     var beforeNav = navrig.socket.sent.length;
     links[1].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
@@ -588,6 +632,166 @@
                           p: { v: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' } });
     eq('an oversized message is dropped by the client, not sent',
        caprig.socket.sent.length, beforeCap);
+
+    // =================================================== § 5 the fence
+    //
+    // BLOCKERS.md B11, the client half. Before this, `latte.js` sent an event
+    // and waited in `onmessage` with no timer between "sent" and "an answer
+    // arrived", so a click on a slot the server no longer had bound produced a
+    // page that never acknowledged the click on a socket that looked alive.
+    //
+    // Every row here moves the FAKE clock. Nothing waits.
+
+    say('');
+    say('=== 5. the seen fence and the answer deadline');
+
+    // --- an inert message is answered, and the deadline clears ---
+    var fencerig = newCircuit({ answerMs: 5000 });
+    hello(fencerig);
+    eq('the attach is outstanding', fencerig.circuit.outstanding.length, 1);
+    eq('and a deadline is armed for it', fencerig.timers.length, 1);
+    feed(fencerig, { t: 'seen', n: 1 });
+    eq('a seen retires it', fencerig.circuit.outstanding.length, 0);
+    eq('and disarms the deadline', fencerig.timers.length, 0);
+    // THE ROW B11 IS ABOUT: a message that produced no batch, answered.
+    fencerig.advance(9000);
+    eq('nine seconds past a five-second deadline is not a stall',
+       fencerig.stalls.length, 0);
+    eq('and the socket was not dropped', fencerig.sockets.length, 1);
+
+    // --- the same message with NO answer stalls, and reconnects ---
+    var stallrig = newCircuit({ answerMs: 5000 });
+    hello(stallrig);
+    stallrig.circuit.backoff = [0];
+    stallrig.advance(4999);
+    eq('one millisecond short of the deadline is not a stall',
+       stallrig.stalls.length, 0);
+    stallrig.advance(1);
+    eq('the deadline fires exactly at answerMs', stallrig.stalls.length, 1);
+    eq('and it names the message that went unanswered',
+       stallrig.stalls[0].t, 'attach');
+    eq('the socket was closed', stallrig.sockets[0].closed, true);
+    eq('and nothing is left outstanding', stallrig.circuit.outstanding.length, 0);
+    stallrig.advance(1);
+    eq('the reconnect opened exactly one new socket', stallrig.sockets.length, 2);
+    // The close this end started must not ALSO reconnect. Two sockets, not
+    // three: `connect` compares socket identity rather than trusting a flag.
+    stallrig.sockets[0].onclose();
+    stallrig.advance(1000);
+    eq('and the close it started does not reconnect a second time',
+       stallrig.sockets.length, 2);
+
+    // --- a stall is not the end of the circuit ---
+    eq('a stall is not an ending', stallrig.circuit.ended, false);
+    eq('it is reported', stallrig.errors.length > 0, true);
+
+    // --- several in flight, retired by number and in order ---
+    var manyrig = newCircuit({ answerMs: 5000 });
+    hello(manyrig);
+    feed(manyrig, { t: 'seen', n: 1 });
+    feed(manyrig, caseNamed('page').steps[0].b);
+    var wrap5 = manyrig.host.querySelector('#wrap');
+    wrap5.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    manyrig.advance(1000);
+    wrap5.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    manyrig.advance(1000);
+    wrap5.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    eq('three clicks are outstanding', manyrig.circuit.outstanding.length, 3);
+    eq('numbered in send order',
+       manyrig.circuit.outstanding.map(function (o) { return o.n; }).join(','),
+       '2,3,4');
+    feed(manyrig, { t: 'seen', n: 3 });
+    eq('an answer for 3 retires 2 as well — the server answers in order',
+       manyrig.circuit.outstanding.map(function (o) { return o.n; }).join(','),
+       '4');
+    // The deadline that remains belongs to the message that is still waiting,
+    // and it is measured from when THAT message was sent. The clock is at
+    // t=3000 here and the surviving click went out at t=3000, so its deadline
+    // is t=8000 — NOT t=6000, which is when the retired attach would have
+    // timed out. Advancing past 6000 with no stall is the whole point of the
+    // row: a deadline is re-based on the survivor, never left where the first
+    // message put it. My first version of this check advanced to 6000 and
+    // expected a stall; the code was right and the arithmetic was mine.
+    manyrig.advance(4999);
+    eq('the retired message\'s deadline passes without a stall',
+       manyrig.stalls.length, 0);
+    manyrig.advance(1);
+    eq('and the survivor times out at its OWN five seconds',
+       manyrig.stalls.length, 1);
+    eq('naming the click', manyrig.stalls[0].n, 4);
+
+    // --- a bye answers every outstanding message ---
+    var byefence = newCircuit({ answerMs: 5000 });
+    hello(byefence);
+    eq('the attach is outstanding', byefence.circuit.outstanding.length, 1);
+    feed(byefence, { t: 'bye', k: 'protocol', m: 'unknown message kind' });
+    eq('a bye clears every deadline', byefence.circuit.outstanding.length, 0);
+    eq('and disarms the timer', byefence.timers.length, 0);
+    byefence.advance(60000);
+    eq('so an ended circuit never stalls', byefence.stalls.length, 0);
+    eq('and never reconnects', byefence.sockets.length, 1);
+
+    // --- a drop clears them too: the reconnect carries its own ---
+    // A batch first, so this end has something to resume FROM: `attached` is
+    // set by the first batch, and a circuit that never got one re-attaches
+    // rather than resuming. The attach's own fence is still outstanding when
+    // the socket drops, which is what makes the first row here mean anything.
+    var dropfence = newCircuit({ answerMs: 5000 });
+    hello(dropfence);
+    feed(dropfence, caseNamed('page').steps[0].b);
+    eq('the attach is still outstanding when the socket goes',
+       dropfence.circuit.outstanding.length, 1);
+    dropfence.circuit.backoff = [0];
+    dropfence.socket.onclose();
+    eq('a drop clears the deadlines', dropfence.circuit.outstanding.length, 0);
+    dropfence.advance(1);
+    eq('the reconnect opened a socket', dropfence.sockets.length, 2);
+    dropfence.current().onmessage({ data: JSON.stringify({
+        t: 'hello', v: 1, c: CIRCUIT_ID, mx: 65536 }) });
+    eqJson('and the resume it sends carries a NEW sequence, not the old one',
+           last(dropfence.current().sent),
+           { t: 'resume', c: CIRCUIT_ID, a: 1, n: 2 });
+    dropfence.advance(60000);
+    eq('the dropped attach never stalls the reconnected circuit',
+       dropfence.stalls.length, 1);
+    eq('and the stall that did happen is the RESUME, not the dead attach',
+       dropfence.stalls[0].t, 'resume');
+
+    // --- an unsendable message owes nothing ---
+    var unsent = newCircuit({ answerMs: 5000 });
+    hello(unsent);
+    feed(unsent, { t: 'seen', n: 1 });
+    unsent.socket.readyState = 3;
+    eq('a message that could not be sent returns false',
+       unsent.circuit.sendFenced({ t: 'nav', u: '/x' }), false);
+    eq('and is not outstanding', unsent.circuit.outstanding.length, 0);
+    unsent.advance(60000);
+    eq('so it can never stall', unsent.stalls.length, 0);
+    // The number is still spent. A message this end believes it sent must
+    // never reuse a number a later one will get.
+    unsent.socket.readyState = 1;
+    eq('the sequence moved on', unsent.circuit.sendFenced({ t: 'nav', u: '/y' }), true);
+    eqJson('so the next message is 3, not 2', last(unsent.socket.sent),
+           { t: 'nav', u: '/y', n: 3 });
+
+    // --- an ack is deliberately NOT fenced ---
+    var ackrig = newCircuit({ answerMs: 5000 });
+    hello(ackrig);
+    feed(ackrig, { t: 'seen', n: 1 });
+    feed(ackrig, caseNamed('page').steps[0].b);
+    eqJson('a batch is acked without a sequence', last(ackrig.socket.sent),
+           { t: 'ack', b: 1 });
+    eq('so nothing is outstanding', ackrig.circuit.outstanding.length, 0);
+    ackrig.advance(60000);
+    eq('and an idle tab that only acks never stalls', ackrig.stalls.length, 0);
+
+    // --- a seen for a number this end never sent changes nothing ---
+    var strayrig = newCircuit({ answerMs: 5000 });
+    hello(strayrig);
+    feed(strayrig, { t: 'seen', n: 99 });
+    eq('a seen ahead of everything retires the lot', strayrig.circuit.outstanding.length, 0);
+    strayrig.advance(60000);
+    eq('and leaves no timer behind', strayrig.stalls.length, 0);
 
     say('');
     say(checks + ' checks, ' + bad + ' bad');

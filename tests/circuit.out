@@ -225,4 +225,27 @@ ok 13.10 with exactly one slot
 -- 14. what Windows is owed
 ok 14.1 the refusal names the program, not the emitter
 
-197 checks, 0 bad
+-- 15. the seen fence: every accepted message is answered
+ok 15.1 an inert click is answered
+ok 15.2 and the circuit lives
+ok 15.3 the handler still did not run
+ok 15.4 a live click sends the batch FIRST, then the fence
+ok 15.5 no sequence, no fence — only the batch
+ok 15.6 an ack with no sequence is answered by nothing
+ok 15.7 an ack WITH a sequence is answered
+ok 15.8 the sequence is echoed exactly, whatever it is
+ok 15.9 attach answers with two frames
+ok 15.10 the second is the fence
+ok 15.11 a message that ends the circuit is answered by the bye alone
+ok 15.12 a refused message is answered by the bye alone
+ok 15.13 a contained panic answers with three frames
+ok 15.14 err first
+ok 15.15 the fence last
+ok 15.16 and the circuit lives
+ok 15.17 an uncontained panic is answered by the bye alone
+ok 15.18 resume replays both un-acked batches and then fences
+ok 15.19a the replay is in order
+ok 15.19 the fence is last
+ok 15.20 two inert messages, two fences, in order
+
+218 checks, 0 bad

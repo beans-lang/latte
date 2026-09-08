@@ -130,6 +130,8 @@ ok 9.20 range from zero
 ok 9.21 range with no region
 ok 9.22 range with a negative start
 ok 9.23 range with a negative count
+ok 9.23a range carrying a count AND a sequence
+ok 9.23b range with no count at all
 ok 9.24 a message with no t
 ok 9.25 a message whose t is not a string
 ok 9.26 an unknown kind
@@ -186,4 +188,24 @@ ok 12.16 json_bool
 ok 12.17 json_int
 ok 12.18 json_text
 
-164 checks, 0 bad
+-- 13. the message sequence, and the seen fence
+ok 13.1 seen
+ok 13.2 seen for a large sequence
+ok 13.3 a message with no n asks for no fence
+ok 13.4 n zero asks for no fence — it is the same statement as absent
+ok 13.5 a negative sequence
+ok 13.6 a sequence that is a string
+ok 13.7 a sequence that is a bool
+ok 13.8 a sequence that is null
+ok 13.9 a sequence that is an object
+ok 13.10 attach
+ok 13.11 resume
+ok 13.12 nav
+ok 13.13 js
+ok 13.14 ev
+ok 13.15 a form field called n is a form field, not a sequence
+ok 13.16 the same form with no root sequence
+ok 13.17 a bad sequence on an unknown kind refuses on the sequence
+ok 13.18 a good sequence on an unknown kind refuses on the kind
+
+184 checks, 0 bad

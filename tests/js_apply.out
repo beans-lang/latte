@@ -349,4 +349,48 @@ ok a replayed batch is not applied twice
 ok but it is acked again, so retention keeps moving
 ok an oversized message is dropped by the client, not sent
 
-338 checks, 0 bad
+=== 5. the seen fence and the answer deadline
+ok the attach is outstanding
+ok and a deadline is armed for it
+ok a seen retires it
+ok and disarms the deadline
+ok nine seconds past a five-second deadline is not a stall
+ok and the socket was not dropped
+ok one millisecond short of the deadline is not a stall
+ok the deadline fires exactly at answerMs
+ok and it names the message that went unanswered
+ok the socket was closed
+ok and nothing is left outstanding
+ok the reconnect opened exactly one new socket
+ok and the close it started does not reconnect a second time
+ok a stall is not an ending
+ok it is reported
+ok three clicks are outstanding
+ok numbered in send order
+ok an answer for 3 retires 2 as well — the server answers in order
+ok the retired message's deadline passes without a stall
+ok and the survivor times out at its OWN five seconds
+ok naming the click
+ok the attach is outstanding
+ok a bye clears every deadline
+ok and disarms the timer
+ok so an ended circuit never stalls
+ok and never reconnects
+ok the attach is still outstanding when the socket goes
+ok a drop clears the deadlines
+ok the reconnect opened a socket
+ok and the resume it sends carries a NEW sequence, not the old one
+ok the dropped attach never stalls the reconnected circuit
+ok and the stall that did happen is the RESUME, not the dead attach
+ok a message that could not be sent returns false
+ok and is not outstanding
+ok so it can never stall
+ok the sequence moved on
+ok so the next message is 3, not 2
+ok a batch is acked without a sequence
+ok so nothing is outstanding
+ok and an idle tab that only acks never stalls
+ok a seen ahead of everything retires the lot
+ok and leaves no timer behind
+
+380 checks, 0 bad
