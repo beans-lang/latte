@@ -1365,7 +1365,7 @@ fn serializer_sites() -> List<SSite> {
             })
         },
         "no frame buffer for the NeedsSeed mounted at slot 1",
-        "0: cannot activate NeedsSeed: wrong reflected argument count",
+        "0: cannot activate NeedsSeed: wrong reflected argument count (constructing latte$entry.NeedsSeed)",
         "<div></div>",
         fn(b: Builder) {
             render_body(b, fn(inner: Builder) {

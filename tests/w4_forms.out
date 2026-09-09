@@ -2,6 +2,10 @@
 ok   Signup is usable
 ok   Signup's fields: age,email,name,score,subscribe
 ok   Signup's type name: latte$entry.Signup
+ok   a form inheriting from a closed generic is usable
+ok   ...and binds the generic-declared field beside the plain one: caption,plain
+ok   the CONTROL: a non-generic base is unchanged
+ok   ...and binds its own: plain
 ok   a @field(name:) binds under the posted name: address
 ok   and it is required
 ok   and it carries no length rule
@@ -138,11 +142,6 @@ ok   two fields claiming one name: the control raises nothing:
    faults:  latte$entry.HiddenField.a is a @field but is not public, and reflection does not bypass visibility
 ok   a @field reflection cannot write: the exact fault: latte$entry.HiddenField.a is a @field but is not public, and reflection does not bypass visibility
 ok   a @field reflection cannot write: the control raises nothing: 
--- BLOCKERS.md B1a
-   site:    bind_fields / a @field declared by a generic type
-   faults:  latte$entry.OrderForm.caption is a @field declared by latte$entry.Rows<int>; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time
-ok   BLOCKERS.md B1a: the exact fault: latte$entry.OrderForm.caption is a @field declared by latte$entry.Rows<int>; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time
-ok   BLOCKERS.md B1a: the control raises nothing: 
 -- a field of a type no body carries
    site:    bind_fields / a @field a form cannot bind
    faults:  latte$entry.BadKind.items is a @field but is a List<string>; a form can bind string, int, bool and float
@@ -186,7 +185,6 @@ ok   a backwards numeric window: the control raises nothing:
 -- the sites in forms.b, and how many shapes reach each
    1x adopt_range / a @range no value can satisfy
    1x bind_fields / a @field a form cannot bind
-   1x bind_fields / a @field declared by a generic type
    1x bind_fields / a @field that is not public
    1x bind_fields / a rule on a field that is not a @field
    1x bind_fields / two @fields with one posted name
@@ -201,7 +199,7 @@ ok   a backwards numeric window: the control raises nothing:
    1x read_rules / a negative @length floor
    1x scan / a @field on a type that is not a @form
    1x scan / a rule on a type that is not a @form
-ok   every fault site in forms.b has a case: 17
+ok   every fault site in forms.b has a case: 16
 
 == 7. a failed post comes back as it was typed ==
 ok   a value that did not parse: posted=true name=[Ada] email=[a@b.c] age=[twelve] model.age=41
@@ -250,4 +248,4 @@ ok   an exponent marker with no exponent: name=Ada email=a@b.c age=36 sub=off sc
 ok   a point on its own: name=Ada email=a@b.c age=36 sub=off score=0 admin=no ignored=[] errors=[score: score must be a number]
 ok   a real number outside the range is still refused by the range: name=Ada email=a@b.c age=36 sub=off score=100.5 admin=no ignored=[] errors=[score: score must be between 0 and 100]
 
-158 checks, 0 bad
+160 checks, 0 bad

@@ -2308,11 +2308,16 @@ fn sites() -> List<Site> {
 
     // Reflection CAN find an initializer here and cannot call it. Two shapes
     // reach it and they are different reflect failures, so both are named.
+    //
+    // The trailing "(constructing <type>)" arrived with beans 0.1.41 (#160,
+    // BLOCKERS.md B2 — the message names the member now, and native no longer
+    // truncates it by a byte). Both backends print it identically; the older
+    // text without it was what 0.1.40 produced.
     out.push(new Site(SITE_ACTIVATE, "mount-a-component-whose-init-takes-an-argument",
         fn(b: Builder) {
             b.component<NeedsSeed>(0, fn(c: NeedsSeed) {})
         },
-        "0: cannot activate NeedsSeed: wrong reflected argument count", "",
+        "0: cannot activate NeedsSeed: wrong reflected argument count (constructing latte$entry.NeedsSeed)", "",
         fn(b: Builder) {
             b.component<Plain>(0, fn(c: Plain) { c.label = "ok" })
         }, "<p>ok/1</p>"))
@@ -2321,7 +2326,7 @@ fn sites() -> List<Site> {
         fn(b: Builder) {
             b.component<HiddenInit>(0, fn(c: HiddenInit) {})
         },
-        "0: cannot activate HiddenInit: reflected member is not public", "",
+        "0: cannot activate HiddenInit: reflected member is not public (constructing latte$entry.HiddenInit)", "",
         fn(b: Builder) {
             b.component<Plain>(0, fn(c: Plain) { c.label = "ok" })
         }, "<p>ok/1</p>"))

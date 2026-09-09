@@ -22,7 +22,7 @@ import {Builder, Component, Renderer, Layout, ParamWatch,
         PageMap, PagePlan, PageMatch, PageInstance, ParamBinding, RoutePattern, RouteSegment,
         Principal, Anonymous, AuthOutcome, AuthRequirement, describe_outcome, authorize_all,
         scan_pages, open_page, mount_page, percent_decode, percent_encode,
-        generic_declaration, generic_ancestor, extends_named,
+        extends_named,
         page, param, layout, authorize} from latte
 import std.reflect
 
@@ -427,60 +427,74 @@ fn main() {
     }
 
     io.println("")
-    io.println("== 2. B1a — the refusal, its control, and the trap that reads false ==")
-    // The trap, asserted directly. `field.declaring_type().type_arguments()`
-    // reads 0 for exactly the field that fails, so a refusal written on it can
-    // never fire. If this ever stops being 0, the compiler changed and the
-    // refusal below can be simplified — until then it cannot.
+    io.println("== 2. B1a is CLOSED — the divergence, and the trap that hid it ==")
+    // This section used to assert a refusal. It asserts the repair now, and it
+    // keeps the trap as a row because the trap is the interesting part: the
+    // obvious guard, `field.declaring_type().type_arguments().len() > 0`, read
+    // 0 for exactly the fields that failed, so a refusal written the obvious
+    // way never fired. beans #159 made the declaring type answer the closed
+    // form, which is what makes the row below a 1 rather than a 0.
     let grid: reflect.Type = type_of(OrderGrid)
     let closed_grid: string = type_of(Grid<int>).qualified_name()
     match grid.field("title") {
         some(field) => {
-            report.check("THE TRAP: title's declaring type reports 0 type arguments",
-                         field.declaring_type().type_arguments().len(), 0)
-            report.check_text("...while the receiver's chain reports the closed form",
-                              generic_declaration(grid, field), closed_grid)
+            report.check("the trap is gone: title's declaring type reports its arguments",
+                         field.declaring_type().type_arguments().len(), 1)
+            report.check_text("...and names the closed form",
+                              field.declaring_type().qualified_name(), closed_grid)
         }
         none => { report.check("OrderGrid has a title field", 0, 1) }
     }
     match grid.field("label") {
         some(field) => {
-            report.check_text("the CONTROL: label is declared by a non-generic base, so it is accepted",
-                              generic_declaration(grid, field), "")
+            report.check("the CONTROL: label is declared by a non-generic base",
+                         field.declaring_type().type_arguments().len(), 0)
         }
         none => { report.check("OrderGrid has a label field", 0, 1) }
     }
-    report.check_true("the scan refuses title by name",
-                      mentions(map.faults, "OrderGrid.title", "B1a"))
-    report.check_false("the scan does NOT refuse label",
-                       mentions(map.faults, "OrderGrid.label", "B1a"))
+    report.check_false("the scan no longer refuses title",
+                       mentions(map.faults, "OrderGrid.title", "generic"))
+    report.check_false("...and never refused label",
+                       mentions(map.faults, "OrderGrid.label", "generic"))
     match plan_named(map, "OrderGrid") {
         some(plan) => {
-            report.check_text("...and label survives into the plan while title does not",
-                              param_names(plan), "label")
+            report.check_text("BOTH @params bind now, the generic-declared one included",
+                              param_names(plan), "label,title")
         }
         none => { report.check("OrderGrid was planned", 0, 1) }
     }
 
     io.println("")
-    io.println("== 2b. B7 — a page whose chain holds a closed generic ==")
-    report.check_text("OrderGrid's generic ancestor",
-                      generic_ancestor(type_of(OrderGrid)), closed_grid)
-    report.check_text("the CONTROL: PlainGrid has none",
-                      generic_ancestor(type_of(PlainGrid)), "")
-    report.check_true("the scan refuses OrderGrid for its chain",
-                      mentions(map.faults, "OrderGrid is a @page", "closed generic"))
-    report.check_false("the CONTROL: PlainGrid is not refused",
-                       mentions(map.faults, "PlainGrid", "closed generic"))
+    io.println("== 2b. B7 is CLOSED — a page whose chain holds a closed generic ==")
+    // 0.1.40 constructed OrderGrid under `beansc run` and answered
+    // `unsupported` natively, so latte refused the whole chain at startup. Both
+    // backends construct it now, and this suite runs on both, so the row below
+    // is the measurement rather than a claim.
+    report.check_true("OrderGrid is usable — a generic ancestor is ordinary now",
+                      plan_named(map, "OrderGrid").is_some())
+    report.check_false("the scan does not refuse it for its chain",
+                       mentions(map.faults, "OrderGrid is a @page", "generic"))
+    match type_of(OrderGrid).initializer() {
+        some(ctor) => {
+            match ctor.call([]) {
+                ok(made) => {
+                    report.check_true("...and reflection actually constructs one",
+                                      made.type().qualified_name() ==
+                                      type_of(OrderGrid).qualified_name())
+                }
+                err(e) => { report.check_text("OrderGrid constructs", e.message(), "") }
+            }
+        }
+        none => { report.check("OrderGrid has an initializer descriptor", 0, 1) }
+    }
     match plan_named(map, "PlainGrid") {
         some(plan) => {
-            report.check_true("PlainGrid is usable", plan.usable())
+            report.check_true("the CONTROL: PlainGrid is usable", plan.usable())
             report.check_text("...and its inherited @param binds", param_names(plan), "label")
         }
         none => { report.check("PlainGrid was planned", 0, 1) }
     }
 
-    io.println("")
     io.println("== 3. every other refusal, each beside a control ==")
     report.check_true("a @page that is not a Component",
                       mentions(map.faults, "NotAComponent", "does not extend"))
@@ -545,7 +559,9 @@ fn main() {
     report.check_false("BadLayoutAmbiguous", is_usable(map, "BadLayoutAmbiguous"))
     report.check_false("BadLayoutLoop", is_usable(map, "BadLayoutLoop"))
     report.check_false("BadNoMethods", is_usable(map, "BadNoMethods"))
-    report.check_false("OrderGrid", is_usable(map, "OrderGrid"))
+    // OrderGrid is NOT in this list any more. It was refused for its generic
+    // ancestor while B7 was open; 0.1.41 constructs it on both backends, and
+    // § 2b asserts it is usable rather than this section asserting it is not.
     report.check_false("the map as a whole is ok", map.ok())
 
     io.println("")
@@ -747,56 +763,74 @@ fn main() {
     report.check_false("ParamWatch has been fed", new ParamWatch().empty() == false)
 
     io.println("")
-    io.println("== 10. B10 — a type name inside a string interpolation loses this file's imports ==")
+    io.println("== 10. B10 is CLOSED — a type name inside a string interpolation ==")
     //
-    // This section asserts a COMPILER BUG, deliberately, and it is the only
-    // place in this repo that does. BLOCKERS.md **B10**: a type name written
-    // inside `"{ }"` is resolved without the file's named-import bindings and
-    // falls back to composing the asking package's own name with the simple
-    // name. `pages.b:extends_named` exists because of it, and its whole
-    // contract — "`wanted` must be produced HERE, inside latte" — is only
-    // true while this holds.
+    // This section used to assert a COMPILER BUG, deliberately, and said so:
+    // "the day it is fixed, THIS GOLDEN GOES RED". BLOCKERS.md **B10** was
+    // that a type name written inside `"{ }"` resolved without the file's
+    // named-import bindings and fell back to composing the asking package's
+    // own name with the simple name, so a consumer's `type_of(Component)`
+    // read `<their package>.Component` — a name that exists nowhere.
     //
-    // So the day it is fixed, THIS GOLDEN GOES RED, and the reader is sent to
-    // B10 and to `extends_named`'s comment rather than discovering years later
-    // that a public function documents a hazard that no longer exists.
-    // `probes/p12_consumer_type_of` and `probes/p13_interpolation_scope` are
+    // beans #164 closed it in 0.1.41, the golden went red exactly as designed,
+    // and this section now asserts the fix from the same place: an ENTRY
+    // package, whose name is not `latte`, which is the only vantage point that
+    // could ever see the bug. Latte's own files could not — `Component` is
+    // declared in the package `pages.b` is written in, so the composed
+    // fallback was right by coincidence.
+    //
+    // `probes/p12_consumer_type_of` and `probes/p13_interpolation_fixed` are
     // the same measurement from a consumer's module and across every
     // expression form; both backends agree on every line of both.
     let outside: reflect.Type = type_of(Component)
-    let right: string = outside.qualified_name()
-    let wrong: string = "{type_of(Component).qualified_name()}"
-    io.println("   bound to a let, then interpolated: {right}")
-    io.println("   written inside the interpolation:  {wrong}")
+    let bound: string = outside.qualified_name()
+    let inside: string = "{type_of(Component).qualified_name()}"
+    io.println("   bound to a let, then interpolated: {bound}")
+    io.println("   written inside the interpolation:  {inside}")
     report.check_text("outside an interpolation, type_of(Component) is right",
-                      right, "latte.Component")
-    report.check_text("inside one, it composes the asking package's own name",
-                      wrong, "latte$entry.Component")
-    report.check_true("the right name names a type", reflect.find_type(right).is_some())
-    report.check_false("the wrong one names nothing", reflect.find_type(wrong).is_some())
+                      bound, "latte.Component")
+    report.check_text("and inside one it is the SAME name, from an entry package",
+                      inside, "latte.Component")
+    report.check_true("the name from outside names a type",
+                      reflect.find_type(bound).is_some())
+    report.check_true("and so does the one from inside — find_type round-trips now",
+                      reflect.find_type(inside).is_some())
 
-    // The control. A type declared in THIS file needs no import binding, so it
-    // cannot be lost by one, and it must read the same both ways — without it
-    // the two assertions above could not tell "the import was dropped" from
-    // "interpolation mangles every name".
+    // The negative control, and it is the one that makes the two lines above
+    // mean something. `latte$entry.Component` is the name the bug used to
+    // compose. It must name NOTHING — otherwise "find_type round-trips" would
+    // pass on a compiler that resolved every spelling to something.
+    report.check_false("the name B10 used to compose still names nothing",
+                       reflect.find_type("latte$entry.Component").is_some())
+
+    // The controls that were here before the fix, kept: a type declared in
+    // THIS file needs no import binding and could never be lost by one, and a
+    // dot-path reference was unaffected too — which is what said B10 was about
+    // named imports and not about interpolation in general. They are the
+    // reason the two assertions above can tell "imports are honoured" from
+    // "interpolation mangles nothing at all".
     let local_outside: reflect.Type = type_of(Home)
     report.check_text("control: a type declared here reads the same inside",
                       "{type_of(Home).qualified_name()}", local_outside.qualified_name())
-    // The second control: a dot-path reference is unaffected too, which is why
-    // B10 is about named imports and not about interpolation in general.
     let dotted: reflect.Type = type_of(reflect.Type)
     report.check_text("control: a dot-path type reads the same inside",
                       "{type_of(reflect.Type).qualified_name()}", dotted.qualified_name())
 
-    // What it costs, and the exact trap `extends_named` is public to avoid.
+    // What B10 cost, now recovered: the two spellings agree about a real
+    // subclass, inside an interpolation and out.
     report.check_true("is_assignable_from is right outside an interpolation",
                       outside.is_assignable_from(type_of(Home)))
-    report.check_false("and false inside one, for the same real subclass",
-                       "{type_of(Component).is_assignable_from(type_of(Home))}" == "true")
-    report.check_true("extends_named answers true for the name latte produced",
-                      extends_named(type_of(Home), right))
-    report.check_false("and false for the name a consumer's interpolation produces",
-                       extends_named(type_of(Home), wrong))
+    report.check_true("...and right inside one too, for the same real subclass",
+                      "{type_of(Component).is_assignable_from(type_of(Home))}" == "true")
+    report.check_true("extends_named answers true for the name from outside",
+                      extends_named(type_of(Home), bound))
+    report.check_true("...and true for the name from inside an interpolation",
+                      extends_named(type_of(Home), inside))
+    // extends_named's own negative control: a real name that is not an
+    // ancestor must still answer false, or the four trues above would pass on
+    // a function that answered true to everything.
+    report.check_false("extends_named still says no to a type that is not an ancestor",
+                       extends_named(type_of(Home), "std.reflect.Type"))
 
     io.println("")
     io.println("checks failed: {report.failures}")

@@ -11,22 +11,20 @@ ok   Todo's layout chain is two deep: 2
 ok   Todo's authorization requirements: 2
 ok   Todo is usable
 
-== 2. B1a — the refusal, its control, and the trap that reads false ==
-ok   THE TRAP: title's declaring type reports 0 type arguments: 0
-ok   ...while the receiver's chain reports the closed form: latte$entry.Grid<int>
-ok   the CONTROL: label is declared by a non-generic base, so it is accepted: 
-ok   the scan refuses title by name
-ok   the scan does NOT refuse label
-ok   ...and label survives into the plan while title does not: label
+== 2. B1a is CLOSED — the divergence, and the trap that hid it ==
+ok   the trap is gone: title's declaring type reports its arguments: 1
+ok   ...and names the closed form: latte$entry.Grid<int>
+ok   the CONTROL: label is declared by a non-generic base: 0
+ok   the scan no longer refuses title
+ok   ...and never refused label
+ok   BOTH @params bind now, the generic-declared one included: label,title
 
-== 2b. B7 — a page whose chain holds a closed generic ==
-ok   OrderGrid's generic ancestor: latte$entry.Grid<int>
-ok   the CONTROL: PlainGrid has none: 
-ok   the scan refuses OrderGrid for its chain
-ok   the CONTROL: PlainGrid is not refused
-ok   PlainGrid is usable
+== 2b. B7 is CLOSED — a page whose chain holds a closed generic ==
+ok   OrderGrid is usable — a generic ancestor is ordinary now
+ok   the scan does not refuse it for its chain
+ok   ...and reflection actually constructs one
+ok   the CONTROL: PlainGrid is usable
 ok   ...and its inherited @param binds: label
-
 == 3. every other refusal, each beside a control ==
 ok   a @page that is not a Component
 ok   a route that does not start with a slash
@@ -69,7 +67,6 @@ ok   BadLayoutNotALayout
 ok   BadLayoutAmbiguous
 ok   BadLayoutLoop
 ok   BadNoMethods
-ok   OrderGrid
 ok   the map as a whole is ok
 
 == 3b. every refusal message, sorted, so the golden reads them ==
@@ -91,8 +88,6 @@ ok   the map as a whole is ok
   latte$entry.NotAComponent is annotated @page but does not extend latte.Component, so it has nothing to render
   latte$entry.NotAPageButGuarded is annotated @authorize but is not a @page; the requirement would never be checked
   latte$entry.NotAPageButWrapped is annotated @layout but is neither a @page nor a latte.Layout, so nothing would ever wrap it
-  latte$entry.OrderGrid is a @page whose type chain includes the closed generic latte$entry.Grid<int>; reflection constructs it under beansc run and answers unsupported natively (BLOCKERS.md B1 and B7), so latte refuses it here rather than shipping a page that fails only as a binary
-  latte$entry.OrderGrid.title is a @param declared by latte$entry.Grid<int>; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time
 
 == 4. a refused page is never routed to ==
 ok   a healthy page routes
@@ -161,18 +156,20 @@ ok   the hand-written version DID — that is the trap: 2
 ok   a parameter that changed re-renders Watched: 2
 ok   ParamWatch has been fed
 
-== 10. B10 — a type name inside a string interpolation loses this file's imports ==
+== 10. B10 is CLOSED — a type name inside a string interpolation ==
    bound to a let, then interpolated: latte.Component
-   written inside the interpolation:  latte$entry.Component
+   written inside the interpolation:  latte.Component
 ok   outside an interpolation, type_of(Component) is right: latte.Component
-ok   inside one, it composes the asking package's own name: latte$entry.Component
-ok   the right name names a type
-ok   the wrong one names nothing
+ok   and inside one it is the SAME name, from an entry package: latte.Component
+ok   the name from outside names a type
+ok   and so does the one from inside — find_type round-trips now
+ok   the name B10 used to compose still names nothing
 ok   control: a type declared here reads the same inside: latte$entry.Home
 ok   control: a dot-path type reads the same inside: std.reflect.Type
 ok   is_assignable_from is right outside an interpolation
-ok   and false inside one, for the same real subclass
-ok   extends_named answers true for the name latte produced
-ok   and false for the name a consumer's interpolation produces
+ok   ...and right inside one too, for the same real subclass
+ok   extends_named answers true for the name from outside
+ok   ...and true for the name from inside an interpolation
+ok   extends_named still says no to a type that is not an ancestor
 
 checks failed: 0

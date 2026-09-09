@@ -16,7 +16,7 @@
 //   * **§ 4 proves a refused page is unroutable**, not merely reported. A rule
 //     that only writes a line into a report is a rule a host can ignore by
 //     never printing it.
-//   * **§ 6 is the audit.** Every one of `forms.b`'s 17 fault sites is tripped
+//   * **§ 6 is the audit.** Every one of `forms.b`'s 16 fault sites is tripped
 //     with its exact text and has a positive control beside it, and the tally
 //     at the end is what `test.sh`'s refusal-coverage leg compares against the
 //     source, so a new refusal cannot be added and quietly go untested.
@@ -157,14 +157,18 @@ pub class HiddenField {
     pub fn init() {}
 }
 
-// § 6.9 — BLOCKERS.md B1a, with its control in the same hierarchy:
+// § 6.9 — what BLOCKERS.md B1a used to cost, kept as a POSITIVE case:
 //
-//   Base        non-generic, declares `plain`   -> must be ACCEPTED
-//   Rows<T>     generic, declares `caption`     -> must be REFUSED
+//   Base        non-generic, declares `plain`     -> binds
+//   Rows<T>     generic, declares `caption`       -> binds, since beans 0.1.41
 //   OrderForm   extends Rows<int>, carries @form
 //
-// The obvious test for this reads FALSE for exactly the field that fails; see
-// `generic_declaration` in pages.b.
+// Until 0.1.41 a reflective write to `caption` was `ok` under `beansc run` and
+// `unsupported` as a native binary, so latte refused it at startup rather than
+// ship a form that worked in the edit loop and failed as a binary. beans #158
+// closed the divergence and this hierarchy now proves the write agrees — which
+// is worth more than the refusal was, and only on a suite that runs both
+// backends.
 
 pub class FormBase {
     @field pub plain: string = ""
@@ -386,6 +390,32 @@ fn section_one(r: Report, forms: FormMap) {
             r.yes("Signup is usable", plan.usable())
             r.eq("Signup's fields", field_list(plan), "age,email,name,score,subscribe")
             r.eq("Signup's type name", plan.type_name, "{here()}.Signup")
+        }
+    }
+    // § 6.9's hierarchy, asserted as a positive since beans 0.1.41: `caption` is
+    // declared by the generic `Rows<T>` and `plain` by the non-generic
+    // `FormBase`, and both bind. Until 0.1.41 the first was refused at startup
+    // because writing it was `ok` interpreted and `unsupported` natively, so
+    // this row only means something on a suite that runs both backends -- which
+    // this one does.
+    match plan_named(forms, "OrderForm") {
+        none => { r.eq("OrderForm was planned", "no", "yes") }
+        some(plan) => {
+            r.yes("a form inheriting from a closed generic is usable", plan.usable())
+            r.eq("...and binds the generic-declared field beside the plain one",
+                 field_list(plan), "caption,plain")
+        }
+    }
+    match plan_named(forms, "PlainOrderForm") {
+        none => { r.eq("PlainOrderForm was planned", "no", "yes") }
+        some(plan) => {
+            r.yes("the CONTROL: a non-generic base is unchanged", plan.usable())
+            r.eq("...and binds its own", field_list(plan), "plain")
+        }
+    }
+    match plan_named(forms, "Signup") {
+        none => { r.eq("Signup was planned", "no", "yes") }
+        some(plan) => {
             match plan.field_named("email") {
                 none => { r.eq("the renamed field is found by its wire name", "no", "yes") }
                 some(bound) => {
@@ -772,11 +802,6 @@ fn sites(forms: FormMap) -> List<Site> {
         faults_for(forms, "HiddenField"),
         "{at}.HiddenField.a is a @field but is not public, and reflection does not bypass visibility",
         good))
-    out.push(new Site("bind_fields / a @field declared by a generic type",
-        "BLOCKERS.md B1a",
-        faults_for(forms, "OrderForm"),
-        "{at}.OrderForm.caption is a @field declared by {at}.Rows<int>; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time",
-        faults_for(forms, "PlainOrderForm")))
     out.push(new Site("bind_fields / a @field a form cannot bind",
         "a field of a type no body carries",
         faults_for(forms, "BadKind"),
@@ -845,7 +870,7 @@ fn section_six(r: Report, forms: FormMap) {
             none => {}
         }
     }
-    r.eqi("every fault site in forms.b has a case", names.len(), 17)
+    r.eqi("every fault site in forms.b has a case", names.len(), 16)
 }
 
 // ---------------------------------------------------------- § 7 re-rendering

@@ -11,12 +11,17 @@
 //
 // Everything a startup refusal protects is a thing that would otherwise fail
 // at request time, in a message about the framework rather than the program.
-// The one that matters most is BLOCKERS.md **B1a**: a reflective write to a
-// field whose *declaring type* is generic is `ok` under `beansc run` and
-// `unsupported` as a native binary. A page bound that way works all through
-// the edit loop and breaks when it ships. The scan refuses exactly that field
-// — see `generic_declaration`, and read its comment before touching it, because
-// the obvious test for it is a question that always answers no.
+// The one that used to matter most was BLOCKERS.md **B1a**: a reflective write
+// to a field whose *declaring type* is generic was `ok` under `beansc run` and
+// `unsupported` as a native binary, so a page bound that way worked all through
+// the edit loop and broke when it shipped. beans 0.1.41 closed it (#158, #159)
+// and latte's reconstruction of it is gone; `test.sh` pins that compiler, so
+// the shape cannot come back under a supported one.
+//
+// What remains is a boundary rather than a divergence: a closed generic has no
+// reflective initializer on either backend, because a receiver-less operation
+// names no instantiation. `scan_pages` refuses a @page that IS one, and says
+// what to write instead.
 //
 // Nothing here imports std.io, std.fs, std.net, std.time, std.random or
 // std.crypto — `test.sh --wasm` builds the root package for
@@ -912,17 +917,29 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation, component_name: st
         return plan
     }
 
-    // BLOCKERS.md B1 and B7. A page is activated reflectively — that is what
-    // "no registry" costs — and reflection cannot construct a closed generic at
-    // all (B1: `initializer()` is `none`), while a NON-generic subclass of one
-    // has an initializer descriptor that constructs under `beansc run` and
-    // answers `unsupported` natively (B7). The second is the dangerous one: a
-    // page that renders all through the edit loop and returns a 500 as a
-    // binary. Latte refuses both here, by name, at startup.
-    let generic_base: string = generic_ancestor(described)
-    if generic_base != "" {
+    // BLOCKERS.md B1, and what is left of it in 0.1.41. A page is activated
+    // reflectively — that is what "no registry" costs — and a receiver-less
+    // operation on a generic declaration names no instantiation, so a closed
+    // generic has no reflective initializer. That is now a stated compiler
+    // boundary (`spec/SYNTAX.md`), not a divergence: both backends answer
+    // `none`, so a page of that shape fails the same way everywhere.
+    //
+    // What this used to refuse and no longer does is the SUBCLASS: 0.1.40
+    // constructed `OrderGrid extends Grid<int>` under `beansc run` and answered
+    // `unsupported` natively (B7), which is why the whole chain was refused
+    // here. 0.1.41 constructs it on both backends, so a page with a generic
+    // ANCESTOR is ordinary now, and only a page that IS one is refused.
+    // The check is "can this be activated", not "is this generic". A refusal
+    // written as `described.type_arguments().len() > 0` would never fire:
+    // annotation rows are filed on the OPEN declaration, so a scanned page type
+    // never arrives closed, and a guard that cannot fire is indistinguishable
+    // from one that passes. Asking for the initializer asks the real question,
+    // and catches a page with no zero-argument `init` for any other reason too
+    // — which used to be a 500 at request time. `check_layout` below has asked
+    // it this way all along.
+    if described.initializer().is_none() {
         plan.faults.push(
-            "{plan.type_name} is a @page whose type chain includes the closed generic {generic_base}; reflection constructs it under beansc run and answers unsupported natively (BLOCKERS.md B1 and B7), so latte refuses it here rather than shipping a page that fails only as a binary")
+            "{plan.type_name} is a @page with no reflective zero-argument initializer, so latte cannot activate it. A closed generic is one way to get here — a receiver-less reflective operation names no instantiation, so it has none on either backend (BLOCKERS.md B1, beans #159); give it a non-generic subclass and put @page on that. A class with no zero-argument `init` is the other.")
     }
 
     let route_text: string = argument_string(use, "route")
@@ -1022,14 +1039,6 @@ fn bind_params(plan: PagePlan, described: reflect.Type, declared: List<string>) 
             continue
         }
 
-        // BLOCKERS.md B1a. Read `generic_declaration` before changing this.
-        let generic: string = generic_declaration(described, field)
-        if generic != "" {
-            plan.faults.push(
-                "{plan.type_name}.{binding.field_name} is a @param declared by {generic}; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time")
-            continue
-        }
-
         if binding.required && !binding.from_route {
             plan.faults.push(
                 "{plan.type_name}.{binding.field_name} is @param(required: true) but route \"{plan.route.source}\" does not capture \"{binding.wire_name}\"")
@@ -1049,71 +1058,19 @@ fn bind_params(plan: PagePlan, described: reflect.Type, declared: List<string>) 
     }
 }
 
-/// Whether `field` is declared by a GENERIC type in `owner`'s ancestry, and by
-/// which one. `""` means it is not.
-///
-/// **The obvious test does not work, and writing it is how the divergence
-/// ships.** `field.declaring_type().type_arguments().len() > 0` reads **0** for
-/// exactly the fields that fail: a field's declaring type comes back as the
-/// OPEN `…Grid`, never the closed `…Grid<int>` (BLOCKERS.md B1a, measured on
-/// both backends by `probes/p10_factory_mount`).
-///
-/// What does work is the receiver's own base chain, which reports the closed
-/// form:
-///
-///     Grid<int>: …Grid<int>(args=1) -> …Node(args=0)
-///     OrderGrid: …OrderGrid(args=0) -> …Grid<int>(args=1) -> …Node(args=0)
-///
-/// so: walk the chain, strip each link's type arguments from its qualified
-/// name, and find the link the field says declares it. If THAT link carries
-/// type arguments, the field is generic-declared.
-///
-/// A field whose declaring type is not in the chain at all cannot happen for a
-/// field that came out of `owner.fields()`; if it does, latte says so rather
-/// than guessing, because guessing "accept" is the answer that ships the
-/// divergence.
-pub fn generic_declaration(owner: reflect.Type, field: reflect.Field) -> string {
-    let declared: string = field.declaring_type().qualified_name()
-    var walk: Option<reflect.Type> = some(owner)
-    for true {
-        match walk {
-            some(link) => {
-                if strip_type_arguments(link.qualified_name()) == declared {
-                    if link.type_arguments().len() > 0 { return link.qualified_name() }
-                    return ""
-                }
-                walk = link.base_type()
-            }
-            none => {
-                return "{declared}, which is not in {owner.qualified_name()}'s base chain"
-            }
-        }
-    }
-    return ""
-}
-
-/// The first link in `described`'s own chain that is a closed generic, or `""`.
-///
-/// This is the RECEIVER-side question, and it is a different one from
-/// `generic_declaration` above, which asks about a FIELD. They co-occur for a
-/// page — a `@param` can only be generic-declared if the page has a generic
-/// ancestor — and latte reports both, because they refuse different things: one
-/// says the page cannot be constructed natively, the other says one of its
-/// parameters cannot be written natively. A reader who fixed only the ancestor
-/// would still be holding the field problem.
-pub fn generic_ancestor(described: reflect.Type) -> string {
-    var walk: Option<reflect.Type> = some(described)
-    for true {
-        match walk {
-            some(link) => {
-                if link.type_arguments().len() > 0 { return link.qualified_name() }
-                walk = link.base_type()
-            }
-            none => { return "" }
-        }
-    }
-    return ""
-}
+// `generic_declaration` and `generic_ancestor` lived here until 0.1.41. They
+// were the base-chain reconstruction BLOCKERS.md B1a forced on latte: a
+// reflective write to a field declared by a generic type was `ok` under
+// `beansc run` and `unsupported` natively, and the obvious guard for it --
+// `field.declaring_type().type_arguments().len() > 0` -- read FALSE for exactly
+// the fields that failed, because a declaring type came back open. So latte
+// walked the receiver's chain, stripped each link's arguments, and matched the
+// link the field named.
+//
+// beans #158 made the write agree on both backends and #159 made
+// `declaring_type()` answer the closed form, so both the divergence and the
+// reason the guard could not see it are gone. Nothing reconstructs anything
+// now; `scan_pages` and `scan_form` bind such a field like any other.
 
 pub fn strip_type_arguments(name: string) -> string {
     match name.find("<") {
@@ -1128,43 +1085,39 @@ pub fn strip_type_arguments(name: string) -> string {
 /// they come from the runtime's own inheritance links and no name resolution
 /// happens on the way. `wanted` is the half a caller can get wrong.
 ///
-/// **BLOCKERS.md B10**, which supersedes the diagnosis in B8: a type name
-/// written **inside a string interpolation** is resolved without the file's
-/// named-import bindings and falls back to composing the asking package's own
-/// name with the simple name. So
+/// **BLOCKERS.md B10 is CLOSED** (beans #164, 0.1.41), and the hazard this
+/// function was written around is gone with it. It is recorded here because
+/// the shape of the API — a string argument rather than a `reflect.Type` — is
+/// what B10 left behind, and a reader who finds that odd deserves the reason.
+///
+/// What B10 was: a type name written **inside a string interpolation** was
+/// resolved without the file's named-import bindings, and fell back to
+/// composing the asking package's own name with the simple name. So
 ///
 /// ```beans
-/// extends_named(t, "{type_of(Component).qualified_name()}")   // latte$entry.Component — false, always
+/// extends_named(t, "{type_of(Component).qualified_name()}")   // was latte$entry.Component — false, always
 /// let base: reflect.Type = type_of(Component)
 /// extends_named(t, base.qualified_name())                     // latte.Component — right
 /// ```
 ///
-/// differ, in the same file, about the same type. The first names a type that
-/// does not exist, so every page a consumer owns fails the check and the scan
-/// finds nothing. It has nothing to do with which package asks: a named
-/// package gets the wrong answer inside an interpolation too, and the entry
-/// file gets the right one outside. `tests/pages.b` § 10 asserts both, on both
-/// backends, and goes red the day the compiler is fixed.
+/// disagreed, in the same file, about the same type. Latte's own callers could
+/// not trip it — `Component` is declared in the package `pages.b` is written
+/// in, so the composed fallback `latte.Component` was right by coincidence —
+/// and every consumer could, because their package is not `latte`. That
+/// asymmetry is why `tests/pages.b` § 10 measures it from an entry package,
+/// where latte's own file cannot. On 0.1.41 both spellings answer the same
+/// name, and § 10 asserts that they do.
 ///
-/// **Latte's own callers cannot trip it, and not because they are careful.**
-/// `Component` is declared in the package `pages.b` is written in, so the
-/// fallback name the bug composes — `<asking package>.Component` — is
-/// `latte.Component`, which is the right answer by coincidence. Rewriting
-/// `scan_pages`'s `let component_name` as an interpolation and running the
-/// whole gate fails nothing. Every consumer is a different story: their
-/// package is not `latte`, so the same spelling in their file yields a name
-/// that exists nowhere. That asymmetry is why this function takes the name
-/// from its caller and why § 10 measures it from an entry package, where
-/// latte's own file cannot.
+/// **The function stays, for the reason that always outlived B10:** it is a
+/// chain walk and not an `is_assignable_from`, so `strip_type_arguments` lets
+/// `Grid<Order>` match a `wanted` of `Grid` — what a framework asking "is this
+/// one of mine?" needs of a generic component. beans #169 taught
+/// `is_assignable_from` that an argument-free name denotes the declaration
+/// itself, so the two now agree on this case; the walk stays because the names
+/// it compares come from the runtime's own inheritance links and are never
+/// resolved by a name lookup.
 ///
-/// This stays a chain walk
-/// rather than an `is_assignable_from` for a second reason that outlives B10:
-/// `strip_type_arguments` lets `Grid<Order>` match a `wanted` of `Grid`, which
-/// is what `generic_ancestor` needs and what an assignability test does not
-/// offer.
-///
-/// This function is `pub` because a host package needs it; the caveat above is
-/// the whole reason its argument is a string rather than a `reflect.Type`.
+/// It is `pub` because a host package needs it.
 pub fn extends_named(described: reflect.Type, wanted: string) -> bool {
     var walk: Option<reflect.Type> = some(described)
     for true {
