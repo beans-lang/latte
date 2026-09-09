@@ -120,7 +120,7 @@ pub fn reserved_attributes() -> List<VocabRow> {
         new VocabRow("preserve", "preserve",
                      "The subtree is left alone by the differ."),
         new VocabRow("live", "live",
-                     "W7's signal tier. Refused today rather than accepted and ignored, because a subtree marked live that renders like any other is a promise the runtime does not keep."),
+                     "Every interpolated text run in this subtree is signal-bound: it compiles to live_text, the signals it reads subscribe to it, and a write patches that one text node with no render and no diff. An expression under it that reads no signal is a fault, not a value that renders once and never moves again."),
     ]
 }
 

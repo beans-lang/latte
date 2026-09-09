@@ -532,12 +532,27 @@ accepted: a generic component that lets the element type be inferred
 accepted: a comment mentioning partial class is not a declaration
 
 ======== live, and the bind: shapes ========
-refused: live on its own
-  | <span live>$self.ticks</span>
-  refusal.bx:5:7: error: a live subtree is not in this version — signals are W7, and marking a subtree live before they exist would compile to an ordinary render that never updates the way the attribute promises
+accepted: live on its own, beside a plain run
+  | <div><p live>$self.label: $self.ticks.get()</p><p>plain $self.label</p></div>
+  partial class Refusal {
+      pub override fn render(b: Builder) {
+          b.open(0, "div")  // refusal.bx:6
+          b.open(1, "p")
+          b.live_text(2, fn() -> string { return "{self.label}: {self.ticks.get()}" })
+          b.close()
+          b.open(3, "p")
+          b.text(4, "plain {self.label}")
+          b.close()
+          b.close()
+      }
+  }
+  
 refused: live with a value
   | <div live="yes">y</div>
-  refusal.bx:5:6: error: a live subtree is not in this version — signals are W7, and marking a subtree live before they exist would compile to an ordinary render that never updates the way the attribute promises
+  refusal.bx:5:6: error: live takes no value — write it on its own
+refused: live on a component tag
+  | <Badge live />
+  refusal.bx:5:8: error: live marks an element's subtree, not a component — a component renders itself, and the signals its own markup reads bind there. Put it on an element inside that component
 refused: bind:value on a <select>
   | <select bind:value={self.choice}><option>a</option></select>
   refusal.bx:5:9: error: bind:value on a <select> cannot set the initial selection: a select's value is not an attribute, it is which <option> carries selected. Write selected={...} on the option and on:change={...} for the write-back
@@ -622,5 +637,5 @@ accepted: no component tag at all
   | <p>plain</p>
   (no component tag, so no assertion)
 
-126 refusal(s) fired, 65 control(s) compiled
+126 refusal(s) fired, 66 control(s) compiled
 ======== markup refusals: every check passed ========

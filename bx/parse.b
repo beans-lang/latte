@@ -594,8 +594,22 @@ pub class Parser {
             return some(RefAttr.of(code, at))
         }
         if name == "live" {
-            self.report(at, "a live subtree is not in this version — signals are W7, and marking a subtree live before they exist would compile to an ordinary render that never updates the way the attribute promises")
-            return none
+            // The component test comes first, and it has to: this branch runs
+            // BEFORE the `if node.component` fork below, so accepting a
+            // LiveAttr here would let one through on a component tag and leave
+            // the emitter to refuse it — with its generic "not something a
+            // component tag can take", which says nothing about what `live`
+            // means or where to put it. The specific refusal further down was
+            // written, was never reachable, and its message was never read.
+            if node.component {
+                self.report(at, "live marks an element's subtree, not a component — a component renders itself, and the signals its own markup reads bind there. Put it on an element inside that component")
+                return none
+            }
+            if has_value {
+                self.report(at, "live takes no value — write it on its own")
+                return none
+            }
+            return some(LiveAttr.of(at))
         }
         if node.component {
             return self.classify_parameter(node, name, at, has_value, is_code, literal, code)

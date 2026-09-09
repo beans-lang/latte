@@ -1,0 +1,26 @@
+== 1. the framework owns a component's signals ==
+ok   it rendered: <p>0</p>
+ok   nothing was refused — the signal was NOT deaf: 
+ok   and the framework owned it: true
+ok   a write moved the page with no on_init anywhere: <p>3</p>
+
+== 2. THE CONTROL: a signal reflection cannot see ==
+ok   it renders: <p>0</p>
+ok   and it IS deaf, loudly: 0: live expression 1 read no signal
+ok   so a write moves nothing: <p>0</p>
+
+== 3. a view-model is attached, and its signals owned ==
+ok   the model was attached exactly once: 1
+ok   it knows its component: true
+ok   the page rendered: <p>0</p>
+ok   nothing was refused: 
+
+== 4. a command runs, and its guard is asked twice ==
+ok   the command can run: true
+ok   running it moved the page through the model's signal: <p>1</p>
+ok   the command now refuses: false
+ok   and running it anyway does nothing: <p>1</p>
+
+== 5. a command with no owner is inert ==
+ok   it cannot run: false
+ok   and running it did not fail

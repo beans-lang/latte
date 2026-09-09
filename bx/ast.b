@@ -277,6 +277,31 @@ pub class PreserveAttr extends Attr {
     }
 }
 
+/// `live` — the expressions in this subtree are signal-bound.
+///
+/// Every interpolated text run under it compiles to `b.live_text` instead of
+/// `b.text`: the expression is kept as a thunk, the signals it reads subscribe
+/// to it, and a write patches that one text node with no render and no diff.
+///
+/// It carries nothing and emits nothing of its own. Like `preserve` and `ref`
+/// it is an instruction to the framework rather than an attribute the wire
+/// ever sees.
+pub class LiveAttr extends Attr {
+    pub fn init(span: Span) {
+        super.init(span)
+    }
+
+    pub static fn of(span: Span) -> LiveAttr {
+        return new LiveAttr(span)
+    }
+
+    pub override fn name() -> string { return "live" }
+
+    pub override fn show() -> string {
+        return "live @{self.span.show()}"
+    }
+}
+
 // --------------------------------------------------------------------- nodes
 
 /// One node in a `.bx` tree.

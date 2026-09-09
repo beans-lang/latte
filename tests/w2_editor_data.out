@@ -56,7 +56,7 @@
     {"name": "ref", "detail": "ref={<place>}", "note": "On an element, a Reference to the node. On a component tag, an assignment of the child into an Option<T> place, written after every parameter and taking no sequence number."},
     {"name": "attrs", "detail": "attrs={<expr>}", "note": "A map of attributes splatted onto the element. Each still passes the name and URL checks at run time."},
     {"name": "preserve", "detail": "preserve", "note": "The subtree is left alone by the differ."},
-    {"name": "live", "detail": "live", "note": "W7's signal tier. Refused today rather than accepted and ignored, because a subtree marked live that renders like any other is a promise the runtime does not keep."}
+    {"name": "live", "detail": "live", "note": "Every interpolated text run in this subtree is signal-bound: it compiles to live_text, the signals it reads subscribe to it, and a write patches that one text node with no render and no diff. An expression under it that reads no signal is a fault, not a value that renders once and never moves again."}
   ],
   "voidElements": ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"],
   "rawTextElements": ["script", "style"],
