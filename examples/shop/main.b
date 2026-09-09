@@ -4,10 +4,10 @@
 //     beansc run   examples/shop/main.b
 //     beansc build examples/shop/main.b -o build/shop
 //
-// This is PLAN.md gate 5's last row. `examples/counter.bx` and
-// `examples/todo.b` both declare their components in the same file that mounts
-// them; nothing until now crossed a package boundary, let alone a module one.
-// Here the chain is four packages in three modules:
+// `examples/counter.bx` and `examples/todo.b` both declare their components
+// in the same file that mounts them; this is the first example that crosses
+// a package boundary, let alone a module one. Here the chain is four
+// packages in three modules:
 //
 //     shop (this file)  ->  shelf.Panel  ->  shelf.cards.Card  ->  shelf.atoms.Badge
 //                                    all three extend  latte.Component

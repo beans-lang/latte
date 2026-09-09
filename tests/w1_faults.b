@@ -1082,11 +1082,11 @@ fn root_shape(a: Applier, id: int) -> string {
 /// attribute or handler edit with the cursor on a text node was stored on that
 /// node and dropped again by `Applier.emit`. `latte.js` applies the same
 /// stream to a real DOM, where `node.textContent = body` on an element WIPES
-/// its children — two appliers, two answers to one batch, and gate 3 blind to
-/// it because gate 3 only ever feeds the applier batches the differ made.
+/// its children — two appliers, two answers to one batch, invisible to any
+/// suite that only ever feeds the applier batches the differ made.
 ///
 /// Every one of the seven is refused now, in both halves, with the same
-/// sentence byte for byte (lanes/W5.md, THE APPLIER CONTRACT). What is pinned
+/// sentence byte for byte. What is pinned
 /// here is the sentence and the state afterwards, and the state is the seed
 /// every time — a refusal that reports and then does the thing anyway is not a
 /// refusal.
@@ -1672,8 +1672,8 @@ fn serializer_fault_sites(r: Report) {
 /// `take_attribute_slot` first, which refuses when the run is closed and
 /// returns without writing. So the coarser builder rule stands in front of the
 /// finer serializer one, exactly the way `xlink:href`'s namespace rule stood
-/// in front of its scheme check in W2's lane — and the day one of these six
-/// stops being refused upstream, this section goes red rather than the site
+/// in front of its scheme check — and the day one of these six stops being
+/// refused upstream, this section goes red rather than the site
 /// quietly becoming reachable.
 fn swallowed_upstream(r: Report) {
     io.println("== 4 the builder refuses in front of \"is not a child position\"")
@@ -1736,7 +1736,7 @@ fn swallowed_upstream(r: Report) {
 /// APPLIER CONTRACT exists to stop. What both halves must do first is agree on
 /// the CONTENT, and that is what is pinned here; whether a stray frame also
 /// earns a sentence is a contract question and belongs to whoever owns both
-/// halves. lanes/W1.md, SEVENTH AGENT, says so and names the cost.
+/// halves.
 fn strays_read_the_same_way(r: Report) {
     io.println("== 5 a stray attribute frame reads the same to both walkers")
 

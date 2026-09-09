@@ -1,9 +1,9 @@
-// PLAN.md gate 1 (the serializer half) and gate 2 (constant folding).
+// The serializer, and constant folding.
 //
 // Every case is rendered TWICE — once with `b.fold` on and once off — and the
-// two HTML strings must be byte-identical. That is gate 2 as PLAN.md words it:
-// "the folded string equals what the unfolded walk would have produced, over
-// every case in the html suite". The case list lives here rather than in a
+// two HTML strings must be byte-identical: the folded string must equal what
+// the unfolded walk would have produced, over every case in this suite. The
+// case list lives here rather than in a
 // shared fixture package because a package under a module root cannot import
 // that root ("a package cannot import its own module root"), so a fixture
 // package that builds frames has no spelling; putting the corpus in the

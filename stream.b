@@ -1,37 +1,31 @@
 // Streaming rendering: a page whose slow regions arrive after the rest of it.
 //
-// The shape, from PLAN.md § "Streaming rendering":
+// A page opts in with `@stream`, per page rather than per component, so
+// "this page must work without JavaScript" is a choice an author makes once.
+// A region that is not ready renders as a placeholder,
+// `<latte-slot id="s3"></latte-slot>`; its content follows later, at the end
+// of the body, as `<latte-chunk for="s3">…</latte-chunk>`. A chunk is a
+// custom element, never a script — `latte.js` holds a MutationObserver that
+// moves the content into the placeholder and removes the wrapper, so the
+// strict CSP (`script-src 'self'`, no `unsafe-inline`) needs nothing loosened
+// for streaming.
 //
-//   * A page opts in with `@stream`. It is per PAGE and not per component
-//     precisely so that "this page must work without JavaScript" stays a
-//     choice an author makes once, in one place.
-//   * A region that is not ready renders as a placeholder,
-//     `<latte-slot id="s3"></latte-slot>`, and its content arrives later as
-//     `<latte-chunk for="s3">…</latte-chunk>` at the end of the body.
-//   * A chunk is a CUSTOM ELEMENT, never a script. `latte.js` holds a
-//     MutationObserver, moves the content into the placeholder and removes the
-//     wrapper — so the strict CSP (`script-src 'self'`, no `unsafe-inline`)
-//     holds with nothing loosened for streaming.
-//
-// The seal, and why it exists
-// ---------------------------
+// ## The seal, and why it exists
 //
 // A MutationObserver watching the body sees `<latte-chunk>` the moment the
-// parser OPENS it, which is long before its content is complete: the bytes
-// after it are still arriving. An observer that moved the content then would
-// move a fragment of it and lose the rest, silently, and only for a chunk that
-// happened to straddle a network boundary — which is every chunk that matters.
+// parser opens it — long before its content is complete, since the bytes
+// after it are still arriving. Moving the content then would move a fragment
+// of it and silently lose the rest, for exactly the chunks that straddled a
+// network boundary. So each chunk is followed by
+// `<latte-seal for="s3"></latte-seal>`: the HTML parser cannot insert the
+// seal until it has read `</latte-chunk>`, so a seal in the DOM is the
+// parser's own proof that the chunk before it is whole. It costs 30 bytes per
+// chunk and is the only such signal available without an inline script.
 //
-// So each chunk is followed by `<latte-seal for="s3"></latte-seal>`. The HTML
-// parser cannot insert the seal into the document until it has read
-// `</latte-chunk>`, so a seal in the DOM is the parser's own statement that the
-// chunk before it is whole. It costs 30 bytes per chunk and it is the only
-// signal available without an inline script.
-//
-// Nothing here does any I/O. `StreamDocument` produces bytes and `ChunkReader`
-// consumes them; who writes them to a socket is the host's business
-// (espresso's `context.begin_stream()`), which is what keeps this file inside
-// the module root and the wasm leg green.
+// Nothing here does I/O. `StreamDocument` produces bytes and `ChunkReader`
+// consumes them; writing them to a socket is the host's business (espresso's
+// `context.begin_stream()`), which keeps this file inside the module root
+// and the wasm leg green.
 package latte
 
 import std.fmt
@@ -116,11 +110,11 @@ pub fn html_forges_framing(html: string) -> bool {
 
 /// A region whose content arrives in a later chunk.
 ///
-/// Its first render writes the placeholder; once `ready` is true it renders its
-/// body. That is PLAN.md's "its first render emits a placeholder" spelled as an
-/// ordinary component, so streaming needs no special case anywhere in the
-/// builder, the serializer, the differ or the applier: a chunk arriving is a
-/// branch flip, and a branch flip is something all four already do.
+/// Its first render writes the placeholder; once `ready` is true it renders
+/// its body instead. Streaming a region is therefore an ordinary component
+/// with a branch in `render`, so it needs no special case anywhere in the
+/// builder, the serializer, the differ or the applier — a chunk arriving is
+/// a branch flip, and a branch flip is something all four already do.
 ///
 /// The two arms carry DIFFERENT sequence numbers, which is what the markup
 /// compiler emits for an `if` (see the generated `examples/counter.b`). The
@@ -282,9 +276,9 @@ pub class StreamDocument {
 /// `chunk_sealed`, then more `markup`, and exactly one `done`.
 ///
 /// How the text divides into `markup` and `chunk_body` events depends on how
-/// the bytes arrived. What those events CONCATENATE to does not, and that is
-/// the property gate 8 asserts at every byte split — the same property, stated
-/// the same way, as espresso's multipart parser.
+/// the bytes arrived. What those events CONCATENATE to does not — checked
+/// the same way espresso's multipart parser is: feed the same bytes split at
+/// different points and compare.
 pub enum ChunkEvent {
     markup(text: string)
     chunk_open(id: string)

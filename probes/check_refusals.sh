@@ -3,9 +3,10 @@
 #
 # A probe's answer is half "this works" and half "this is refused, with this
 # message". The second half rots silently: a compiler that starts accepting a
-# shape the design was built around leaves ANSWERS.md confidently wrong. So
-# each `probes/*_bad/` holds a program that must NOT compile and the exact
-# answer beansc gave it, and this script diffs them.
+# shape the design was built around leaves the recorded refusal confidently
+# wrong, with nothing to notice. So each `probes/*_bad/` holds a program that
+# must NOT compile and the exact answer beansc gave it, in `expected.txt`, and
+# this script diffs them.
 #
 # Adding a refusal means adding `<name>_bad/main.b`, `<name>_bad/beans.pot`
 # and `<name>_bad/expected.txt` — this script finds it by shape, so a new one

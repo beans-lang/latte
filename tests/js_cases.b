@@ -1,15 +1,17 @@
 // tests/js_cases.b — the fixtures the browser applier is judged against.
 //
-// PLAN.md gate 3 is "apply equivalence", and it names TWO appliers: "a
-// reference applier in Beans over thousands of random trees and mutations,
-// **and** the real `latte.js` applier over a small DOM, both required to land
-// on the serializer's HTML of the new tree." `tests/apply.b` is the first half.
+// Apply equivalence needs TWO appliers checked against each other: a
+// reference applier in Beans, over thousands of random trees and mutations,
+// **and** the real `latte.js` applier over a small DOM, both required to
+// land on the serializer's HTML of the new tree. `tests/apply.b` is the
+// first half.
 // This file is the input to the second: it drives real components through a
 // real `Renderer` and a real `Differ`, and prints — as a JavaScript source
 // file — every batch that came out, together with three things the browser has
 // to reproduce for each one:
 //
-//   `h`  the SERIALIZER's HTML of the new tree. The thing gate 3 names.
+//   `h`  the SERIALIZER's HTML of the new tree — what equivalence is judged
+//        against.
 //   `a`  the Beans applier's HTML. Equal to `h`, and emitted separately so a
 //        browser mismatch says WHICH of the two it disagrees with.
 //   `d`  the Beans applier's frame dump. The strongest of the three: it is the
@@ -23,8 +25,8 @@
 //
 // The refusal cases are NOT here. They are hand-built batches with no Beans
 // counterpart yet — apply.b does not implement the kind rules — and they live
-// in `tests/js_apply.js` beside the expectations the contract fixes. See
-// lanes/W5.md § "THE APPLIER CONTRACT".
+// in `tests/js_apply.js` beside the expectations that fix what the browser
+// applier must do with them.
 package main
 
 import std.io
@@ -459,11 +461,10 @@ fn case_hollow() -> Case {
 // against strings someone typed twice — the one way two implementations of one
 // sentence stay in step.
 //
-// The KIND rules are not here. `apply.b` does not implement them yet (the
-// contract is in lanes/W5.md and W1 owns the Beans half), so it has no
-// expectation to emit; those cases live in `tests/js_apply.js` with the
-// contract's text beside them. When the Beans half lands, move them here and
-// the transcription goes away.
+// The KIND rules are not here. `apply.b` does not implement them yet, so it
+// has no expectation to emit; those cases live in `tests/js_apply.js` with
+// the contract's text beside them. When the Beans half lands, move them here
+// and the transcription goes away.
 
 /// One child of every kind, laid end to end so a probe can address any of them
 /// by index: 0 element, 1 text, 2 markup, 3 region, 4 fragment, 5 boundary,

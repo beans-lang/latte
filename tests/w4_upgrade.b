@@ -1,10 +1,9 @@
 // tests/w4_upgrade.b — the WebSocket upgrade is bound to the session cookie.
 //
-// PLAN.md's security table, row "cross-site WebSocket hijacking": *SameSite
-// does not protect a handshake, so the upgrade checks `Origin` **and the
-// circuit id must match the session cookie**.* The Origin half was there. The
-// session half was not, and the way it was missing is the shape RULES.md calls
-// "the refusal that never runs":
+// Cross-site WebSocket hijacking: SameSite does not protect a handshake, so
+// the upgrade checks `Origin` **and the circuit id must match the session
+// cookie**. The Origin half was there. The session half was not, and the way
+// it was missing is the shape RULES.md calls "the refusal that never runs":
 //
 //   * `EndpointOptions.session_cookie` said `"sid"`. `map_pages` sets
 //     `latte_session`. So `context.request.cookie(...)` answered `none` for
@@ -45,8 +44,8 @@
 // never printed. A session id is 256 random bits and a circuit id is another
 // 256, so neither is printed either — what is printed is their shape and the
 // answers to questions about them. Batch bodies are never spelled out here:
-// the wire format is W1's and inventing its bytes in this file would be
-// asserting a photograph. What is asserted is that the replayed batch is
+// the wire format belongs to `wire.b` and inventing its bytes in this file
+// would be asserting a photograph. What is asserted is that the replayed batch is
 // **the same string** the circuit first sent, which is the property this suite
 // is about.
 package main
@@ -123,8 +122,8 @@ const WS_KEY: string = "AAAAAAAAAAAAAAAAAAAAAA=="
 /// a time.
 ///
 /// One byte at a time on purpose: the 101 head and the `hello` frame behind it
-/// arrive in ONE TCP segment natively and TWO under the interpreter (W3's
-/// finding, written up in `tests/circuit_live.b`). A buffered read would eat
+/// arrive in ONE TCP segment natively and TWO under the interpreter — a
+/// finding written up in `tests/circuit_live.b`. A buffered read would eat
 /// the frame on one backend and not the other, and the socket handed to
 /// `Connection.wrap` must start exactly at the first frame byte.
 fn read_head(stream: net.TcpStream) -> string {

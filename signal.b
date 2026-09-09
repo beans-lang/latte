@@ -1,29 +1,12 @@
-// `Signal<T>` and the `live` subtree — PLAN.md's third render tier.
+// `Signal<T>` and the `live` subtree: latte's cheapest update path. A field
+// change re-renders a component and a parameter change re-renders a child,
+// but a signal write does neither — no render, no diff. It re-evaluates just
+// the one bound expression and, if the text changed, patches that one text
+// node directly. See `LiveBinding.refresh` for how.
 //
-// The first two tiers both end in a render: a field changes and `notify()`
-// runs one component's `render(b)`; a parameter changes and the child's
-// `render(b)` runs if `should_render` agrees. This tier does not.
-//
-// > | a `Signal` the markup marked `live` | the one bound expression. No
-// > render pass, no diff. | one edit |
-//
-// Both halves of that sentence are load-bearing and they are what this file
-// costs its complexity for:
-//
-// * **No render pass.** A signal write never calls `Renderer.mark`, so the
-//   dirty set does not grow, `flush()` has nothing to do, and `render_count`
-//   — which `Renderer.finish()` derives from `Builder.diffed`, and which only
-//   `flush()` and `mount()` can move — cannot go up. That is the row gate 6
-//   was missing.
-// * **No diff.** Re-diffing the component would be O(its frames), which is
-//   what the second tier already costs; a third tier that costs the same as
-//   the second is a tier worth not having (PLAN.md D2). So a live binding
-//   records WHERE its text node sits — the same child indices the differ
-//   would have computed, from the same span walker — and a write emits the
-//   `step_in … set_text … step_out` for that one node directly.
-//
-// Nothing here imports std.io, std.fs, std.net, std.time or std.random. See
-// beans.pot and `test.sh --wasm`.
+// This file must stay free of std.io, std.fs, std.net, std.time and
+// std.random: it also compiles for wasm32-unknown-unknown. See beans.pot and
+// `test.sh --wasm`.
 package latte
 
 // ---------------------------------------------------------------- the cell
@@ -32,27 +15,21 @@ package latte
 // link, and the read/write protocol. `Signal<T>` holds one rather than
 // extending it, so nothing here depends on how a generic class inherits.
 
-/// One signal's subscribers, and the link back to the page that lets a read
+/// One signal's subscribers, plus the link back to the page that lets a read
 /// know which binding is asking.
 ///
-/// **Why the owner is needed at all.** A read has to record itself into "the
-/// binding currently being evaluated", and that value belongs to the PAGE —
-/// one per `Registry`, which every `Builder` in a page shares. A module-level
-/// singleton would have been the usual place for it and Beans does not have
-/// one: a `const` is folded into its uses and "there is no composite constant:
-/// with no storage there is nothing for a list or an object to live in"
-/// (spec/SYNTAX.md, *Module constants*). A `static` field on a class would
-/// have storage — and would be one location shared by every page in the
-/// process, which is a data race the moment two circuits run on two threads,
-/// and a wrong answer (a read on one page attaching to a binding on another)
-/// before it is ever a crash. So the scope is per page, and a cell reaches its
-/// page through the component that owns it.
+/// The "binding currently being evaluated" has to live somewhere every read
+/// can reach. It can't be a module-level `const` (folded into its uses, no
+/// storage) or a `static` field (one slot shared by every page in the
+/// process — a data race across threads, and a wrong answer even on one
+/// thread, since a read on one page could attach to a binding on another).
+/// So it lives on the `Registry`, one per page, and a cell reaches its page
+/// through the component that owns it.
 ///
-/// Both links are `weak` and for the same reason `MountHandle.sink` is: the
-/// page owns the component, which owns the signal, so the edges back are the
-/// only ones in the design with no reason to exist. The zeroing read is what
-/// makes a signal written after its component was disposed a no-op instead of
-/// a write into a dead page.
+/// Both links are `weak`, same as `MountHandle.sink`: the page owns the
+/// component, which owns the signal, so these back-links have no reason to
+/// keep anything alive. A zeroed `owner` after the component is disposed
+/// makes a write after disposal a no-op instead of a write into a dead page.
 pub class Cell {
     weak owner: Option<Component> = none
     /// Bindings by binding id. A Map and not a List because Beans has no
@@ -273,10 +250,10 @@ pub class LiveBinding {
     /// `false` means no edit can be addressed to it, and there is exactly one
     /// way that happens on a well-formed buffer: an ancestor element carries
     /// `preserve`, and the differ emits nothing under a preserved element
-    /// either (`Differ.pair`, D6) because something else owns what is under
-    /// there now. The frame is still rewritten, so the serializer and the next
-    /// real render both see the new value; only the wire is silent, which is
-    /// what `preserve` asks for.
+    /// either (see `Differ.pair` in diff.b) because something else owns what
+    /// is under there now. The frame is still rewritten, so the serializer
+    /// and the next real render both see the new value; only the wire is
+    /// silent, which is what `preserve` asks for.
     fn resolve(frames: Frames) -> bool {
         if self.path_ready { return self.path_ok }
         self.path_ready = true

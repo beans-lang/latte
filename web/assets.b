@@ -1,40 +1,24 @@
 // `web/assets.b` — the route that serves `js/latte.js`.
 //
-// `security_headers` sends `script-src 'self'`, and until this file there was
-// nothing on `'self'` to load: no `.b` file in this repo served the client, so
-// the policy pointed at whatever a deployment happened to put there. A CSP
-// naming an origin that serves nothing is not a control, it is a sentence.
-//
-// It is in `latte.web` and not at the module root because it reads a file, and
-// `beans.pot` keeps the module root free of I/O so `test.sh --wasm` holds for
-// every consumer. The shell that *points* at this route is `shell.b`, at the
-// module root, where it does no I/O at all.
+// `security_headers` sends `script-src 'self'`, so something has to be
+// servable from `'self'`; this is that route. It lives in `latte.web`, not
+// the module root, because it reads a file and the module root stays I/O
+// free so `test.sh --wasm` holds for every consumer. `shell.b`, at the
+// module root, only points at this route's path — it does no I/O itself.
 //
 // ## Middleware, not a route
 //
-// For the same reason `map_pages` is: latte owns paths under `/_latte/`, and a
-// second table in espresso's router is a second place they can disagree. A
-// request this does not answer falls through to `next`, so an application's
-// own routes still work beside it.
+// latte owns every path under `/_latte/`; registering `map_client` and
+// `map_asset` as espresso middleware, rather than router entries, keeps that
+// ownership in one place. A request that does not match falls through to
+// `next`, so an application's own routes still work beside it.
 //
-// ## The file is read ONCE, at registration, and a read that fails refuses
+// ## The file is read once, at registration
 //
-// Reading per request would put a `stat` and a 108 KB read on every page load,
-// and — worse — a deployment that started in the wrong directory would serve
-// 500s that look like a browser problem. Reading at registration means
-// `map_client` answers `err` while the application is still starting, naming
-// the path it tried. There is no fall-back to an empty script: a page whose
-// client is a zero-byte file is a page whose every button silently does
-// nothing.
-//
-// **The path is resolved by the process's working directory, and that is a
-// deferral with a name.** A deployment must run from the directory that holds
-// `js/latte.js`, or pass `ClientOptions.file`. Closing it means embedding the
-// client into the package as a Beans constant plus a `test.sh` leg that
-// regenerates and diffs it — the packaging `js/latte.js`'s own header calls
-// missing, the way the `examples/markup` leg already regenerates
-// `examples/counter.b`. That is a lane of its own; until it lands, the failure
-// is loud and at startup rather than quiet and in a browser.
+// Not per request: that would add a `stat` and a 108 KB read to every page
+// load, and would let a deployment started in the wrong directory serve
+// 500s that look like a browser problem instead of failing at startup. See
+// `map_client` for what a failed or empty read does.
 package web
 
 import espresso
@@ -42,10 +26,11 @@ import std.fs
 
 /// Where `map_client` serves the client, and what `shell.b` points at.
 ///
-/// `latte.CLIENT_PATH` is the same string. A package under `latte/` may not
-/// import its own module root, so — like the four `WAKE_*` markers above — it
-/// is spelled twice, and `tests/w9_shell.b` § 1 asserts the two are equal so
-/// the drift is a failing test rather than a page whose script is a 404.
+/// `latte.CLIENT_PATH` is the same string, spelled twice because a package
+/// under `latte/` may not import its own module root — the same reason
+/// `web.b`'s `WAKE_PUSH`/`WAKE_TICK`/`WAKE_GONE`/`WAKE_MESSAGE` duplicate
+/// `latte`'s. `tests/w9_shell.b` § 1 asserts the two paths are equal, so
+/// drift is a failing test rather than a page whose script 404s.
 pub const CLIENT_PATH: string = "/_latte/latte.js";
 
 /// The path `map_circuit` is normally registered on. `latte.SOCKET_PATH` is
@@ -86,10 +71,20 @@ pub class ClientOptions {
 
 // ---------------------------------------------------------------- the routes
 
-/// Serve the latte client script.
+/// Serves the latte client script.
 ///
-/// Answers `err` — before the application ever listens — when the file cannot
-/// be read or is empty.
+/// Reads `options.file` once, at registration, and refuses — before the
+/// application ever listens — if the read fails or the file is empty. There
+/// is no fallback to an empty script: a zero-byte client is a page whose
+/// every button silently does nothing.
+///
+/// `options.file` is resolved against the process's working directory, so a
+/// deployment must run from the directory that holds `js/latte.js`, or set
+/// `ClientOptions.file`. The client is not embedded into the package; the
+/// generator and `test.sh` leg that would regenerate and diff an embedded
+/// copy — the way `examples/markup` already does for `counter.bx` — has not
+/// been built, so a wrong working directory fails loudly at startup instead
+/// of serving a stale file.
 pub fn map_client(app: espresso.WebApplication,
                   options: ClientOptions) -> Result<bool> {
     var source: string = ""

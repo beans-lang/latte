@@ -301,11 +301,10 @@ fn attach_message() -> string {
 }
 
 fn range_message(h: int, start: int, count: int) -> string {
-    // The count rides on `c`, not `n`. W7 moved it there while this lane was
-    // being written: `n` is the message sequence on EVERY client message and is
-    // read before the kind, so a count on `n` would be judged by the sequence
-    // check and "a range must be two non-negative numbers" would never run.
-    // See wire.b's comment at the range decode.
+    // The count rides on `c`, not `n`: `n` is the message sequence on EVERY
+    // client message and is read before the kind, so a count on `n` would be
+    // judged by the sequence check and "a range must be two non-negative
+    // numbers" would never run. See wire.b's comment at the range decode.
     return "\{\"t\":\"range\",\"h\":{h},\"s\":{start},\"c\":{count}\}"
 }
 

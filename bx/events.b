@@ -9,11 +9,11 @@
 // forbid.
 //
 // **The table and `latte.Builder` are one contract.** Every row here is a
-// method W1's Builder declares, typed to the family in the second column.
-// Five families exist because five event classes exist — `MouseEvent`,
-// `InputEvent`, `KeyboardEvent`, `SubmitEvent` and `FocusEvent`
-// (`probes/BUILDER.md`). An event with no family is not in the table, and its
-// refusal says so rather than pretending.
+// method `Builder` declares, typed to the family in the second column. Five
+// families exist because five event classes exist — `MouseEvent`,
+// `InputEvent`, `KeyboardEvent`, `SubmitEvent` and `FocusEvent`. An event
+// with no family is not in the table, and its refusal says so rather than
+// pretending.
 //
 // The family is not used for emission — the author writes the closure's
 // parameter type themselves, exactly as they would in hand-written builder

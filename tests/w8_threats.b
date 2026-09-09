@@ -1,16 +1,16 @@
-// tests/w8_threats.b — PLAN.md's threat table, one section per row.
+// tests/w8_threats.b — latte's threat table, one section per row.
 //
-// PLAN.md gate 10: "one case per threat row asserting the refusal, plus
-// hostile frames that must never panic and never leak." This file is the
-// first half; `tests/w8_hostile.b` is the second.
+// One case per threat row asserting the refusal, plus hostile frames that
+// must never panic and never leak. This file is the first half;
+// `tests/w8_hostile.b` is the second.
 //
 // **Every refusal here has a positive control beside it, and the control
 // differs from the refusal in exactly one thing.** RULES.md § "The refusal
-// that never runs" is about the four bugs W2 found in refusals that had been
-// written and never exercised — three live refusals with a wrong edge, and one
-// live refusal that no input could reach because a coarser rule upstream
-// swallowed it. Without a control you cannot tell "refused for the right
-// reason" from "refused earlier, for a different one".
+// that never runs" is about four bugs found in refusals that had been
+// written and never exercised — three live refusals with a wrong edge, and
+// one live refusal that no input could reach because a coarser rule
+// upstream swallowed it. Without a control you cannot tell "refused for the
+// right reason" from "refused earlier, for a different one".
 //
 // **The roll-call at the end is derived, not written.** `Report.row` marks the
 // row a check belongs to and every check records it, so the summary is a
@@ -20,15 +20,17 @@
 //
 // **A row that lands on a control latte does not have FAILS.** It is not
 // silently marked "not covered" and it is not asserted against what the code
-// happens to do today: the golden holds what PLAN.md says must happen, the run
-// prints what happens, and the diff is the gap. A failing row someone can see
-// beats a green one that pinned a hole.
+// happens to do today: the golden holds what the threat table says must
+// happen, the run prints what happens, and the diff is the gap. A failing
+// row someone can see beats a green one that pinned a hole.
 //
-// Proving the cases are live is `probes/w8_mutate.sh`: it breaks each guard a
-// row names in BOTH directions — force-allow, which must turn the refusal
-// case red, and force-refuse, which must turn the control red — and reports
-// any case that survived either. A guard asserted in one direction only is the
-// W6 `sound()` shape: forcing it to `return true` left a whole file green.
+// Proving each case is actually live — and not merely present — means
+// breaking each guard a row names in BOTH directions: force-allow, which
+// must turn the refusal case red, and force-refuse, which must turn the
+// control red. A guard asserted in one direction only proves nothing:
+// forcing `Placement.sound()` to `return true` unconditionally, for
+// example, would leave this whole file green. No tool in this repo runs
+// that sweep automatically yet.
 package main
 
 import espresso
@@ -77,7 +79,7 @@ pub class Report {
     pub fn init() {}
 
     /// Open a threat-table row. Prints its header so a reader can walk the
-    /// table down the golden in PLAN.md's order.
+    /// table down the golden in row-number order.
     pub fn row(number: int, slug: string) {
         var made: RowTally = new RowTally()
         made.number = number
@@ -270,9 +272,9 @@ fn main() {
 
 // ======================================================================= 1
 //
-// | XSS through interpolated text | every `$expr` is escaped at the
-// | serializer **and** at the applier. `$html` is the only bypass, named to be
-// | greppable, and the gate counts its uses. |
+// XSS through interpolated text: every `$expr` is escaped at the serializer
+// **and** at the applier. `$html` is the only bypass, named to be
+// greppable, and the gate counts its uses.
 
 fn row1_text(r: Report) {
     r.row(1, "XSS through interpolated text")
@@ -328,8 +330,8 @@ fn row1_text(r: Report) {
 
 // ======================================================================= 2
 //
-// | XSS through attribute context | attribute values are always quoted and
-// | escaped for attribute context. |
+// XSS through attribute context: attribute values are always quoted and
+// escaped for attribute context.
 
 fn row2_attribute(r: Report) {
     r.row(2, "XSS through attribute context")
@@ -428,15 +430,15 @@ fn row2_attribute(r: Report) {
 
 // ======================================================================= 3
 //
-// | XSS through a URL attribute | `href`, `src`, `action`, `formaction`,
-// | `poster` and `data` pass a scheme allowlist: http, https, mailto, tel,
-// | relative. `javascript:` and `data:` are replaced with an inert value and
-// | logged. |
+// XSS through a URL attribute: `href`, `src`, `action`, `formaction`,
+// `poster` and `data` pass a scheme allowlist — http, https, mailto, tel,
+// relative. `javascript:` and `data:` are replaced with an inert value and
+// logged.
 
 fn row3_url(r: Report) {
     r.row(3, "XSS through a URL attribute")
 
-    // The refusal, on every attribute PLAN.md names plus `xlink:href`, which
+    // The refusal, on every attribute named above plus `xlink:href`, which
     // is the SVG one and the one RULES.md tells the story about.
     let named: List<string> = ["href", "src", "action", "formaction",
                                "poster", "data", "xlink:href"]
@@ -570,9 +572,9 @@ fn row3_url(r: Report) {
 
 // ======================================================================= 4
 //
-// | XSS through a raw-text element | interpolation inside `<script>` and
-// | `<style>` is **refused at compile time**, because the compiler knows the
-// | tag. `<textarea>` and `<title>` use their own escaping rules. |
+// XSS through a raw-text element: interpolation inside `<script>` and
+// `<style>` is **refused at compile time**, because the compiler knows the
+// tag. `<textarea>` and `<title>` use their own escaping rules.
 //
 // The compile-time half is `tests/markup_refusals.b`, which owns latte-bx.
 // This section is the RUNTIME half of the same rule, and it exists because
@@ -657,9 +659,9 @@ fn row4_raw_text(r: Report) {
 
 // ======================================================================= 5
 //
-// | XSS through an inline handler | a literal `on*` attribute is refused at
-// | compile time. Handlers exist only as ids, and the client never evaluates a
-// | string. |
+// XSS through an inline handler: a literal `on*` attribute is refused at
+// compile time. Handlers exist only as ids, and the client never evaluates
+// a string.
 
 fn row5_inline_handler(r: Report) {
     r.row(5, "XSS through an inline handler")
@@ -787,9 +789,9 @@ pub class PrivatePage extends Component {
 
 // ======================================================================= 6
 //
-// | CSRF on a form post | HMAC-SHA256 over session id, form id and expiry,
-// | compared in constant time; session cookie `HttpOnly`, `Secure`,
-// | `SameSite=Lax`. |
+// CSRF on a form post: HMAC-SHA256 over session id, form id and expiry,
+// compared in constant time; session cookie `HttpOnly`, `Secure`,
+// `SameSite=Lax`.
 //
 // The cookie half is `tests/w4_formhost.b`, which runs a real espresso host
 // and reads `Set-Cookie` off the wire — a cookie's attributes are an HTTP
@@ -957,9 +959,9 @@ fn row6_csrf(r: Report) {
 
 // ======================================================================= 7
 //
-// | cross-site WebSocket hijacking | SameSite does not protect a handshake, so
-// | the upgrade checks `Origin` and the circuit id must match the session
-// | cookie. |
+// Cross-site WebSocket hijacking: SameSite does not protect a handshake, so
+// the upgrade checks `Origin` and the circuit id must match the session
+// cookie.
 //
 // **The comparisons are not reachable from here and this row does not pretend
 // they are.** Both live in `CircuitEndpoint.upgrade`, which takes
@@ -970,11 +972,11 @@ fn row6_csrf(r: Report) {
 // is what tells one refusal from the other.
 //
 // What IS here is the pair of DEFAULTS those comparisons read, and that is not
-// a formality. W4 found that `session_cookie` defaulted to `"sid"` while
-// `map_pages` mints `latte_session`, so every handshake read no session, every
-// circuit opened for `""`, and `adopt`'s comparison ran on every pair of
-// circuits on the machine and could never refuse. The comparison was fine. The
-// default made it dead. So the defaults get their own checks, in the file whose
+// a formality. `session_cookie` once defaulted to `"sid"` while `map_pages`
+// mints `latte_session`, so every handshake read no session, every circuit
+// opened for `""`, and `adopt`'s comparison ran on every pair of circuits on
+// the machine and could never refuse. The comparison was fine. The default
+// made it dead. So the defaults get their own checks, in the file whose
 // subject is refusals that cannot fire.
 
 fn row7_origin(r: Report) {
@@ -1017,8 +1019,9 @@ fn row7_origin(r: Report) {
 
 // ======================================================================= 8
 //
-// | circuit id theft or fixation | 256 bits from `std.random`, bound to the
-// | session, never in a URL, never logged, rotated when privileges change. |
+// Circuit id theft or fixation: 256 bits from `std.random`, bound to the
+// session, never in a URL, never logged. (Rotation on a privilege change is
+// not implemented — see `row8_circuit_id` below.)
 
 fn row8_circuit_id(r: Report) {
     r.uncovered(8, "circuit id theft or fixation",
@@ -1124,10 +1127,10 @@ fn row8_circuit_id(r: Report) {
 
 // ======================================================================= 9
 //
-// | authorization outliving its token | a circuit can outlive a session's
-// | expiry. Auth is revalidated on an interval and at every in-circuit
-// | navigation, and `@authorize` is checked **at mount**, not only at the
-// | first HTTP request. Blazor's best-known pitfall. |
+// Authorization outliving its token: a circuit can outlive a session's
+// expiry. Auth is revalidated on an interval and at every in-circuit
+// navigation, and `@authorize` is checked **at mount**, not only at the
+// first HTTP request.
 
 fn row9_authorization(r: Report) {
     r.row(9, "authorization outliving its token")
@@ -1395,8 +1398,8 @@ pub class Shell extends Component {
 
 // ======================================================================= 10
 //
-// | mass assignment | no field name ever crosses the wire. Binds are compiled
-// | closures over the fields the author wrote. |
+// Mass assignment: no field name ever crosses the wire. Binds are compiled
+// closures over the fields the author wrote.
 
 @form
 pub class Account {
@@ -1502,7 +1505,7 @@ fn row10_mass_assignment(r: Report) {
 
 // ======================================================================= 11
 //
-// | virtual range abuse | clamped to collection length, window capped. |
+// Virtual range abuse: clamped to collection length, window capped.
 
 fn row11_virtual_range(r: Report) {
     r.row(11, "virtual range abuse")

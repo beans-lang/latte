@@ -92,8 +92,8 @@ fn main() {
     let wrote: int = fs.write(PORT_FILE, "{port}\n").expect("port file")
 
     // A watchdog, because an orphaned server outlives the shell that started
-    // it and this workspace has paid for that before. Sixty seconds is far
-    // longer than two headless Chrome runs and far shorter than a day.
+    // it. Sixty seconds is far longer than two headless Chrome runs and far
+    // shorter than a day.
     let watchdog: Thread<bool> = thread.spawn(fn() -> bool {
         time.sleep_millis(60000)
         return control.stop().or(false)

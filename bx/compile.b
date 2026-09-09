@@ -323,8 +323,8 @@ fn skip_path(words: List<Word>, at: int) -> int {
 
 /// `counter.bx` → `Counter`, `user_card.bx` → `UserCard`.
 ///
-/// A component's class name comes from its file name, the way a Blazor
-/// component's does, so there is one place a page is called something.
+/// A component's class name comes from its file name, so there is one place
+/// a page is called something.
 pub fn class_name_for(stem: string) -> string {
     let parts: List<string> = []
     var word: List<string> = []

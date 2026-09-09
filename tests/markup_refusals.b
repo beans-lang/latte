@@ -1,14 +1,14 @@
-// PLAN.md gate 4, the last clause: **"and every refusal."**
+// Every refusal latte-bx's markup compiler makes.
 //
-// Most of what latte-bx refuses is a security control, not a diagnostic. The
-// list in PLAN.md's threat table — interpolation inside a `<script>`, a literal
-// `on*` attribute, a `javascript:` URL, a raw-text body that closes its own
-// element — is refused *here*, at markup-compile time, precisely because the
-// runtime cannot see it: `latte.Builder` substitutes or drops these at render
-// time, and **a folded constant subtree never passes through a Builder**. Every
+// Most of what latte-bx refuses is a security control, not a diagnostic:
+// interpolation inside a `<script>`, a literal `on*` attribute, a
+// `javascript:` URL, a raw-text body that closes its own element. Each is
+// refused *here*, at markup-compile time, precisely because the runtime
+// cannot see it: `latte.Builder` substitutes or drops these at render time,
+// and **a folded constant subtree never passes through a Builder**. Every
 // row below is therefore a case where accepting it would make the folded arm
-// and the unfolded arm of one subtree say different things, which is the one
-// failure PLAN.md calls out as invisible until a user reports it.
+// and the unfolded arm of one subtree say different things — invisible until
+// a user reports it.
 //
 // A refusal nobody runs is a refusal nobody has reason to believe in. Until
 // this file existed, fourteen of them had never been executed once.
@@ -200,13 +200,12 @@ pub class Suite {
 
     // ================================================================ SECTION 1
     //
-    // **Interpolation inside `<script>` and `<style>`.** PLAN.md's threat
-    // table: "XSS through a raw-text element — interpolation inside <script>
-    // and <style> is refused at compile time, because the compiler knows the
-    // tag." The serializer escapes for HTML *text*, and HTML escaping inside a
-    // script is not a defence: `</script>` closes the element from inside a
-    // JavaScript string and `&lt;` does not help. Every `$` form is refused,
-    // not only the one an issue would have shown.
+    // **Interpolation inside `<script>` and `<style>`.** Refused at compile
+    // time, because the compiler knows the tag: the serializer escapes for
+    // HTML *text*, and HTML escaping inside a script is not a defence —
+    // `</script>` closes the element from inside a JavaScript string and
+    // `&lt;` does not help. Every `$` form is refused, not only the one an
+    // issue would have shown.
 
     fn script_interpolation() {
         self.heading("interpolation inside <script> and <style>")
@@ -231,11 +230,9 @@ pub class Suite {
         self.refused("a <script> with attributes is still raw text", r#"pub a: int = 0"#,
                      r#"<script type="module" defer>let x = $self.a;</script>"#)
 
-        // `a$b` IS a transition. The classifier never looks at the byte before
-        // the `$` — PLAN.md's rule is written entirely in terms of the one
-        // after it — so a JavaScript identifier holding a dollar is refused
-        // here and is written `a$$b`. bx/parse.b's own comment claimed the
-        // opposite until this control failed.
+        // `a$b` IS a transition. The classifier never looks at the byte
+        // before the `$`, only the one after it, so a JavaScript identifier
+        // holding a dollar is refused here and is written `a$$b`.
         self.refused("a JavaScript identifier holding a dollar", "",
                      r#"<script>let a$b = 1;</script>"#)
 
@@ -257,9 +254,8 @@ pub class Suite {
 
     // ================================================================ SECTION 2
     //
-    // **A literal `on*` attribute.** PLAN.md: "XSS through an inline handler —
-    // a literal `on*` attribute is refused at compile time. Handlers exist only
-    // as ids and the client never evaluates a string."
+    // **A literal `on*` attribute.** Refused at compile time: handlers exist
+    // only as ids, and the client never evaluates a string.
     //
     // The predicate is the runtime's, byte for byte (`bx/html.b` mirrors
     // `frames.b`): **three bytes or more, beginning `on`, case-insensitively**.
@@ -436,10 +432,10 @@ pub class Suite {
 
     // ================================================================ SECTION 7
     //
-    // **A literal URL with a refused scheme.** PLAN.md: "href, src, action,
-    // formaction, poster and data pass a scheme allowlist: http, https,
-    // mailto, tel, relative. javascript: and data: are replaced with an inert
-    // value and logged."
+    // **A literal URL with a refused scheme.** `href`, `src`, `action`,
+    // `formaction`, `poster` and `data` pass a scheme allowlist: http, https,
+    // mailto, tel, relative. `javascript:` and `data:` are replaced with an
+    // inert value and logged.
     //
     // Replaced — at run time, inside `latte.Builder.attr`. A folded constant
     // never reaches it, so a literal one is refused here. An *expression* URL
@@ -605,10 +601,9 @@ pub class Suite {
 
     // =============================================================== SECTION 11
     //
-    // **`ref=` on a component tag is NOT refused.** It was, until
-    // `probes/BUILDER.md` resolved it the other way: every attribute-position
+    // **`ref=` on a component tag is NOT refused.** Every attribute-position
     // call needs `in_attributes`, only `open()` sets it, and a component tag
-    // opens no element — so a `Reference` there had no spelling any emission
+    // opens no element — so a `Reference` there has no spelling any emission
     // could reach. The setup closure assigns instead.
     //
     // This section is a **control**, and it is here so that reinstating the
@@ -780,13 +775,13 @@ pub class Suite {
 
     // =============================================================== SECTION 14
     //
-    // **`live`, and every `bind:` shape.** `live` is W7's signal tier: marking
-    // a subtree live before signals exist would compile to an ordinary render
-    // that never updates the way the attribute promises, so it is refused
-    // rather than accepted and ignored. `bind:value` on a `<select>` is the
-    // other one PLAN.md names: a select's value is not an attribute, it is
-    // which `<option>` carries `selected`, so a binding there would set nothing
-    // and look right.
+    // **`live`, and every `bind:` shape.** `live` is the signal tier's own
+    // attribute: marking a subtree live before signals exist would compile to
+    // an ordinary render that never updates the way the attribute promises,
+    // so it is refused rather than accepted and ignored. `bind:value` on a
+    // `<select>` is refused for a different reason: a select's value is not
+    // an attribute, it is which `<option>` carries `selected`, so a binding
+    // there would set nothing and look right.
 
     fn bindings_and_live() {
         self.heading("live, and the bind: shapes")

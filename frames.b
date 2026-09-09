@@ -2,10 +2,10 @@
 // into HTML text.
 //
 // A frame is an ENUM variant, not a struct and not a class. Beans matches an
-// enum exhaustively, so adding a frame kind is a compile error in every walker
-// — serializer, differ, applier, dump. Three lanes consume this shape; a
-// tagged struct would let a new kind be silently ignored by two of them. It is
-// also what probes/p8_builder compiled and ran on both backends.
+// enum exhaustively, so adding a frame kind is a compile error in every
+// walker — serializer, differ, applier, dump — rather than a kind one of
+// them silently ignores. It is also what probes/p8_builder compiled and ran
+// on both backends.
 //
 // Nothing here imports std.io, std.fs or std.net. See beans.pot.
 package latte
@@ -16,7 +16,7 @@ import std.fmt
 //
 // A frame's `seq` is a SOURCE POSITION, never a counter. Two frames with the
 // same seq in two renders of one component describe the same source position,
-// which is the whole basis of the diff. See probes/BUILDER.md.
+// which is the whole basis of the diff.
 pub enum Frame {
     /// `<tag`. Attributes follow immediately; children follow those; `close`
     /// ends it. A void element still gets its `close` frame — the serializer
@@ -199,8 +199,9 @@ pub fn frame_is_attribute(frame: Frame) -> bool {
 // ---------------------------------------------------------------- escaping
 //
 // One escaper, used by the serializer walking frames AND by the applier
-// serializing its own tree. If they were two, gate 3 would be comparing two
-// bugs for equality.
+// serializing its own tree. If they were two, comparing the applier's output
+// against the serializer's would risk comparing two escaping bugs for
+// equality instead of checking either one.
 
 const AMP: int = 38
 const LT: int = 60
@@ -319,9 +320,9 @@ pub fn attribute_name_is_safe(name: string) -> bool {
     return true
 }
 
-/// A literal `on*` attribute is an inline handler. W2 refuses it at compile
-/// time; the Builder refuses it too, because a hand-written or splatted
-/// attribute never went through W2.
+/// A literal `on*` attribute is an inline handler. The markup compiler
+/// refuses it at compile time; the Builder refuses it too, because a
+/// hand-written or splatted attribute never went through the compiler.
 pub fn attribute_is_inline_handler(name: string) -> bool {
     if name.len() < 3 { return false }
     let lowered: string = name.to_lower()
@@ -345,9 +346,9 @@ pub fn raw_text_is_safe(body: string, tag: string) -> bool {
 // rather than in a separate `url_attr` a generator could forget to call. A
 // control that cannot be forgotten is worth more than one that reads better.
 
-/// The six names probes/BUILDER.md fixes, plus `xlink:href`: an SVG `<a
+/// The standard URL-bearing attributes, plus `xlink:href`: an SVG `<a
 /// xlink:href="javascript:…">` runs script in every browser that renders SVG,
-/// and W2 can emit it because an author can write it. Adding a name to an
+/// and the compiler emits whatever an author writes. Adding a name to an
 /// allowlist-enforcement set can only refuse more, never accept more.
 pub fn is_url_attribute(name: string) -> bool {
     return name == "href" || name == "src" || name == "action" ||

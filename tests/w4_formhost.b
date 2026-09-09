@@ -1,5 +1,5 @@
-// tests/w4_formhost.b — PLAN.md gate 7's first half, on espresso's TestHost:
-// routing, layouts, a form with validation, and the antiforgery refusal.
+// tests/w4_formhost.b — routing, layouts, a form with validation, and the
+// antiforgery refusal, on espresso's TestHost.
 //
 // This is a whole latte application — a `@page`, a `@layout`, a `@form` model,
 // a `PageHost` and `latte.web.map_pages` — served through espresso's in-memory
@@ -10,9 +10,10 @@
 // posting the same body.** That is not decoration: a token check that never ran
 // would pass every "refused" case in this file by refusing for some other
 // reason, and the only thing that can tell those two apart is a request that
-// must be *accepted* going through the same code. RULES.md, "the refusal that
-// never runs" — the fourth of the four bugs W2 found was a live refusal no
-// input could reach, because a coarser rule stood in front of it.
+// must be *accepted* going through the same code. RULES.md, "the refusal
+// that never runs" — a live refusal can stand behind a coarser rule that
+// swallows every input before it, so it looks correct and never actually
+// runs.
 //
 // **What makes this byte-deterministic.** The session id is 256 random bits, so
 // it is never printed: what is printed is its shape and the answers to

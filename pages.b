@@ -52,7 +52,9 @@ pub annotation page {
 /// (`app.layouts.Main`) or its simple name (`Main`) when exactly one type in
 /// the executable carries it. Two types with the same simple name is a startup
 /// refusal naming both, not a silent pick. There is no layout registry and
-/// none is needed, which is the same rule PLAN.md states for component tags.
+/// none is needed — latte resolves every type it needs (a component tag, a
+/// `@form`, a `@page`, this) the same way: by name, at startup, from
+/// `reflect.types()`.
 @target(value: ["type"])
 @retention(value: "runtime")
 pub annotation layout {
@@ -60,8 +62,8 @@ pub annotation layout {
 }
 
 /// An authorization requirement. Repeatable: several requirements on one page
-/// must ALL hold, and the roles inside one requirement are alternatives. That
-/// is the rule Blazor and ASP.NET use, and a framework that inverted it would
+/// must ALL hold, and the roles inside one requirement are alternatives — AND
+/// across requirements, OR across roles. A framework that inverted it would
 /// widen access on a page that reads as if it narrowed it.
 @target(value: ["type"])
 @retention(value: "runtime")
@@ -565,9 +567,9 @@ pub class AuthRequirement {
     pub fn init() {}
 }
 
-/// Who is asking. Latte ships no identity: an application supplies one, which
-/// is PLAN.md D6 — "a framework whose security depends on a component it does
-/// not provide is a framework with a hole in it" — applied to the caller side.
+/// Who is asking. Latte ships no identity: an application supplies one,
+/// because a framework whose security depends on a component it does not
+/// provide would have a hole exactly where that component should be.
 pub interface Principal {
     fn authenticated() -> bool
     fn has_role(role: string) -> bool
@@ -663,8 +665,8 @@ pub class PagePlan {
     /// serve a page latte refused.
     pub faults: List<string> = []
     described: Option<reflect.Type> = none
-    /// Cached at scan time. W0 measured the lookup as about half of what a
-    /// reflective activation costs, and a page activates once per request.
+    /// Cached at scan time: the initializer lookup costs about half of what a
+    /// reflective activation does, and a page activates once per request.
     ctor: Option<reflect.Initializer> = none
     pub fn init() {}
 
@@ -942,8 +944,8 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation, component_name: st
         requirement.policy = argument_string(use2, "policy")
         requirement.roles = argument_strings(use2, "roles")
         if requirement.policy == "" && requirement.roles.len() == 0 {
-            // A bare `@authorize` is "signed in", which is Blazor's meaning and
-            // is deliberate rather than an empty requirement.
+            // A bare `@authorize` means "signed in, with no further
+            // requirement" — deliberate, not an empty/no-op requirement.
             plan.requirements.push(requirement)
         } else {
             plan.requirements.push(requirement)
@@ -1433,9 +1435,10 @@ pub class PageInstance {
 ///
 /// `who` is checked HERE and not only by the host's middleware, because a
 /// circuit outlives the request that opened it and re-mounts on navigation —
-/// PLAN.md's "authorization outliving its token", which is Blazor's best-known
-/// pitfall. A caller that has already checked pays one comparison to check
-/// again; a caller that has not is not able to skip it.
+/// authorization that only ran once, at the original request, would keep
+/// holding after a session expired or a role was revoked. A caller that has
+/// already checked pays one comparison to check again; a caller that has not
+/// is not able to skip it.
 pub fn open_page(found: PageMatch, who: Principal,
                  activator: Option<Activator>) -> PageInstance {
     var instance: PageInstance = new PageInstance()

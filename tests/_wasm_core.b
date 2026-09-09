@@ -1,7 +1,8 @@
 // The core-imports-no-I/O leg. `test.sh --wasm` builds THIS file for
 // wasm32-unknown-unknown, and a core that grows an import of std.io, std.fs or
-// std.net fails that build (PLAN.md, D4: a WebAssembly render mode stays
-// possible, and the check is a build rather than a code review).
+// std.net fails that build — a WebAssembly render mode stays possible only if
+// nothing in the core ever depends on an OS capability, and this checks that
+// by building rather than by review.
 //
 // It is a leading-underscore file, so it is scratch to the suite loop and a
 // build target to the wasm leg — which is why it prints nothing: there is no

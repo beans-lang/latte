@@ -4,9 +4,9 @@
 //     beansc build examples/todo.b -o build/todo     # a native binary
 //
 // **Nothing here is generated.** `examples/counter.bx` is the way most pages
-// are written; this file is the other half of PLAN.md's promise — everything a
-// consumer touches is ordinary Beans, so a component library works for someone
-// who never installs a second compiler. The `render` methods below are exactly
+// are written; this file is the other option — everything a consumer touches
+// is ordinary Beans, so a component library works for someone who never
+// installs a second compiler. The `render` methods below are exactly
 // what latte-bx would have emitted for the markup in the comment above each
 // one, sequence numbers and all.
 //

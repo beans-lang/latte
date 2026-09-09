@@ -1,34 +1,25 @@
-// Virtualised lists: a window of rows, two spacers, and a range from the
-// client that is never believed.
+// Virtualised lists: a `Virtual` component that renders a window of rows
+// instead of the whole collection, plus the geometry that keeps the window
+// honest.
 //
-// From PLAN.md § "Virtualised lists":
+// The parent gives `count` and a `row(b, index)` closure instead of the
+// collection itself, so the cost is the same for 50 rows or 50,000.
+// `latte.js` reports which rows are visible, at most once per animation
+// frame, and the server always re-clamps that range rather than trusting
+// it. A static render still emits the first window and both spacers, so the
+// page is complete and scrollable before any client script runs.
 //
-//   * `<Virtual items={self.rows} height={32}>` with the row markup as child
-//     content. **Fixed row height in v1.**
-//   * `latte.js` reports a visible index range on scroll, coalesced to one
-//     message per animation frame. The server renders that slice into a keyed
-//     region and sizes two spacers.
-//   * **The range is untrusted input.** Clamped to the collection's length,
-//     window capped. A hostile client cannot ask for 50,000 rows in one
-//     message.
-//   * Static rendering emits the first window and the spacers, so the page is
-//     complete and scrollable before the circuit attaches.
-//
-// The invariant everything here exists to hold
-// --------------------------------------------
+// The invariant every clamp here exists to hold:
 //
 //     top + shown * row_height + bottom == total * row_height
 //
-// A window that satisfies it has no gap and no overlap **in the page**: the
-// scrollbar is the height of the whole list, the rendered rows sit at exactly
-// the offset their indices say, and the row under the cursor is the row the
-// user thinks it is. Every clamp below is written so that arithmetic stays
-// true for every input, including the hostile ones — `Placement.sound()` is
-// the assertion, and `tests/w6_virtual.b` runs it at every scroll position of
-// a 50,000-row table, down and back.
+// A window that satisfies it has no gap and no overlap in the page — the
+// scrollbar is the height of the whole list, and the rendered rows sit at
+// exactly the offset their indices say. `Placement.sound()` is that
+// assertion; `tests/w6_virtual.b` checks it at every scroll position of a
+// 50,000-row table, down and back.
 //
-// No I/O here either: this is geometry and clamping. Who reports a scroll
-// position is the client's business and who delivers it is the circuit's.
+// No I/O here: this is geometry and clamping only.
 package latte
 
 import std.fmt
@@ -84,9 +75,7 @@ pub class Placement {
         // reporting that nothing is visible while the user is at row 10 — is an
         // ordinary message, and the placement it produces (top = 320,
         // bottom = the rest) sizes the scrollbar correctly and renders no rows.
-        // An earlier draft refused an empty window whose start was neither 0
-        // nor `total`; nothing about a page needs that, and it made `sound()`
-        // answer false for a placement that was right.
+        // An empty window's `start` does not have to be 0 or `total`.
         return self.top + self.shown * self.row_height + self.bottom == self.height()
     }
 
@@ -156,8 +145,7 @@ pub class VirtualGeometry {
 
     /// A window from an UNTRUSTED `(start, count)`.
     ///
-    /// ONE of the three clamps is order-dependent, and it is not the one an
-    /// earlier draft of this comment claimed:
+    /// Only one of the three clamps below is order-dependent:
     ///
     ///   1. `start` into `[0, total]` **first, and this is the load-bearing
     ///      one**. Everything after it computes `total - at`, so an unclamped
@@ -169,12 +157,9 @@ pub class VirtualGeometry {
     ///   3. `count` into what is left of the collection.
     ///
     /// **2 and 3 commute.** Both are a `min`, so the result is
-    /// `min(count, max_window, room)` whichever runs first — the draft this
-    /// replaces asserted that doing 3 first would let a count past the cap,
-    /// the suite carried a check named for that claim, and swapping the two
-    /// changed no answer and turned nothing red. They are written cap-first
-    /// because the cheap bound reads better before the derived one, and that
-    /// is taste, not a rule.
+    /// `min(count, max_window, room)` whichever runs first. They are written
+    /// cap-first because the cheap bound reads better before the derived one,
+    /// and that is taste, not a rule.
     pub fn window(start: int, count: int) -> Placement {
         // A configuration that cannot be laid out has no correct window, and
         // the arithmetic below would answer a wrong one rather than none: a
@@ -385,8 +370,7 @@ pub class Virtual extends Component {
         if self.class_name != "" { b.attr(1, "class", self.class_name) }
         // The four attributes the browser reporter reads. They are DATA and
         // never a name: the client sends the id back and latte looks it up, so
-        // nothing on the wire is ever interpreted as a name (PLAN.md,
-        // "Security").
+        // nothing on the wire is ever interpreted as a name.
         b.attr(2, "data-latte-virtual", "{self.id()}")
         b.attr(3, "data-latte-rows", "{self.count}")
         b.attr(4, "data-latte-row-height", "{self.row_height}")

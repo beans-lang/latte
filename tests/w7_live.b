@@ -5,8 +5,8 @@
 // crossing a TCP connection:
 //
 //   1. **Deflate is negotiated.** `EndpointOptions.compress` has defaulted to
-//      `true` since W5 and `tests/circuit_live.b`'s client has offered the
-//      extension since W5, and NOTHING HAS EVER ASSERTED IT. That suite passes
+//      `true`, and `tests/circuit_live.b`'s client has offered the extension
+//      all along, and NOTHING HAS EVER ASSERTED IT. That suite passes
 //      byte for byte with the extension silently declined, because a declined
 //      extension changes no JSON. § 1 makes it a fact, with the two controls
 //      that tell "agreed" from "agreed for another reason": a client that does

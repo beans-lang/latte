@@ -26,7 +26,7 @@
 // `check` drives it through espresso's `TestHost`, so every request runs the
 // real middleware, the real cookie code and the real HMAC — and then drives a
 // circuit through the same seam closures `latte.web` hands to a socket. What
-// it CANNOT do is open a WebSocket: that is `w9_smoke.sh`, which runs THIS
+// it CANNOT do is open a WebSocket: that is `w8b_cafe.sh`, which runs THIS
 // program with `serve 0` and drives it from a real Chrome. The two halves are
 // deliberately the same program, so "the example works" and "a browser can use
 // it" are one claim rather than two.
@@ -121,10 +121,7 @@ pub class Cafe {
     /// bound to that request's session; a circuit renders the same page
     /// through `open_page` and never touched `PageHost`, so without this the
     /// form the browser ends up holding carries `value=""` and the post it
-    /// makes is answered `400 the form carried no antiforgery token`. It went
-    /// unseen until the client stopped appending its render beside the
-    /// server's: two forms were in the document, the browser used the first,
-    /// and the first was the server's.
+    /// makes is answered `400 the form carried no antiforgery token`.
     pub fn page_for(session: string, url: string) -> Option<Component> {
         match self.pages.find("GET", path_only(url)) {
             none => { return none }
@@ -278,17 +275,16 @@ fn mount(app: espresso.WebApplication, cafe: Cafe, secure: bool,
         // a url. This body is the answer to a POST, and it holds what the
         // post produced: the field errors, or the receipt. A circuit that
         // attached to it would replace all of that with the pristine form,
-        // and PLAN.md puts "persistent state across prerender and attach"
-        // outside v1, so there is nothing for it to carry the post across
-        // with. `ShellOptions.circuit = false` is exactly this case: the
-        // client script is still served — enhanced navigation and streamed
-        // chunks want it — and no socket is opened, so the answer the user
-        // is reading stays on the screen. The next navigation is a GET and
-        // gets a circuit again.
+        // and latte has no mechanism yet for carrying state across a
+        // prerender into the attach that follows, so there is nothing for it
+        // to carry the post across with. `ShellOptions.circuit = false` is
+        // exactly this case: the client script is still served — enhanced
+        // navigation and streamed chunks want it — and no socket is opened,
+        // so the answer the user is reading stays on the screen. The next
+        // navigation is a GET and gets a circuit again.
         var used: ShellOptions = cafe.shell
         if !is_safe_method(asked.method) { used = cafe.static_shell }
-        // The one line this whole lane exists for: a page body becomes a
-        // document.
+        // This is the line that turns a page body into a document.
         match render_shell(used, answer.body) {
             ok(document) => { reply.body = document }
             err(problem) => {
@@ -342,7 +338,7 @@ fn main() {
 // ============================================================== serve
 
 /// The server a person runs. Port 0 lets the kernel choose, which is what
-/// `w9_smoke.sh` uses so two runs on one machine never collide.
+/// `w8b_cafe.sh` uses so two runs on one machine never collide.
 ///
 /// Every `CAFE-*` line goes to **stderr**, and that is not a style choice.
 /// `std.io` has no `flush`, stdout to a pipe is fully buffered, and the port
@@ -412,7 +408,7 @@ fn listen(cafe: Cafe, port: int) {
     let stats: espresso.ServerStats = server.run().expect("the server runs")
 
     // The summary. Every number here is a server-side fact a browser could not
-    // have faked, and `w9_smoke.sh` asserts on them.
+    // have faked, and `w8b_cafe.sh` asserts on them.
     io.eprintln("CAFE-PAGES {cafe.pages_served}")
     io.eprintln("CAFE-UPGRADES {stats.upgrades}")
     io.eprintln("CAFE-STOPS {cafe.stops}")
@@ -628,10 +624,10 @@ fn drive(r: Report, cafe: Cafe) {
 
 /// The document, whole, and the four headers that make it safe.
 ///
-/// The document is PRINTED, in full, into the golden. It is the artifact this
-/// lane exists to produce and the one thing a reader of this example most
-/// needs to see; an assertion that it "contains a script tag" would pass on a
-/// page that also carried an inline one.
+/// The document is PRINTED, in full, into the golden. It is the whole point
+/// of this example — the one thing a reader most needs to see — and an
+/// assertion that it "contains a script tag" would pass on a page that also
+/// carried an inline one.
 fn section_shell(r: Report, cafe: Cafe, host: espresso.TestHost) {
     io.println("")
     io.println("-- 1. GET / is a document, not a fragment")
@@ -886,7 +882,7 @@ fn section_form(r: Report, cafe: Cafe, host: espresso.TestHost) {
 ///
 /// These are the SAME nine closures `latte.web` hands `CircuitEndpoint` — the
 /// set's own `open`, `accept` and `outbox`. What is missing here and nowhere
-/// else is the socket, and that is what `w9_smoke.sh` adds with a real Chrome.
+/// else is the socket, and that is what `w8b_cafe.sh` adds with a real Chrome.
 fn section_circuit(r: Report, cafe: Cafe) {
     io.println("")
     io.println("-- 4. a click, over a circuit")
