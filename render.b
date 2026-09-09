@@ -176,6 +176,20 @@ pub class Renderer extends DirtySink {
         // way the dirty sink is, so a component mounted anywhere in the tree
         // reaches it without anything threading it down.
         self.root.registry.services = self.services
+        // The ROOT component is not mounted by a Builder — nothing called
+        // `Builder.mount` for it — so the adopt pass that owns signals,
+        // attaches view-models and fills `@inject` fields has to happen here
+        // too, or a page's own signals would be the only ones nobody owned.
+        //
+        // `reflect.value` boxes the RUNTIME type, not the binding's static one
+        // — that was BLOCKERS.md B6 and beans #163 fixed it, and
+        // `probes/p_boxed_type` re-checks it on both backends. Without that
+        // this would see `Component` and find none of the page's own fields.
+        let boxed: reflect.Value = reflect.value(component)
+        for problem: string in self.root.registry.adopt(
+                boxed.copy(), boxed.type(), component) {
+            self.faults.push(problem)
+        }
         // Before `on_init` and before the first render. A component may call
         // `notify()` from either — a subscription taken in `on_init` is the
         // ordinary reason — and every child the first render mounts is handed

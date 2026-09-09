@@ -776,17 +776,37 @@ pub class Suite {
     // =============================================================== SECTION 14
     //
     // **`live`, and every `bind:` shape.** `live` is the signal tier's own
-    // attribute: marking a subtree live before signals exist would compile to
-    // an ordinary render that never updates the way the attribute promises,
-    // so it is refused rather than accepted and ignored. `bind:value` on a
-    // `<select>` is refused for a different reason: a select's value is not
-    // an attribute, it is which `<option>` carries `selected`, so a binding
-    // there would set nothing and look right.
+    // attribute, and it is **accepted** now: the interpolated text runs under
+    // it compile to `live_text` instead of `text`, so the signals they read
+    // subscribe to them. Until L7 it was refused outright — marking a subtree
+    // live before signals existed would have compiled to an ordinary render
+    // that never updates the way the attribute promises — and the case that
+    // recorded that refusal is now the accepted control below it.
+    //
+    // What it still refuses is a `live` that could not mean anything: one
+    // carrying a value, and one on a component tag. A component renders
+    // itself, and the signals its own markup reads bind there.
+    //
+    // `bind:value` on a `<select>` is refused for a different reason: a
+    // select's value is not an attribute, it is which `<option>` carries
+    // `selected`, so a binding there would set nothing and look right.
 
     fn bindings_and_live() {
         self.heading("live, and the bind: shapes")
-        self.refused("live on its own", r#"pub ticks: int = 0"#, r#"<span live>$self.ticks</span>"#)
+        // The control for the two refusals under it: the ordinary shape must
+        // compile, or "live with a value is refused" would read the same as
+        // "live is refused".
+        // Shown, not just accepted: what `live` buys is a different EMISSION,
+        // and a case that only proves it compiles would pass on a compiler
+        // that accepted the attribute and ignored it — which is the exact
+        // thing the old refusal existed to prevent. The unmarked sibling is in
+        // the same case so the golden carries both spellings side by side.
+        self.accepted_showing("live on its own, beside a plain run",
+                      r#"pub ticks: Signal<int> = new Signal<int>(0)
+    pub label: string = "hits""#,
+                      r#"<div><p live>$self.label: $self.ticks.get()</p><p>plain $self.label</p></div>"#)
         self.refused("live with a value", "", r#"<div live="yes">y</div>"#)
+        self.refused("live on a component tag", "", r#"<Badge live />"#)
         self.refused("bind:value on a <select>", r#"pub choice: string = """#,
                      r#"<select bind:value={self.choice}><option>a</option></select>"#)
         self.refused("bind:value on anything else", r#"pub note: string = """#,

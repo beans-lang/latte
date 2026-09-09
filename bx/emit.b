@@ -276,6 +276,12 @@ pub class Emitter {
     lines: List<string> = []
     /// The `.bx` file's name, as it should read in the line map.
     file: string = ""
+    /// How deep inside a `live` element the emitter is. Non-zero means every
+    /// interpolated text run below compiles to `live_text` instead of `text`.
+    ///
+    /// A counter and not a flag, because `live` nests: an inner one closing
+    /// must not switch the outer one off.
+    live_depth: int = 0
     /// The type parameters of a generic component. Markup inside one may not
     /// spell them: `partial class Grid<T>` may carry `<T>` on exactly one part,
     /// so the generated part is `partial class Grid` and `T` is not a name it
@@ -459,6 +465,11 @@ pub class Emitter {
 
     /// `list[from .. to)` — text and expressions, at least one of them an
     /// expression — as one interpolated `text` frame.
+    /// How deep inside a `live` element this run is. Non-zero means every
+    /// interpolated text run below compiles to `live_text`.
+    ///
+    /// A counter and not a flag, because `live` nests: an inner one must not
+    /// switch the outer one off when it closes.
     fn text_run(list: List<Node>, from: int, to: int, indent: int) {
         let seq: int = self.counters.next()
         let parts: List<string> = []
@@ -479,7 +490,20 @@ pub class Emitter {
             }
             k = k + 1
         }
-        self.write(indent, "{self.builder_name()}.text({seq}, \"{parts.join("")}\"){self.trace(list[from].span)}")
+        let body: string = parts.join("")
+        if self.live_depth > 0 {
+            // The expression is kept as a thunk rather than evaluated into a
+            // frame: `live_text` runs it with the page's binding open, so every
+            // signal it reads records itself, and a later write re-runs just
+            // this one and patches its text node. No render, no diff.
+            //
+            // A run with no signal in it is a fault at the builder, not a value
+            // that renders once and never moves again — see
+            // `live_text / live expression N read no signal`.
+            self.write(indent, "{self.builder_name()}.live_text({seq}, fn() -> string \{ return \"{body}\" \}){self.trace(list[from].span)}")
+            return
+        }
+        self.write(indent, "{self.builder_name()}.text({seq}, \"{body}\"){self.trace(list[from].span)}")
     }
 
     /// `list[from .. to)` — every node in it constant — as the two arms of the
@@ -786,7 +810,16 @@ pub class Emitter {
             let seq2: int = self.counters.next()
             self.write(indent, "{b}.text({seq2}, \"\{{bound_value}\}\")")
         }
+        var live: bool = false
+        for attr: Attr in element.attrs {
+            match attr as? LiveAttr {
+                some(_) => { live = true }
+                none => {}
+            }
+        }
+        if live { self.live_depth = self.live_depth + 1 }
         self.nodes(element.children, indent)
+        if live { self.live_depth = self.live_depth - 1 }
         self.write(indent, "{b}.close()")
     }
 
@@ -866,6 +899,14 @@ pub class Emitter {
                 self.write(indent, "{b}.preserve({seq})")
                 return bound
             }
+            none => {}
+        }
+        match attr as? LiveAttr {
+            // Nothing to emit. `live` changes how the children below it are
+            // compiled — see `emit_element` and `text_run` — and takes no
+            // sequence number, because a frame it does not write cannot have
+            // one.
+            some(_) => { return bound }
             none => {}
         }
         match attr as? KeyAttr {

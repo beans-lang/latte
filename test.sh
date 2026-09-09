@@ -969,7 +969,7 @@ refusal_coverage_none() {
 
 # A file whose report sites are known and NOT audited yet. It cannot get worse
 # quietly: the count is recorded here, and a new site fails the gate with the
-# same instructions as everywhere else. `render.b`'s two sites are the only
+# same instructions as everywhere else. `render.b`'s three sites are the only
 # ones in latte's core with no case at all.
 #
 # `pages.b`'s 31 include FOUR that no program can reach: `@page`, `@layout` and
@@ -1063,7 +1063,7 @@ run_refusal_coverage_leg() {
     refusal_coverage_for forms.b     tests/w4_forms.out   "tests/w4_forms.b § 6"
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
-    refusal_coverage_pending render.b 2
+    refusal_coverage_pending render.b 3
     refusal_coverage_pending pages.b 31
     refusal_coverage_pending circuit.b 4
     refusal_coverage_sweep

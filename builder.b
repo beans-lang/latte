@@ -249,14 +249,22 @@ pub interface ServiceSource {
     fn knows(described: reflect.Type) -> bool
 }
 
-/// The `@inject` bindings for one component type.
+/// What the framework does to one component type at mount, worked out once.
 ///
-/// A class around the list and not a bare `List<InjectBinding>`, because a
-/// list of these is move-only: reading one out of the cache would take it out
-/// of the cache. A class is a reference, so the map keeps it and every mount
-/// borrows the same one.
-class InjectPlan {
+/// A class around the lists and not bare `List`s, because a list of these is
+/// move-only: reading one out of the cache would take it out of the cache. A
+/// class is a reference, so the map keeps it and every mount borrows the same
+/// one.
+class MountPlan {
+    /// `@inject` fields, and what each needs.
     pub bindings: List<InjectBinding> = []
+    /// `Signal` fields the framework owns against the component, so an author
+    /// stops writing `self.x.own(self)` once per signal in `on_init` — and
+    /// stops shipping a signal that records nothing because they forgot.
+    pub signals: List<reflect.Field> = []
+    /// `ViewModel` fields the framework attaches to the component, and whose
+    /// own signals it owns.
+    pub models: List<reflect.Field> = []
     fn init() {}
 }
 
@@ -316,7 +324,7 @@ pub class Registry {
     /// that type and kept for the life of the page. A type's fields and their
     /// annotations cannot change while a program runs, and a page that mounts
     /// two hundred rows of one component should reflect over it once.
-    inject_plans: Map<string, InjectPlan> = {}
+    mount_plans: Map<string, MountPlan> = {}
 
     /// Live-binding ids, page-unique and separate from the slot counter so a
     /// binding never spends a wire id.
@@ -326,37 +334,133 @@ pub class Registry {
 
     pub fn watching() -> Option<LiveBinding> { return self.watched }
 
-    /// The `@inject` bindings for one component type.
-    fn inject_plan(described: reflect.Type) -> InjectPlan {
+    /// Everything the framework does to one type at mount.
+    fn mount_plan(described: reflect.Type) -> MountPlan {
         let key: string = described.qualified_name()
-        match self.inject_plans.get(key) {
+        match self.mount_plans.get(key) {
             some(found) => { return found }
             none => {}
         }
-        var plan: InjectPlan = new InjectPlan()
+        let model_name: string = type_of(ViewModel).qualified_name()
+        var plan: MountPlan = new MountPlan()
         for field: reflect.Field in described.fields() {
             var wanted: bool = false
             for use: reflect.Annotation in field.annotations() {
                 if use.qualified_name() == "latte.inject" { wanted = true }
             }
-            if !wanted { continue }
-            var binding: InjectBinding = new InjectBinding(field, field.type())
-            if !field.is_public() {
-                binding.fault =
-                    "{key}.{field.name()} is @inject but is not public, and reflection does not bypass visibility"
+            if wanted {
+                var binding: InjectBinding = new InjectBinding(field, field.type())
+                if !field.is_public() {
+                    binding.fault =
+                        "{key}.{field.name()} is @inject but is not public, and reflection does not bypass visibility"
+                }
+                plan.bindings.push(binding)
             }
-            plan.bindings.push(binding)
+            // A Signal is generic, so nothing can downcast one — `as?` cannot
+            // name an instantiation. The name is the test, and it is exact
+            // enough: `latte.Signal<` cannot be any other declaration.
+            if field.type().qualified_name().starts_with("latte.Signal<") {
+                if field.is_public() { plan.signals.push(field) }
+            }
+            if type_of(ViewModel).is_assignable_from(field.type()) &&
+               field.type().qualified_name() != model_name {
+                if field.is_public() { plan.models.push(field) }
+            }
         }
-        self.inject_plans[key] = plan
+        self.mount_plans[key] = plan
         return plan
     }
 
-    /// Fill one freshly built component's `@inject` fields. Answers what could
-    /// not be filled; an empty list is the ordinary case, and a component with
-    /// no `@inject` field never reaches the source at all.
+    /// Own one `Signal` field against `owner`.
+    ///
+    /// `Signal<T>` is generic and cannot be downcast to, but `Cell` — the half
+    /// that holds the subscribers and the owner link — is not. So the signal is
+    /// read reflectively, its `cell` is read out of it, and THAT downcasts.
+    /// `probes/p_signal_own` runs this shape on both backends; it is
+    /// BLOCKERS.md B1a's exact case, and it only works on 0.1.41 or newer.
+    fn own_signal(field: reflect.Field, receiver: reflect.Value,
+                  owner: Component) -> string {
+        match field.get(receiver.copy()) {
+            err(problem) => {
+                return "cannot read signal {field.name()}: {problem.message()}"
+            }
+            ok(signal) => {
+                match signal.type().field("cell") {
+                    none => { return "{field.name()} has no reflective cell" }
+                    some(cell_field) => {
+                        match cell_field.get(signal.copy()) {
+                            err(problem) => {
+                                return "cannot read {field.name()}.cell: {problem.message()}"
+                            }
+                            ok(cell_value) => {
+                                match cell_value as? Cell {
+                                    none => { return "{field.name()}.cell is not a Cell" }
+                                    some(cell) => {
+                                        cell.own(owner)
+                                        return ""
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Everything the framework does to a freshly built component: fill its
+    /// `@inject` fields, own its signals, attach its view-models.
+    ///
+    /// Answers what could not be done. An empty list is the ordinary case, and
+    /// a component with none of the three never reaches the source at all.
+    fn adopt(receiver: reflect.Value, described: reflect.Type,
+             owner: Component) -> List<string> {
+        var problems: List<string> = []
+        let plan: MountPlan = self.mount_plan(described)
+        for problem: string in self.inject(receiver.copy(), described) {
+            problems.push(problem)
+        }
+        for field: reflect.Field in plan.signals {
+            let problem: string = self.own_signal(field, receiver.copy(), owner)
+            if problem != "" {
+                problems.push("{described.qualified_name()}.{problem}")
+            }
+        }
+        for field: reflect.Field in plan.models {
+            match field.get(receiver.copy()) {
+                err(problem) => {
+                    problems.push(
+                        "{described.qualified_name()}.{field.name()}: {problem.message()}")
+                }
+                ok(value) => {
+                    match value as? ViewModel {
+                        none => {}
+                        some(model) => {
+                            // The model's own signals belong to the same
+                            // component: a signal on a view-model has to reach
+                            // the page the view is on, and the model is not on
+                            // a page.
+                            let inner: MountPlan = self.mount_plan(value.type())
+                            for signal: reflect.Field in inner.signals {
+                                let problem: string =
+                                    self.own_signal(signal, value.copy(), owner)
+                                if problem != "" {
+                                    problems.push("{value.type().qualified_name()}.{problem}")
+                                }
+                            }
+                            model.attach(owner)
+                        }
+                    }
+                }
+            }
+        }
+        return move problems
+    }
+
+    /// Fill one freshly built component's `@inject` fields.
     fn inject(receiver: reflect.Value, described: reflect.Type) -> List<string> {
         var problems: List<string> = []
-        let plan: InjectPlan = self.inject_plan(described)
+        let plan: MountPlan = self.mount_plan(described)
         if plan.bindings.len() == 0 { return move problems }
         match self.services {
             none => {
@@ -1059,8 +1163,8 @@ pub class Builder {
                                 // Before `on_init`, so a component can use an
                                 // injected service in the one place it is meant
                                 // to set itself up.
-                                for problem: string in
-                                        self.registry.inject(made.copy(), described) {
+                                for problem: string in self.registry.adopt(
+                                        made.copy(), described, component) {
                                     self.faults.push(problem)
                                 }
                                 component.on_init()
