@@ -1,0 +1,7 @@
+module injected
+kind application
+
+require path "../.."
+require path "../../app"
+require path "../../../../community-libs/barista"
+require path "../../../../community-libs/espresso"

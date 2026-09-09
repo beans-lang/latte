@@ -836,6 +836,20 @@ pub class PageMap {
 /// There is no registry and no registration call: `reflect.types()` is the
 /// registry, in declaration order, and a page is a page because it says so.
 pub fn scan_pages() -> PageMap {
+    return scan_pages_for(false)
+}
+
+/// `scan_pages`, told whether a service container will be present.
+///
+/// The one thing it changes is the refusal for a page whose `init` takes
+/// arguments. With a container that page is ordinary — the activator resolves
+/// each parameter. Without one, nothing could, and latte would activate it with
+/// an empty argument list and answer 500 on every request; so it is refused at
+/// startup instead, which is where every other unservable page is refused.
+///
+/// A host that builds a container calls this with `true`. `scan_pages()` is
+/// `false`, which is what every existing caller means.
+pub fn scan_pages_for(container: bool) -> PageMap {
     var map: PageMap = new PageMap()
     let component_name: string = type_of(Component).qualified_name()
     let layout_name: string = type_of(Layout).qualified_name()
@@ -865,7 +879,7 @@ pub fn scan_pages() -> PageMap {
             map.faults.push("{described.qualified_name()} carries @page more than once")
             continue
         }
-        var plan: PagePlan = plan_for(described, uses[0], component_name)
+        var plan: PagePlan = plan_for(described, uses[0], component_name, container)
         match plan.describes() {
             none => {
                 for fault: string in plan.faults { map.faults.push(fault) }
@@ -906,7 +920,8 @@ pub fn scan_pages() -> PageMap {
     return map
 }
 
-fn plan_for(described: reflect.Type, use: reflect.Annotation, component_name: string) -> PagePlan {
+fn plan_for(described: reflect.Type, use: reflect.Annotation,
+            component_name: string, container: bool) -> PagePlan {
     var plan: PagePlan = new PagePlan()
     plan.type_name = described.qualified_name()
     plan.name = described.name()
@@ -937,9 +952,27 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation, component_name: st
     // and catches a page with no zero-argument `init` for any other reason too
     // — which used to be a 500 at request time. `check_layout` below has asked
     // it this way all along.
-    if described.initializer().is_none() {
-        plan.faults.push(
-            "{plan.type_name} is a @page with no reflective zero-argument initializer, so latte cannot activate it. A closed generic is one way to get here — a receiver-less reflective operation names no instantiation, so it has none on either backend (BLOCKERS.md B1, beans #159); give it a non-generic subclass and put @page on that. A class with no zero-argument `init` is the other.")
+    match described.initializer() {
+        none => {
+            plan.faults.push(
+                "{plan.type_name} is a @page with no reflective zero-argument initializer, so latte cannot activate it. A closed generic is one way to get here — a receiver-less reflective operation names no instantiation, so it has none on either backend (BLOCKERS.md B1, beans #159); give it a non-generic subclass and put @page on that. A class with no zero-argument `init` is the other.")
+        }
+        // A page whose `init` takes arguments has an initializer descriptor,
+        // so the check above says nothing about it — and `PagePlan.activate`
+        // calls it with an empty argument list, which is a 500 at request time
+        // saying "wrong reflected argument count". That is the exact shape this
+        // whole refusal exists to move to startup, and it walked straight past
+        // it for as long as the check asked only whether a descriptor existed.
+        //
+        // With a container the page is ordinary: `activate_with` resolves each
+        // parameter and calls it. Without one there is nothing that could, so
+        // it is refused here, by name, with the sentence that fixes it.
+        some(ctor) => {
+            if !container && ctor.parameters().len() > 0 {
+                plan.faults.push(
+                    "{plan.type_name} is a @page whose `init` takes {ctor.parameters().len()} argument(s), and this application has no service container to supply them — latte would activate it with none and answer 500 on every request. Register the services it asks for, or give it a zero-argument `init`.")
+            }
+        }
     }
 
     let route_text: string = argument_string(use, "route")
