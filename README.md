@@ -77,33 +77,74 @@ beansc run examples/counter.b                   # renders one page to stdout, no
 
 ## Using it in an app
 
-Build an espresso application, then map the circuit endpoint onto it:
+An application is `latte_app`, and it is four lines:
 
 ```beans
-import espresso
-import {CircuitOptions, CircuitSet} from latte
-import {CircuitSeam, EndpointOptions, map_circuit} from latte.web
+package main
 
-let app: espresso.WebApplication =
-    new espresso.WebApplicationBuilder().build().expect("the app builds")
+import {Builder, Component, page} from latte
+import {LatteOptions, run_main} from latte_app
 
-var set: CircuitSet = new CircuitSet(new CircuitOptions(), /* your pages */)
-let seam: CircuitSeam = new CircuitSeam(
-    set.open_fn(), set.adopt_fn(), set.accept_fn(), set.outbox_fn(),
-    set.tick_fn(), set.ending_fn(), set.disconnect_fn(), set.resume_fn(),
-    set.wake_fn())
+@page(route: r"/")
+pub class Home extends Component {
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "h1")
+        b.text(1, "hello from latte")
+        b.close()
+    }
+}
 
-map_circuit(app, "/circuit", seam, new EndpointOptions())?
+fn main() {
+    var options: LatteOptions = new LatteOptions()
+    options.title = "Minimal"
+    run_main(options)
+}
 ```
 
-`CircuitSet` owns the live circuits and `CircuitSeam` is the set of closures the
-endpoint calls into — the endpoint knows nothing about pages, which is what lets
-the core stay free of I/O. Then serve your page bodies from your own routes and
-include `js/latte.js`.
+That is `examples/minimal/`, whole. `run_main` reads `check` or `serve <port>`
+from the command line; `build(options)` gives you the `LatteApp` if you want to
+drive it yourself.
 
-**`examples/cafe/main.b` is the worked example** and the source of truth for this
-wiring: a served document, a content-security policy, static assets, and the
-circuit on one server.
+`LatteApp` does what every `main.b` used to do by hand: the scan-and-refuse
+pass, the signing key, the one `Antiforgery` both halves must share, the two
+`ShellOptions`, the circuit's page factory, the five espresso mount calls in the
+order they have to be in, the nine-closure seam, and the WebSocket origin list —
+which can only be filled in after the kernel has chosen a port, and which
+refuses every handshake when it is empty.
+
+Three defaults are safer than the pieces they replace. Panic containment is
+**on** (`CircuitSet.guard` defaults to none, so one forgotten line turned a
+panic in a click into a dead worker); the origin list is filled in for you; and
+one `Antiforgery` is shared by construction rather than by remembering to.
+
+Add routes of your own with `serve_with`, or take the `espresso.WebApplication`
+and mount latte on it yourself:
+
+```beans
+match build(options) {
+    ok(app) => {
+        var endpoint: EndpointOptions = new EndpointOptions()
+        app.mount(my_web_application, endpoint)?
+    }
+    err(problem) => { /* the page table is bad; nothing has bound a socket */ }
+}
+```
+
+Nothing is hidden: `app.pages`, `app.forms`, `app.host`, `app.set`, `app.shell`
+and `app.static_shell` are all reachable. The point is that nobody has to
+*assemble* them correctly, not that nobody may see them.
+
+**`latte_app` is a separate module, not a package under `latte/`,** and it has
+to be: a package under a module may not import its own module root. That is why
+`latte.web` cannot name `CircuitSet` and why a `CircuitSeam` is nine closures
+over `int` and `string`. The two halves of latte can only meet somewhere that
+may import both, and before this the only such place was your `main.b`.
+
+**`examples/cafe/main.b` is the worked example** — a served document, a content
+security policy, static assets, a form that works with JavaScript switched off,
+and a circuit, with 500 lines of its own self-test. **`examples/minimal/` is the
+one that shows what you have to write.**
 
 **`.bx` files compile to `.b`, and the generated `.b` is checked in.** Consumers
 of a latte package add a `require` row and import it — they install no markup

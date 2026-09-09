@@ -1,0 +1,18 @@
+module latte_app
+kind library
+
+# `latte_app` is the composition root: the one place that names BOTH halves of
+# latte and wires them onto espresso.
+#
+# It is a sibling module rather than a package under `latte/` because a package
+# under a module may not import its own module root — `latte.web` cannot name
+# `CircuitSet` or `ShellOptions` for exactly that reason, which is why a
+# `CircuitSeam` is nine closures over std types. A separate module has no such
+# restriction, so the assembling that every application used to hand-write can
+# live here instead of in every `main.b`.
+#
+# Nothing under `latte/`'s module root imports this, so latte's core stays
+# free of espresso and its wasm leg is unaffected.
+require path ".."
+require path "../../../community-libs/espresso"
+require path "../../../community-libs/barista"

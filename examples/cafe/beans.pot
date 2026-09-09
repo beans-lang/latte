@@ -10,4 +10,5 @@ kind application
 # `.worktrees/latte-wN/examples/cafe` — four levels up is `beans-lang/` either
 # way. latte's own manifest does the same thing for the same reason.
 require path "../.."
+require path "../../app"
 require path "../../../../community-libs/espresso"
