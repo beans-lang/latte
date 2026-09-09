@@ -5,8 +5,8 @@
 //
 // **Sequence numbers.** A number is a *source position*, not a counter, and
 // two frames carrying one number in two renders of one component must describe
-// the same place in the file. The rules are `probes/BUILDER.md`'s: source order
-// from 0 per component per render; the arms of a branch take **disjoint
+// the same place in the file. The rules: source order from 0 per component
+// per render; the arms of a branch take **disjoint
 // ranges** out of the enclosing counter, so a number never means two things in
 // one render; a region and a fragment body **restart at 0**; a child's frames
 // are numbered in the child's own space. `Counters` below is a stack, one
@@ -279,7 +279,7 @@ pub class Emitter {
     /// The type parameters of a generic component. Markup inside one may not
     /// spell them: `partial class Grid<T>` may carry `<T>` on exactly one part,
     /// so the generated part is `partial class Grid` and `T` is not a name it
-    /// can write (`probes/ANSWERS.md` §4).
+    /// can write.
     type_params: List<string> = []
     /// The last source line the line map printed, so a run of calls from one
     /// line does not repeat it.
@@ -325,10 +325,9 @@ pub class Emitter {
 
     /// The Builder every call in the current scope is written on.
     ///
-    /// `b` at the top, because that is what `render(b: Builder)` is handed and
-    /// what `probes/BUILDER.md` writes. A fragment body gets its own, named
-    /// with the reserved prefix and numbered by depth so two nested bodies
-    /// never shadow each other.
+    /// `b` at the top, because that is what `render(b: Builder)` is handed. A
+    /// fragment body gets its own, named with the reserved prefix and numbered
+    /// by depth so two nested bodies never shadow each other.
     fn builder_name() -> string {
         if self.inner_depth == 0 { return "b" }
         if self.inner_depth == 1 { return "_latte_inner" }
@@ -421,11 +420,11 @@ pub class Emitter {
     ///
     /// **Adjacent text and expressions are one frame, not several.**
     /// `<h2>Count: $self.count</h2>` is `b.text(3, "Count: {self.count}")`, and
-    /// that is not a size optimisation — it is what the wire protocol names:
-    /// PLAN.md's own batch example is `["ut",3,"Count: 4"]`, one text edit
-    /// carrying the whole string. Emitting the literal and the value as two
-    /// frames would put a text node boundary in the DOM that the markup does
-    /// not have, and would send two edits where the protocol describes one.
+    /// that is not a size optimisation — it is what the wire protocol names: a
+    /// text edit is `["ut",3,"Count: 4"]` (see `wire.b`), one edit carrying the
+    /// whole string. Emitting the literal and the value as two frames would
+    /// put a text node boundary in the DOM that the markup does not have, and
+    /// would send two edits where the protocol describes one.
     fn nodes(list: List<Node>, indent: int) {
         var i: int = 0
         for i < list.len() {
@@ -1019,11 +1018,11 @@ pub class Emitter {
     /// **Not** `b.reference(...)`, and the difference is forced rather than
     /// chosen. Every attribute-position call needs `in_attributes`, which only
     /// `open()` sets, and a component tag opens no element — so a `Reference`
-    /// there has no spelling any emission can reach (`probes/BUILDER.md`,
-    /// "ref on a component tag is an assignment"). The assignment is also the
-    /// better answer: it hands back the concrete type, so `self.grid.reload()`
-    /// needs no downcast, and it is filled at **mount**, not after the applier
-    /// has run, because a component instance exists as soon as it is activated.
+    /// there has no spelling any emission can reach. The assignment is also
+    /// the better answer: it hands back the concrete type, so
+    /// `self.grid.reload()` needs no downcast, and it is filled at **mount**,
+    /// not after the applier has run, because a component instance exists as
+    /// soon as it is activated.
     ///
     /// The place is written as `Option<T>`, so a child that is never reached —
     /// a branch arm that did not run — is `none` rather than a stale instance
@@ -1031,8 +1030,9 @@ pub class Emitter {
     /// is a beansc type error naming the author's own field, which is the
     /// diagnostic they can act on.
     ///
-    /// It takes **no sequence number**: it is not a Builder call, so numbering
-    /// is byte for byte what it was when this was a refusal.
+    /// It takes **no sequence number**: it is not a Builder call at all, so a
+    /// `ref=` on a component tag never shifts the numbering of anything
+    /// around it.
     fn emit_component_ref(handle: RefAttr, c: string, indent: int) {
         self.check_code(handle.code, handle.span, "ref=\{ \}")
         self.write(indent, "{handle.code} = some({c})")

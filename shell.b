@@ -1,46 +1,40 @@
 // `shell.b` — the page shell: the document a browser is actually served.
 //
-// Everything else in this repo renders a page *body*. `Renderer.html()`
-// answers the markup a component tree produced, `PageHost.handle` wraps it in
-// the layout chain, and `map_pages` writes it into an HTTP response. Nothing
-// wrote `<!doctype html>`, nothing wrote a `<script src>`, and so nothing that
-// latte served had ever booted a circuit in a browser. This file is that seam.
+// Everything else in this repo renders a page *body*: `Renderer.html()` turns
+// a component tree into markup, `PageHost.handle` wraps it in the layout
+// chain, `map_pages` writes it into a response. None of that writes
+// `<!doctype html>` or a `<script src>` — this file does, and it is the only
+// place that does.
 //
-// It lives at the module root and not in `latte.web` because it does no I/O:
-// it is string building, and `beans.pot` keeps the module root free of
-// `std.fs`, `std.net` and `std.io` so `test.sh --wasm` holds for every
-// consumer. The asset route that *serves* `js/latte.js` reads a file, so it
-// lives in `latte.web` instead (`web/assets.b`).
+// It lives at the module root, not `latte.web`, because it does no I/O: it is
+// string building, and `beans.pot` keeps the module root free of `std.fs`,
+// `std.net` and `std.io` so `test.sh --wasm` holds for every consumer. The
+// route that *serves* `js/latte.js` reads a file, so it lives in `latte.web`
+// instead (`web/assets.b`).
 //
 // ## The shell carries no circuit id
 //
-// `CircuitEndpoint.upgrade` mints a fresh id for every socket, and it is right
-// to: nothing in a WebSocket handshake says which circuit a client wants, and
-// `CircuitSet.adopt` exists precisely because a reconnect must arrive on a
-// circuit it did not open and then name the one it remembers. The id is a
-// server-minted reconnect credential and the client learns it from `hello`.
-//
-// A shell that printed an id would therefore have to make `upgrade` stop
-// minting — through a session-keyed pending table with a lifetime nobody has
-// written, wrong the moment a deployment has two workers — and would put a
-// live credential into cacheable HTML. So the shell says only *that* the page
+// `CircuitEndpoint.upgrade` mints a fresh id for every socket — nothing in a
+// WebSocket handshake says which circuit a client wants back, and
+// `CircuitSet.adopt` exists so a reconnect can arrive on a circuit it did not
+// open and name the one it remembers. The id is a server-minted reconnect
+// credential, learned by the client from `hello`; printing one into cacheable
+// HTML would leak a live credential. So the shell says only *that* the page
 // wants a circuit (`data-latte-boot`), where the socket is, and which element
-// is the root. The id never appears in a page at all.
+// is the root — the id itself never appears in a page.
 //
-// `data-latte-circuit` still works, for a host that genuinely decides ids
-// itself: `ShellOptions.circuit_id` writes it. Nothing in latte needs it.
+// `data-latte-circuit` still works, for a host that decides ids itself:
+// `ShellOptions.circuit_id` writes it. Nothing in latte needs it.
 //
 // ## No inline anything
 //
 // `web/host.b`'s `security_headers` ships `script-src 'self'` with no
-// `'unsafe-inline'` and `tests/w4_headers.b` § 4 greps `js/latte.js` for
-// `eval`, `new Function` and `<script`. A shell that emitted an inline
-// `<script>`, an inline `<style>` or an `on*=` attribute would be dead under
-// the policy latte itself sends, and the only symptom is a console line nobody
-// on the server ever sees. So there is no `head_html` field and no way to pass
-// raw markup into the head: stylesheets are a list of hrefs and that is the
-// whole surface. `tests/w9_shell.b` § 5 asserts a rendered shell contains no
-// `<script>` with a body, no `<style>` and no `on`-prefixed attribute.
+// `'unsafe-inline'`, and `tests/w4_headers.b` § 4 greps `js/latte.js` for
+// `eval`, `new Function` and `<script`. An inline `<script>`, an inline
+// `<style>` or an `on*=` attribute here would be dead under latte's own
+// policy. So there is no `head_html` field and no way to pass raw markup into
+// the head — stylesheets are a list of hrefs, and that is the whole surface.
+// `tests/w9_shell.b` § 5 asserts a rendered shell has none of the three.
 package latte
 
 import std.fmt

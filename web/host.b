@@ -1,23 +1,15 @@
 // `web/host.b` — the static-rendering half of the espresso seam.
 //
 // `web.b` carries a circuit over a socket; this file carries a page over one
-// ordinary request. Both exist here for the same reason: **a package under
-// `latte/` may not import its own module root** (`error: a package cannot
-// import its own module root`), so nothing in `latte.web` can name `PageMap`,
-// `PageHost` or `Signer`. What crosses the seam is closures over std types, and
-// the application's root file — which may import both halves — is where they
-// meet.
+// ordinary request. Both live under `latte/`, so neither can name `PageMap`,
+// `PageHost` or `Signer` — a package cannot import its own module root. What
+// crosses the seam is closures over std types; the application's root file,
+// which may import both halves, is where they meet.
 //
-// Two things live here and nowhere else, and both are here because the module
-// root cannot have them:
-//
-//   * **the MAC.** `std.crypto` reaches the platform digest through the
-//     networking bridge, and a module-root file importing it fails
-//     `test.sh --wasm` at codegen for every consumer of latte. `hmac_signer`
-//     hands the root a closure instead.
-//   * **the constant-time compare.** espresso's `constant_time_equal` is
-//     public exactly so that a second copy is not written; `same_bytes` wraps
-//     it rather than reimplementing it.
+// Two things live only here: the MAC (`hmac_signer` reaches `std.crypto`
+// through the networking bridge, which fails `test.sh --wasm` at codegen
+// from the module root) and the constant-time compare (`same_bytes` wraps
+// espresso's own `constant_time_equal` rather than reimplementing it).
 package web
 
 import espresso

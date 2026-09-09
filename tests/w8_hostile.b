@@ -1,5 +1,4 @@
-// tests/w8_hostile.b — PLAN.md gate 10's second half: "hostile frames that
-// must never panic and never leak."
+// tests/w8_hostile.b — hostile frames that must never panic and never leak.
 //
 // `tests/w8_threats.b` is the index: one section per threat-table row, each
 // asserting a refusal with a control beside it. This file is the volume test.
@@ -17,7 +16,7 @@
 // compares the number fed against the number generated, so a generator that
 // quietly produced nothing cannot look like a family that survived everything.
 //
-// **How "never leaks" is proved.** Not here — by `probes/w8_leaks.sh`, which
+// **How "never leaks" is proved.** Not here — by `w8b_leaks.sh`, which
 // builds this file natively and runs it under macOS `leaks --atExit`. It says
 // SKIP, loudly, on a machine without `leaks`. Every shape allocates a fresh
 // `Circuit` with its two channels, so the corpus is also the leak corpus.
@@ -36,8 +35,8 @@
 //     a count. It is also why no shape is ever printed — the vocabulary is the
 //     evidence that nothing is echoed;
 //   * the distinct `bye` kinds, and the distinct frame kinds that reached the
-//     outbox. PLAN.md: "Crossing one ends the circuit with a `bye`, never a
-//     panic."
+//     outbox — crossing a limit ends the circuit with a `bye`, never a
+//     panic.
 package main
 
 import std.fmt

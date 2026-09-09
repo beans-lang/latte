@@ -1,6 +1,6 @@
 package latte
 
-// latte — a Blazor-shaped web framework for Beans.
+// latte — a server-rendered component framework for Beans.
 //
 // A component is a markup file with Beans in it. The markup compiler under
 // bx/ turns it into `Builder` calls with fixed sequence numbers; the core

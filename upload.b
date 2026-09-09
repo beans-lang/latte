@@ -1,24 +1,24 @@
 // Uploads, the half that has no I/O: the control a page renders, the progress
 // a client reports, and the record of what came back.
 //
-// From PLAN.md § "Uploads and multipart forms":
+// A page's POST handler drives this file's `Upload` component directly —
+// `took`, `refused`, `finished` — after running the body through espresso's
+// multipart parser and `latte.uploads`' store. There is no automatic field
+// binding for a file part the way `@form`/`@field` binds scalar fields.
 //
-//   * Scalar parts bind like form fields with `@form`. A file part binds with
-//     `@file` to a handle that owns a temp file.
-//   * **Limits are the design.** Maximum parts, maximum part size, maximum
-//     total, maximum filename length, an allowed content-type list — each with
-//     a refusal that names what was crossed. The client's `Content-Type` is
-//     never trusted; a file is stored under a generated id and the submitted
-//     filename is metadata, never a path.
-//   * Inside a circuit an upload is still an HTTP POST, not a socket message.
-//     `latte.js` posts the file and reports progress over the circuit.
+// Limits live in espresso (`MultipartLimits`): max parts, max part size, max
+// total, max filename length, an allowed content-type list, each with a
+// refusal that names what was crossed. The client's `Content-Type` is never
+// trusted; a file is stored under a generated id, and the submitted filename
+// is metadata, never a path.
 //
-// The limits themselves live in espresso — `MultipartLimits` — because they
-// bound a PARSER, and the parser is espresso's. What is here is what a page
-// does with the outcome, and it must stay free of I/O so the module root keeps
-// building for wasm (`beans.pot`, D4). The two halves meet in `latte.uploads`,
-// which may import espresso but, being a package under `latte/`, may never
-// name a type in this file.
+// `apply_progress` exists so a circuit could report client-side send
+// progress, but wire v1 has no message kind that carries it yet
+// (BLOCKERS.md B14): nothing calls `apply_progress` outside a test today.
+//
+// This file stays free of I/O so the module root keeps building for wasm;
+// the two halves meet in `latte.uploads`, which may import espresso but,
+// being a package under `latte/`, may never name a type in this file.
 package latte
 
 /// The largest upload a page offers by default, in bytes.

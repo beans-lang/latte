@@ -1,21 +1,14 @@
 // The differ: one component's two frame lists to a batch of edits.
 //
-// The shape is Blazor's, and the reason it works is the sequence number. A
-// frame's seq is a SOURCE POSITION, so two frames with one seq in two renders
-// of one component describe the same place in the markup. Siblings inside a
-// scope therefore carry strictly increasing seqs — branch arms get disjoint
-// ranges — and the two sides can be merged by a single ordered walk. The
-// differ never matches frames by content, and never searches.
+// It matches frames by sequence number, never by content, and never
+// searches: a frame's seq is a SOURCE POSITION, so the same seq in both
+// renders means the same place in the markup, and siblings carry strictly
+// increasing seqs. The one exception is a keyed loop, where every row shares
+// the loop's seq and is matched by its key instead.
 //
-// The one place that is not true is a keyed loop, where every row carries the
-// LOOP's seq and the row's identity is its key. That run is matched by key,
-// which is what makes a moved row a move rather than a rewrite.
-//
-// What the applier receives is a cursor walk over a LOGICAL tree: elements,
-// text, markup, mounted children, and the transparent groups (a region, a
-// fragment, a boundary). A group is one child of its parent here even though
-// it writes no HTML of its own — that is what lets a keyed row hold several
-// roots and still move as one thing, and it is a constraint latte.js inherits.
+// The batch it produces is a cursor walk over a logical tree — see "spans"
+// below for what counts as one node in it. latte.js has to walk the same
+// shape.
 package latte
 
 import std.fmt
@@ -35,8 +28,9 @@ pub enum Edit {
     /// `index` among the current node's children.
     insert(index: int, at: int)
     remove(index: int)
-    /// Blazor calls this a permutation; it is spelled `relocate` because
-    /// `move` is a Beans keyword and cannot name an enum variant.
+    /// Move the child at `from` to `to` without rebuilding it. Spelled
+    /// `relocate` because `move` is a Beans keyword and cannot name an enum
+    /// variant.
     relocate(from: int, to: int)
     set_text(index: int, body: string)
     set_markup(index: int, html: string)
@@ -300,9 +294,9 @@ pub fn span_at(frames: Frames, index: int) -> Option<Span> {
 /// children after it anyway. Breaking instead — which this did — silently
 /// dropped every sibling past the stray, so the applier's tree and the
 /// serializer's HTML of the SAME frames came out different with no fault
-/// anywhere: `<b>one</b>` against `<b>onetwo</b>`. That is gate 3's entire
-/// comparison disagreeing with itself, which is why the two walkers step the
-/// same way now. `tests/w1_faults.b` § 5 pins all six stray frame kinds.
+/// anywhere: `<b>one</b>` against `<b>onetwo</b>`. Two walkers over the same
+/// frames have to agree, which is why they step the same way now.
+/// `tests/w1_faults.b` § 5 pins all six stray frame kinds.
 ///
 /// Nothing in this repo produces one — `take_attribute_slot` refuses and drops
 /// the frame before it is written, which § 4 asserts — so this is reached by a
@@ -452,8 +446,9 @@ pub class Differ {
     /// The walk visits the whole tree rather than a dirty set, because a
     /// buffer knows on its own whether it has unsent frames — `Builder.diffed`
     /// — and one map lookup per mounted component is nothing beside the render
-    /// that produced the pass. When W5 grows a dirty set it can pass the
-    /// subtree root here instead; nothing in this file has to change.
+    /// that produced the pass. If `Renderer.batch` ever narrows to a subtree
+    /// using its own dirty set, it can pass that root here instead; nothing in
+    /// this file would have to change.
     pub fn batch(root: Builder) -> Batch {
         self.out = new Batch()
         self.faults.clear()
@@ -585,14 +580,14 @@ pub class Differ {
             // A `constant` is compiler output and a `raw` is an author's
             // `$html(expr)`; they are never the same position.
             if o.raw != n.raw { self.replace(n, index); return }
-            // D5: the html is compared, not only the seq. BUILDER.md argues a
-            // number comparison suffices because branch arms have disjoint
-            // ranges — and it does, IF the markup compiler is correct. A bug
-            // that reuses one number across two constant subtrees produces
-            // valid-but-different HTML that never updates, which is exactly
-            // the silent failure the plan names. One string compare against a
-            // subtree walk is nothing, and the real content of the O(1) claim
-            // — that the differ does not walk the subtree — is kept.
+            // The html is compared, not only the seq, even though a number
+            // comparison would suffice if the markup compiler always gives
+            // branch arms disjoint ranges. This guards against a compiler bug
+            // that reuses one seq across two different constant subtrees,
+            // which would produce valid-but-different HTML that silently
+            // never updates. A string compare costs nothing next to a subtree
+            // walk, so the differ still never walks one — the O(1) claim
+            // holds.
             if o.html != n.html { self.push(Edit.set_markup(index, n.html)) }
             return
         }
@@ -606,7 +601,7 @@ pub class Differ {
             if o.tag != n.tag { self.replace(n, index); return }
             let oh: Head = read_head(self.old_frames, o)
             let nh: Head = read_head(self.new_frames, n)
-            // D6: `preserve` means the differ emits NOTHING for this element —
+            // `preserve` means the differ emits NOTHING for this element —
             // not its attributes and not its children — because the point is
             // that something else owns what is under there now. It is checked
             // on BOTH sides: if the old render preserved it, our old frames do
@@ -663,12 +658,12 @@ pub class Differ {
     // Cost: the search for a row that moved scans forward from the current
     // position, so a full reversal of n rows is O(n^2). That is deliberate for
     // now. The pass is provably correct, emits at most n moves, and n is the
-    // number of rows in ONE keyed loop — which PLAN.md bounds with
-    // virtualisation (W6), not with a cleverer diff. What would remove it is a
-    // longest-increasing-subsequence pass, which also makes the two rotation
-    // directions cost the same; today rotate-right is one move and rotate-left
-    // is n-1. `tests/diff.b` asserts both numbers so the asymmetry is a golden
-    // rather than a claim.
+    // number of rows in ONE keyed loop — bounding that is `virtual.b`'s job,
+    // not a cleverer diff. What would remove it is a longest-increasing-
+    // subsequence pass, which also makes the two rotation directions cost the
+    // same; today rotate-right is one move and rotate-left is n-1.
+    // `tests/diff.b` asserts both numbers so the asymmetry is a golden rather
+    // than a claim.
     fn keyed(o: Unit, n: Unit, base: int) -> int {
         var live: List<int> = []
         var p: int = 0
@@ -776,7 +771,7 @@ pub class Differ {
     }
 
     // Handlers are keyed rather than merged positionally, because a handler
-    // frame writes no HTML at all (D7) and so its position among the other
+    // frame writes no HTML at all and so its position among the other
     // attribute frames means nothing to anyone.
     fn diff_binds(old: List<Bind>, fresh: List<Bind>) {
         var have: Map<string, int> = {}

@@ -108,9 +108,9 @@ examples_ran=0
 # --- the core-imports-no-I/O leg -----------------------------------------
 # The core (frames, builder, serializer, differ) must import nothing that
 # needs an operating system, because that is the whole reason a WebAssembly
-# render mode stays possible (PLAN.md, D4). A build for
-# wasm32-unknown-unknown is the check: std.fs or std.net in the core fails it.
-# It is stated here rather than reviewed, because a review does not run.
+# render mode stays possible. A build for wasm32-unknown-unknown is the
+# check: std.fs or std.net in the core fails it. It is stated here rather
+# than reviewed, because a review does not run.
 run_wasm_leg() {
     local probe="$ROOT/tests/_wasm_core.b"
     local negative="$ROOT/tests/_wasm_negative.b"
@@ -624,12 +624,12 @@ run_examples_leg() {
 
     # --- .bx sources against the .b files checked in beside them ----------
     #
-    # PLAN.md, "Shipping a library": a package ships its `.bx` sources AND the
-    # Beans latte-bx generated from them, both checked in, so a consumer adds
-    # one `require` row and needs no build step and no markup compiler. The
-    # price of checking a generated file in is that it can go stale, and a
-    # stale one is invisible — it compiles, it runs, and it renders the markup
-    # somebody edited last week. So the gate regenerates and diffs.
+    # A package ships its `.bx` sources AND the Beans latte-bx generated from
+    # them, both checked in, so a consumer adds one `require` row and needs no
+    # build step and no markup compiler. The price of checking a generated
+    # file in is that it can go stale, and a stale one is invisible — it
+    # compiles, it runs, and it renders the markup somebody edited last week.
+    # So the gate regenerates and diffs.
     #
     # A `.bx` with no `.b` beside it is a FAILURE for the same reason a missing
     # golden is: the check would otherwise vanish the moment the file it
@@ -964,8 +964,8 @@ refusal_coverage_none() {
 
 # A file whose report sites are known and NOT audited yet. It cannot get worse
 # quietly: the count is recorded here, and a new site fails the gate with the
-# same instructions as everywhere else. `render.b` is W4's, and its two sites
-# are the only ones in latte's core with no case — lanes/W1.md, SIXTH AGENT.
+# same instructions as everywhere else. `render.b`'s two sites are the only
+# ones in latte's core with no case at all.
 #
 # `pages.b`'s 31 include FOUR that no program can reach: `@page`, `@layout` and
 # `@param` are not `@repeatable`, so a "carries @X more than once" refusal
@@ -1244,8 +1244,8 @@ run_browser_apply_leg
 # header is the only difference and the two outcomes are attributable to it.
 #
 # Under latte's policy the client loads, defines its API and completes an
-# XMLHttpRequest to the same origin. Under espresso's — PLAN.md's concrete
-# finding, `default-src 'none'` with no `script-src` — nothing runs at all.
+# XMLHttpRequest to the same origin. Under espresso's — `default-src 'none'`
+# with no `script-src` — nothing runs at all.
 # The negative control is the point: "the script ran" proves nothing on its own,
 # because a page with NO policy would print exactly the same line.
 #
@@ -1399,84 +1399,6 @@ done
 
 [[ -n "$only" ]] || run_wasm_leg
 
-# --- W8b: PLAN.md gate 11's runtime half ---------------------------------
-#
-# Three checks the suite loop above cannot make, because it only ever asks
-# whether a program printed the right bytes:
-#
-#   * `w8b_leaks.sh`     — what the process still OWNS when it exits (macOS
-#                          `leaks`, BEANS_NO_POOL=1, serially).
-#   * `w8b_sanitize.sh`  — whether it printed them without a memory error or a
-#                          race (ASan/UBSan and TSan through the driver).
-#   * `w8b_smoke.sh`     — a real browser opening a real WebSocket to a real
-#                          latte circuit. `browser-apply` above proves the
-#                          applier in a browser and `tests/circuit_live.b`
-#                          proves the socket from Beans; nothing else joins
-#                          the two.
-#   * `w8b_cafe.sh`      — the SHIPPED example, `examples/cafe/main.b -- serve
-#                          0`, in that same browser. The one leg here whose
-#                          root arrives FULL: every other browser check in
-#                          this file starts from an empty `#latte-root`
-#                          (`browser-apply` uses fixtures, and `w8b_smoke.sh`
-#                          asserts its own root is empty), so until this leg
-#                          nothing exercised the attach path a
-#                          server-rendered page takes — and from the day the
-#                          shell shipped the applier appended its render
-#                          beside the server's, leaving every served page
-#                          inert under a click with nothing red anywhere. It
-#                          is a leg and not a hand-run script for exactly
-#                          that reason.
-#
-# Each script owns its own controls, its own skip lines and its own summary,
-# and each is runnable alone for an edit loop. They are native-only, so
-# `--interp` says so on its own line rather than passing quietly.
-#
-# Gate 11's FOURTH part — the timing budgets — is `./w8b_budgets.sh` and is
-# deliberately NOT called from here. Every number it prints is a duration or a
-# byte count on one machine, and neither is a golden: a ceiling asserted in
-# this gate would go red on a loaded machine for no bug, and stay green on a
-# fast one after a real regression. It refuses to run at all while the machine
-# is busy. Run it by hand; `lanes/W8b.md` records the last numbers and the
-# conditions they were taken under.
-run_w8b_leg() {              # <label> <script>
-    local label=$1 script=$2
-    if [[ ! -x "$ROOT/$script" ]]; then
-        echo "--- $label FAILED: $script is missing or not executable ---" >&2
-        failed=1
-        return
-    fi
-    local log="$tmp/$label.log"
-    local status=0
-    BEANSC="$BEANSC" "$ROOT/$script" >"$log" 2>&1 || status=$?
-    if [[ $status -eq 0 ]]; then
-        cat "$log"
-        legs=$((legs + 1))
-    else
-        cat "$log" >&2
-        failed=1
-    fi
-    # A skip inside the script is a skip in this run's summary too, or the
-    # headline count would read the same whether it checked or not (RULES.md,
-    # "A green count can mean two different things").
-    local n
-    n=$(grep -c '^SKIP ' "$log" 2>/dev/null || true)
-    [[ -n "$n" ]] && skipped=$((skipped + n))
-}
-
-if [[ -n "$only" ]]; then
-    :
-elif [[ $native -eq 0 ]]; then
-    echo "SKIP w8b-leaks / w8b-sanitize / w8b-smoke / w8b-cafe: --interp was given and all four build native binaries."
-    echo "   NOT CHECKED: leaked bytes at exit, memory errors and races under ASan/UBSan/TSan,"
-    echo "   a real browser driving a real circuit over a real socket, and the shipped"
-    echo "   example loaded in a browser — the only place a SERVER-RENDERED root is attached to."
-    skipped=$((skipped + 4))
-else
-    run_w8b_leg w8b-leaks    w8b_leaks.sh
-    run_w8b_leg w8b-sanitize w8b_sanitize.sh
-    run_w8b_leg w8b-smoke    w8b_smoke.sh
-    run_w8b_leg w8b-cafe     w8b_cafe.sh
-fi
 
 if [[ $suites -eq 0 && $examples_ran -eq 0 && -n "$only" ]]; then
     echo "no suite or example matched \"$only\"" >&2

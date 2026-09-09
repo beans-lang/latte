@@ -6,10 +6,10 @@
 // cosmetic bug. The element's tag is what decides, and the tag is right here
 // in the frame list, which is why this is a frame walk and not a string pass.
 //
-// This file and `latte.apply` MUST agree byte for byte: the applier serializes
-// its own tree with the same helpers, and PLAN.md gate 3 is exactly that
-// equality. So the escaper and the attribute rules live in `frames.b` and are
-// called from both, never written twice.
+// This file and `latte.apply` MUST agree byte for byte: the applier
+// serializes its own tree with the same helpers. So the escaper and the
+// attribute rules live in `frames.b` and are called from both, never written
+// twice.
 package latte
 
 import std.fmt

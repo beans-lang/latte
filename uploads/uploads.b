@@ -1,29 +1,12 @@
 // `latte.uploads` — the half of an upload that touches espresso.
 //
-// Like `latte.web`, this is a package under `latte/` and therefore may never
-// name a type in the module root: no `Upload`, no `Component`, no `Builder`.
-// It takes bytes and answers strings and records, and the application that
-// imports both is where the two halves meet. That is also what keeps the
-// module root free of espresso, and therefore still buildable for wasm.
-//
-// What it owns is the STORE. espresso parses the body and calls a sink per
-// part; latte's store is what decides where those bytes go and, more
-// importantly, what happens to them when the request does not finish.
-//
-// **The release is a `deinit`, and that is a decision.** `RULES.md` says
-// anything that closes a socket is explicit teardown and never a destructor,
-// because `deinit` may not park. Releasing a part does not park — it is a
-// free, and one day a `remove`. The reason it MUST be a destructor is the
-// third sentence of gate 8: a panic halfway through a handler unwinds the
-// fiber, running its drops newest-first, and an explicit `release()` at the
-// end of the handler is exactly the line a panic skips.
-//
-// **What is missing, and it is the point of `BLOCKERS.md` B12.** `std.fs` in
-// 0.1.40 has read, write, append and copy, and no way to delete a file. So
-// `PartHandle` holds its bytes in memory and its release is a drop rather than
-// an unlink. Everything else — the generated id, the sink protocol, the
-// release on the unwind, the accounting a test can read — is what a file-backed
-// store needs, and the one line that would remove the file is marked below.
+// A package under `latte/`, so it may never name a module-root type (no
+// `Upload`, `Component`, `Builder`), and the module root never imports
+// espresso either — that is what keeps the module root buildable for wasm.
+// It takes bytes and returns strings and records; the application that
+// imports both this and the module root is where the two meet. It owns the
+// store: espresso calls a sink per part, and the store decides where those
+// bytes go and what happens to them if the request never finishes.
 package uploads
 
 import espresso
@@ -77,12 +60,13 @@ pub class ReleaseLog {
     }
 }
 
-/// The bytes of one part, and the release that must happen whatever else does.
+/// The bytes of one part, and the release that must happen no matter what
+/// else does.
 ///
-/// It is the object whose destruction IS the release, which is why it holds
-/// the log and the id rather than the sink doing it: a sink is finished or
-/// discarded by the parser's own accounting, and gate 8's sentence is about
-/// what happens when that accounting never gets to run.
+/// Destroying this object IS the release, which is why it holds the log and
+/// the id rather than the sink doing it: a sink is finished or discarded by
+/// the parser's own accounting, and this handle exists for what happens when
+/// that accounting never runs — a panic mid-parse.
 pub class PartHandle {
     pub storage_id: string = ""
     log: ReleaseLog = new ReleaseLog()
@@ -109,15 +93,21 @@ pub class PartHandle {
     pub fn release() {
         if self.released { return }
         self.released = true
-        // The file-backed line: `fs.remove(self.path)`. It is not written
-        // because `std.fs` has no `remove` — BLOCKERS.md B12. Everything that
-        // has to be true for it to be correct is true here already: it runs on
-        // the unwind, it runs once, and it names the file by the id this
-        // package generated and never by anything the client sent.
+        // A file-backed store would remove the file here (`fs.remove(self.path)`);
+        // `std.fs` has no delete yet (BLOCKERS.md B13), so this drops the
+        // in-memory payload instead. Everything else a file-backed release
+        // needs is already true: it runs on the unwind, it runs once, and it
+        // is keyed by the id this package generated, never by anything the
+        // client sent.
         self.payload = new Bytes(0)
         self.log.release(self.storage_id)
     }
 
+    /// `deinit` may not park (see RULES.md), so this only frees memory, never
+    /// a file or network wait. It still has to be the release point: a panic
+    /// halfway through a handler unwinds the fiber and runs drops
+    /// newest-first, which is exactly the moment an explicit `release()`
+    /// call at the end of the handler would be skipped.
     pub fn deinit() { self.release() }
 }
 
@@ -207,7 +197,10 @@ pub fn describe_body(body: Bytes, content_type: string,
     }
 }
 
-/// The same, fed one byte at a time. Same answer or the parser is wrong.
+/// The same, but the body is fed as two writes split at byte `at` instead of
+/// one. A caller that sweeps `at` from 0 to `body.len()` can confirm the
+/// parser gives the same answer no matter where the network happened to cut
+/// the stream.
 pub fn describe_body_split(body: Bytes, content_type: string,
                            limits: espresso.MultipartLimits,
                            store: HandleStore, fields: List<string>,

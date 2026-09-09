@@ -1,17 +1,15 @@
 // tests/w4_headers.b — the Content-Security-Policy a latte page can run under.
 //
-// PLAN.md § Security, last row: *clickjacking and script injection —
-// `latte.security_headers(options)`: `frame-ancestors 'none'`, nosniff, a
-// referrer policy, and a CSP of `script-src 'self'` with `connect-src` for the
-// socket.* And its concrete finding: *espresso's existing `security_headers`
-// sends `default-src 'none'` (`security.b:73`), which blocks both `latte.js`
-// and the WebSocket.*
+// `latte.security_headers(options)` exists because espresso's own
+// `security_headers` sends `default-src 'none'` (`security.b:73`), which
+// blocks both `latte.js` and the WebSocket — and nothing shipped a policy
+// that did not.
 //
-// Nothing shipped it, so a deployment had two choices and both were wrong:
-// mount espresso's middleware and serve a page whose client never runs, or
-// mount nothing and have no policy at all. § 2 below does not take PLAN.md's
-// word for what espresso sends — it runs espresso's own middleware through
-// espresso's own host and reads the header off the response. If espresso ever
+// So a deployment had two choices and both were wrong: mount espresso's
+// middleware and serve a page whose client never runs, or mount nothing and
+// have no policy at all. § 2 below does not take that claim on faith — it
+// runs espresso's own middleware through espresso's own host and reads the
+// header off the response. If espresso ever
 // fixes its policy, this file says so on the line that justifies latte having
 // its own.
 //

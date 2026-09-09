@@ -29,8 +29,8 @@ package bx
 /// `stop_eof` at the top of the file, `stop_close_tag` inside an element, and
 /// `stop_brace` inside a `$if` / `$for` / `$match` arm body. The mode is what
 /// makes a bare `}` a terminator at block level and a brace everywhere else,
-/// so the ambiguity PLAN.md documents is one comparison rather than a flag
-/// threaded through the parser.
+/// resolving that ambiguity with one comparison rather than a flag threaded
+/// through the parser.
 pub const STOP_EOF: int = 0
 pub const STOP_CLOSE_TAG: int = 1
 pub const STOP_BRACE: int = 2
@@ -284,10 +284,9 @@ pub class Parser {
 
         let component: bool = names_a_component(tag)
         // `<Grid<int>>`. A tag name stops at the `<` — `is_name_byte` does not
-        // include one — so this is the byte that follows the name, not a
-        // substring of it. The refusal used to ask `tag.contains("<")`, which
-        // no tag can ever answer yes to, and `<Grid<int>>` fell through to
-        // "a < inside <Grid> — the tag before it is missing its >".
+        // include one — so this checks the byte that follows the name, not a
+        // substring of it: `tag` itself can never contain a `<`, so a check
+        // like `tag.contains("<")` would never fire here.
         if component && self.peek() == 60 {
             self.report(at, "a closed generic component tag is not supported — reflection cannot construct {tag}<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends {tag}<Order>")
             self.skip_past(62)
@@ -443,12 +442,10 @@ pub class Parser {
     /// needing no escape, and `$$` writes one dollar, the same escape the rest
     /// of the file has.
     ///
-    /// `a$b` **is** a transition, and this comment used to say it was not. The
-    /// classifier never looks at the byte before the `$` — PLAN.md's rule is
-    /// written entirely in terms of the one after it — so a JavaScript
-    /// identifier holding a dollar is refused here and is written `a$$b`.
-    /// `tests/markup_refusals.b` has the case; it was found by a control that
-    /// asserted the old comment and failed.
+    /// `a$b` **is** a transition: the classifier never looks at the byte
+    /// before the `$`, only the one after it. So a JavaScript identifier
+    /// holding a dollar is refused here and has to be written `a$$b`.
+    /// `tests/markup_refusals.b` has the case.
     fn parse_raw_text(node: ElementNode, at: Span) {
         let closer: string = "</{node.tag}>"
         let start: int = self.lex.off
@@ -810,7 +807,8 @@ pub class Parser {
     /// Read a block header and step past its `{`.
     ///
     /// Answers `none` when there is no `{` at the header's own level, which is
-    /// either a missing brace or the map-literal ambiguity PLAN.md documents.
+    /// either a missing brace or a map literal in the header that ambiguously
+    /// looks like the body's opening brace.
     fn take_header(at: Span, keyword: string) -> Option<string> {
         let start: int = self.lex.off
         let brace: int = find_header_brace(self.lex.src, start)

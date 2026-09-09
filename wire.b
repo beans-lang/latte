@@ -1,22 +1,21 @@
 // Wire v1 — JSON text, both directions, and the JSON reader that makes the
 // client half safe to parse.
 //
-// PLAN.md picks JSON first because it is "readable in a browser console, which
-// is worth a great deal while the differ is young", and it says v1 "stays
-// supported forever as the debugging encoding". So this file is not a
-// placeholder: it is the reference encoding, and a v2 has to produce the same
-// DOM from the same batch.
+// JSON is readable in a browser console, which matters while the differ is
+// young, and v1 stays supported forever as the debugging encoding — so this
+// file is not a placeholder. It is the reference encoding: a v2 has to
+// produce the same DOM from the same batch.
 //
-// Why a JSON reader lives here rather than `std.encoding.json`: the module
-// root must build for `wasm32-unknown-unknown --runtime freestanding`
-// (PLAN.md, D4, and `test.sh --wasm` is the check). std's JSON is the vendored
-// yyjson bridge and is refused there —
+// Why a JSON reader lives here rather than using `std.encoding.json`: the
+// module root must build for `wasm32-unknown-unknown --runtime freestanding`
+// (`test.sh --wasm` is the check), and std's JSON — the vendored yyjson
+// bridge — is refused there:
 //
 //     std.encoding: error: std.encoding.json needs --runtime full or minimal;
 //     the freestanding profile has no C library for the encoding bridges
 //
-// — so the root cannot use it. That is a constraint and not a preference; the
-// reader below is the price of keeping a WebAssembly render mode possible.
+// So the root cannot use it; the reader below is the price of keeping a
+// WebAssembly render mode possible.
 //
 // Everything a client sends arrives here first, so this is where the size,
 // depth and element limits live. Crossing one is a REFUSAL, never a panic and
@@ -214,7 +213,7 @@ fn write_bool(out: fmt.StringBuilder, value: bool) {
 // ---------------------------------------------------------------- limits
 //
 // Every one is an option with a default, and crossing one ends the circuit
-// with a `bye` rather than a panic (PLAN.md, "Wire protocol").
+// with a `bye` rather than a panic.
 
 pub class WireLimits {
     /// The largest client message this end will look at, in bytes. A message
@@ -726,7 +725,7 @@ pub fn encode_hello(circuit: string, limits: WireLimits) -> string {
 
 /// A failure the circuit SURVIVED. `msg` is what the page may see, so it is
 /// never a server detail: a contained panic sends its trace id, never its
-/// message (PLAN.md, "information disclosure").
+/// message.
 pub fn encode_err(kind: string, message: string) -> string {
     var out: fmt.StringBuilder = new fmt.StringBuilder()
     out.push("\{\"t\":\"err\",\"k\":")
@@ -915,9 +914,8 @@ fn refuse(why: string) -> ClientMessage {
 ///
 /// Nothing here can panic and nothing here interprets a wire string as a name:
 /// `t` selects a fixed kind, `k` selects a fixed FAMILY, and the only strings
-/// that survive are values. That is what removes mass assignment and
-/// reflective invocation from the threat table by construction rather than by
-/// defence (PLAN.md, "Security").
+/// that survive are values. That removes mass assignment and reflective
+/// invocation from the threat table by construction rather than by defence.
 pub fn decode_client(text: string, limits: WireLimits) -> ClientMessage {
     match parse_json(text, limits) {
         ok(root) => {

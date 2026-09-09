@@ -1,9 +1,13 @@
 // `latte.Builder` — what generated markup calls, and the one component's
 // frame buffer it fills.
 //
-// The signature is `probes/BUILDER.md`, which W2 and W4 also compile against.
+// Every `.bx` file compiles to a sequence of calls against this class's
+// public methods, so its public shape is the contract between markup and the
+// code the compiler emits for it (see bx/emit.b).
+//
 // Nothing here imports std.io, std.fs or std.net: `test.sh --wasm` builds the
-// core for wasm32-unknown-unknown and that is the check (PLAN.md, D4).
+// core for wasm32-unknown-unknown, and one OS-bound import at this level
+// would break that build.
 package latte
 
 import std.reflect
@@ -48,12 +52,12 @@ pub class FocusEvent {
 /// It carries nothing else, and in particular no handle to a mounted child.
 /// `ref` on a component tag is not an attribute-position call at all: every
 /// attribute-position call needs `in_attributes`, which only `open()` sets, and
-/// a component tag opens no element. W2 compiles it to an assignment inside the
-/// setup closure instead — `b.component<Grid>(18, fn(c: Grid) { self.grid =
-/// some(c) })` — which hands back the CONCRETE type rather than a `Component`
-/// needing a downcast, and fills it at mount rather than after a render.
-/// An element ref genuinely cannot be filled before the applier has run, which
-/// is why that one stays a `fn(Reference)` sink. See probes/BUILDER.md.
+/// a component tag opens no element. The compiler compiles it to an assignment
+/// inside the setup closure instead — `b.component<Grid>(18, fn(c: Grid) {
+/// self.grid = some(c) })` — which hands back the CONCRETE type rather than a
+/// `Component` needing a downcast, and fills it at mount rather than after a
+/// render. An element ref genuinely cannot be filled before the applier has
+/// run, which is why that one stays a `fn(Reference)` sink.
 pub class Reference {
     pub node: int = -1
     pub fn init() {}
@@ -147,10 +151,12 @@ pub class Component {
 
     // Lifecycle. These are declared and called HERE because mounting happens
     // here — `component<T>` is the only place a child is activated, its
-    // parameters are set, and its render is gated. W4 overrides them.
+    // parameters are set, and its render is gated. Any subclass may override
+    // them.
     //
-    // `on_after_render` is deliberately absent: it fires once the batch has
-    // been applied, which only the renderer knows, and the renderer is W5's.
+    // `on_after_render` is deliberately absent: it would fire once a batch has
+    // been applied to the real DOM, and only the renderer (render.b) knows
+    // when that happens.
 
     /// Once, immediately after activation, before the first `on_params_set`.
     pub fn on_init() {}
@@ -169,12 +175,12 @@ pub class Component {
 }
 
 // ---------------------------------------------------------------- callback
-/// The event-out type. It holds a **weak** owner, and probe 6 says why: not to
-/// break a cycle — the handler closure captures `self` on its own and the
-/// cycle collector is what kills that — but so a callback fired after its
-/// owner is gone reads `none` and does nothing instead of marking a dead
-/// component dirty. The weak read turns `none` before the referent's `deinit`
-/// body runs, so it can never resurrect anything.
+/// The event-out type. It holds a **weak** owner — not to break a cycle (the
+/// handler closure captures `self` on its own, and the cycle collector is
+/// what kills that) but so a callback fired after its owner is gone reads
+/// `none` and does nothing instead of marking a dead component dirty. The
+/// weak read turns `none` before the referent's `deinit` body runs, so it can
+/// never resurrect anything. `probes/p6_cycle` runs both properties.
 pub class Callback<T> {
     pub weak owner: Option<Component> = none
     pub handler: fn(T) = fn(value: T) {}
@@ -424,9 +430,8 @@ pub class Builder {
 
     /// Constant folding, on by default. Generated code emits both arms —
     /// `if b.fold { b.constant(…) } else { …the walk… }` — so a page suspected
-    /// of stale content can be compared against the unfolded form directly.
-    /// PLAN.md names this as the mitigation for the one folding bug that still
-    /// compiles.
+    /// of stale or wrong content can be compared against the unfolded form
+    /// directly by setting this to `false`.
     pub fold: bool = true
 
     /// This component's id, which is its slot id in its parent. The root is 0.
@@ -462,11 +467,11 @@ pub class Builder {
     /// be diffed, and that must therefore go out ahead of that render's edits.
     ///
     /// They cannot simply stay in `pending`, and they cannot be dropped
-    /// either — dropping them loses the write, which is the bug gate 6 § 10b
-    /// caught. `reset()` assigns `previous = frames`, and a signal write
-    /// rewrote a body inside `frames` in place, so the mutation ends up on
-    /// BOTH sides of the next diff and the differ is blind to it. The client
-    /// is still at the value before the write.
+    /// either. Dropping them loses the write: `reset()` assigns
+    /// `previous = frames`, and a signal write rewrote a body inside `frames`
+    /// in place, so the mutation ends up on BOTH sides of the next diff and
+    /// the differ is blind to it — the client is left holding the value from
+    /// before the write. `tests/renders.b` has the regression case.
     ///
     /// The order is what makes them valid: a queued edit's child indices were
     /// measured against a frame list whose STRUCTURE is the one the client
@@ -746,9 +751,8 @@ pub class Builder {
     ///
     /// Called from `LiveBinding.refresh`, which `Cell.fire` calls, which
     /// `Signal.set` calls. Nothing on this path touches the dirty set, so
-    /// `Renderer.flush` has nothing to do and `render_count` cannot move —
-    /// that is gate 6's signal row, and it is a property of there being no
-    /// call to `mark` on this path rather than of a counter being left alone.
+    /// `Renderer.flush` has nothing to do and `render_count` cannot move: no
+    /// code on this path ever calls `mark`.
     fn refresh_binding(binding: LiveBinding) {
         if binding.index < 0 || binding.index >= self.frames.len() {
             binding.retire()
@@ -1064,9 +1068,9 @@ pub class Builder {
     // ---- error boundaries -------------------------------------------------
     //
     // The frames and the substitution live here; the `contained` call that
-    // catches the panic lives in `latte.boundary`, because `contained` is
-    // refused at check time on wasm targets and the core must keep building
-    // for one (PLAN.md, D4).
+    // catches the panic lives in `latte.boundary` instead, because `contained`
+    // is refused at check time on wasm targets and this file has to keep
+    // building for one.
 
     pub fn boundary(seq: int) {
         self.note_sibling(seq, false)

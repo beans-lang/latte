@@ -7,8 +7,8 @@
 // follow from that split and both are load-bearing:
 //
 //  * The module root must build for `wasm32-unknown-unknown --runtime
-//    freestanding` (PLAN.md, D4). That refuses `brew`, `contained`, `std.time`,
-//    `std.random`, `std.crypto` and `std.encoding.json` — measured, through
+//    freestanding`, which refuses `brew`, `contained`, `std.time`,
+//    `std.random`, `std.crypto` and `std.encoding.json` — measured through
 //    `--emit obj`, not just `check`. So containment arrives as an injected
 //    `guard` closure and time arrives as a `now_ms` parameter. `Channel`,
 //    `AtomicInt` and `Mutex` ARE allowed there, which is why the inbox and the
@@ -18,22 +18,18 @@
 //    closures over std types, and the app wires the two together in its own
 //    `package main`.
 //
-// The socket rule W0 proved is not enforceable from here — it is a property of
-// `latte.web` — but this file is written so that it CAN hold: nothing here
-// writes anything. Frames accumulate in `outbox` and the host's single writer
-// fiber drains it.
+// The one-writer rule `latte.web` enforces is not enforceable from here, but
+// this file is written so it CAN hold: nothing here writes anything. Frames
+// accumulate in `outbox`, and the host's single writer fiber drains it.
 package latte
 
 import std.fmt
 
 // ---------------------------------------------------------------- options
 //
-// PLAN.md: "Limits, all options with defaults: client message size, inbox
-// depth per circuit, un-acked batch window, virtual window size, idle circuit
-// timeout, retention after disconnect, circuits per worker. **Crossing one
-// ends the circuit with a `bye`, never a panic.**"
-//
-// Every one of them is here, and `bye_kind_for` names the kind each sends.
+// Every limit here has a default, and crossing one ends the circuit with a
+// `bye` through `stop()` — never a panic. Each field below says what it
+// bounds and what kind of `bye` it sends.
 
 pub class CircuitOptions {
     /// Client message size, nesting depth, elements per array or object, and
@@ -42,9 +38,8 @@ pub class CircuitOptions {
 
     /// How many cross-thread jobs may be queued before `Push.post` refuses.
     /// A counter and not `try_send`, because `try_send` is not offered for a
-    /// move-only element type and a full channel would otherwise PARK the
-    /// posting thread — which is the one thing a push must never do
-    /// (`probes/ANSWERS.md` §2).
+    /// move-only element type, and a full channel would otherwise PARK the
+    /// posting thread — which is the one thing a push must never do.
     pub max_inbox: int = 64
 
     /// How far the batch number may run ahead of the client's last ack before
@@ -52,9 +47,10 @@ pub class CircuitOptions {
     /// un-acked batch is exactly a batch a reconnect might have to resend.
     pub max_unacked: int = 32
 
-    /// The largest slice a `range` message may ask for. W6 owns virtual lists;
-    /// the clamp lives here so a hostile client cannot ask for 50,000 rows in
-    /// one message before W6 exists.
+    /// The largest slice a `range` message may ask for. This is the wire-level
+    /// cap: crossing it ends the circuit, because no client latte ships ever
+    /// asks for more. `VirtualGeometry` (virtual.b) applies a second, silent
+    /// clamp against the collection's actual size — see `on_range`.
     pub max_window: int = 200
 
     /// No client message and no push for this long ends the circuit.
@@ -66,14 +62,13 @@ pub class CircuitOptions {
     /// How long an attached circuit may run on the authorization it mounted
     /// with before that authorization is asked for again.
     ///
-    /// PLAN.md, "authorization outliving its token": a circuit outlives the
-    /// request that opened it, so a session that expires or a role that is
-    /// revoked reaches nothing unless something re-asks. This is that
-    /// interval, and it IS the exposure window — a revocation takes effect
-    /// somewhere between now and `revalidate_ms` from now. 30 s is short
-    /// enough that a revoked operator loses the page while they are still
-    /// looking at it, and long enough that the cost is one page build per
-    /// circuit per half minute rather than one per event.
+    /// A circuit outlives the request that opened it, so a session that
+    /// expires or a role that is revoked reaches nothing unless something
+    /// re-asks. This interval IS the exposure window — a revocation takes
+    /// effect somewhere between now and `revalidate_ms` from now. 30 s is
+    /// short enough that a revoked operator loses the page while they are
+    /// still looking at it, and long enough that the cost is one page build
+    /// per circuit per half minute rather than one per event.
     pub revalidate_ms: int = 30000
 
     /// How many circuits one `CircuitSet` will hold. Crossing it evicts the
@@ -83,7 +78,7 @@ pub class CircuitOptions {
 
     /// How many render passes one event may cause. A component that dirties
     /// itself from its own render would otherwise spin forever; this surfaces
-    /// it in its error boundary instead (PLAN.md, "DoS: render loops").
+    /// it in its error boundary instead.
     pub max_renders: int = 32
 
     pub fn init() {}
@@ -103,8 +98,7 @@ pub class ErrorBoundary extends Component {
 
     /// What to render instead, given the failure report. The default is plain
     /// and deliberately says nothing a server should not say out loud — the
-    /// report a circuit hands it is a trace id, never a panic message
-    /// (PLAN.md, "information disclosure").
+    /// report a circuit hands it is a trace id, never a panic message.
     pub fallback: fn(Builder, string) = fn(b: Builder, report: string) {
         b.open(0, "div")
         b.attr(1, "class", "latte-error")
@@ -151,12 +145,12 @@ pub class ErrorBoundary extends Component {
 // way a user class crosses a thread boundary, so a handle is MOVED into the
 // thread that will use it and a circuit hands out one per poster.
 //
-// It carries no reference to a component and it cannot: a plain class
+// It carries no reference to a component, and it cannot: a plain class
 // reference is not Send, so a poster physically cannot capture the thing it
-// means to change (`probes/ANSWERS.md` §2). The closure it posts receives the
-// `Circuit` from the circuit fiber instead. That is also why the push path
-// inherits "nothing on the wire is ever interpreted as a name" — there is no
-// name and no reference for a poster to supply.
+// means to change. The closure it posts receives the `Circuit` from the
+// circuit fiber instead. That is also why the push path inherits "nothing on
+// the wire is ever interpreted as a name" — there is no name and no
+// reference for a poster to supply.
 pub unique class Push implements Send {
     jobs: Channel<send fn(Circuit)>
     wake: Channel<string>
@@ -216,8 +210,8 @@ class SentBatch {
 
 pub class Circuit {
     /// 256 bits from the host's CSPRNG, bound to the session. Never in a URL,
-    /// never logged (PLAN.md, "circuit id theft or fixation"). The root does
-    /// not make it — `std.random` is refused here — it is handed in.
+    /// never logged. The root does not make it — `std.random` is refused
+    /// here — it is handed in.
     pub id: string = ""
     pub options: CircuitOptions = new CircuitOptions()
     pub renderer: Renderer = new Renderer()
@@ -499,13 +493,13 @@ pub class Circuit {
     }
 
     fn on_range(message: ClientMessage) {
-        // The range is untrusted input (PLAN.md, "virtual range abuse"), and
-        // TWO different caps stand in front of it. This is the WIRE's: a
-        // message asking for more than `max_window` rows ends the circuit,
-        // because no client latte ships ever sends one. `VirtualGeometry`
-        // then trims whatever survives against the collection, silently,
-        // because a range that runs off the end of a list which shrank under
-        // the user is ordinary and must not cost a session.
+        // The range is untrusted input, and TWO different caps stand in
+        // front of it. This is the WIRE's: a message asking for more than
+        // `max_window` rows ends the circuit, because no client latte ships
+        // ever sends one. `VirtualGeometry` then trims whatever survives
+        // against the collection, silently, because a range that runs off
+        // the end of a list which shrank under the user is ordinary and must
+        // not cost a session.
         if message.count > self.options.max_window {
             self.stop("limit", "a range asked for {message.count} rows, over the {self.options.max_window} cap")
             return
@@ -598,8 +592,8 @@ pub class Circuit {
     /// the circuit continues. With NO boundary anywhere above it, the circuit
     /// ENDS: half a handler ran, the component's state is whatever that half
     /// left behind, and continuing would keep serving a page built from it.
-    /// That is Blazor's rule too, and it is why an app that wants to survive a
-    /// handler panic has to say where.
+    /// An app that wants to survive a handler panic has to say where, by
+    /// placing an `ErrorBoundary`.
     fn contain(from: int, report: string) {
         let trace: string = "t{self.trace_next}"
         self.trace_next += 1
@@ -736,15 +730,15 @@ pub class Circuit {
     /// Ask the page factory again whether this circuit's principal still gets
     /// this page, and end the circuit when it does not.
     ///
-    /// PLAN.md, "authorization outliving its token" — Blazor's best-known
-    /// pitfall. `open_page` checks `@authorize` at mount and on every
-    /// in-circuit navigation, but a circuit that is neither mounting nor
-    /// navigating can run for as long as its socket lives, and a session that
-    /// expired an hour ago would still be driving a page.
+    /// A live circuit outlives the request that authorized it. `open_page`
+    /// checks `@authorize` at mount and on every in-circuit navigation, but a
+    /// circuit that is neither mounting nor navigating can run for as long
+    /// as its socket lives, and a session that expired an hour ago would
+    /// still be driving a page without this.
     ///
     /// It re-asks `make_page` rather than taking an injected auth closure, and
     /// that is the whole point: latte has exactly one spelling for page
-    /// authorization — `open_page(hit, who, ..)` inside the factory the app
+    /// authorization — `open_page(found, who, ..)` inside the factory the app
     /// already had to write — so an app that wrote `@authorize` at all gets
     /// this with nothing to wire and nothing to forget. A separate closure
     /// defaulting to "still authorized" would be a hole in every app that did
@@ -905,8 +899,7 @@ fn kind_name(kind: int) -> string {
 
 /// Same-origin and path-only. A navigation target is the one string a client
 /// sends that this end turns into a request, so it is the one place an open
-/// redirect or an SSRF could start (PLAN.md, "open redirect and SSRF through
-/// navigation").
+/// redirect or an SSRF could start.
 ///
 /// The rule is deliberately narrow: it must begin with exactly one `/`, hold
 /// no control byte, no backslash and no `..` segment. `//host` is refused

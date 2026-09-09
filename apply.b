@@ -1,23 +1,20 @@
 // The reference applier: a batch of edits to a tree, in Beans.
 //
-// PLAN.md gate 3 is "apply equivalence": over thousands of random trees and
-// mutations, the applier must land on the serializer's HTML of the new tree.
-// This is the Beans half of that gate. The `latte.js` half — the same edits
-// against a real DOM — is W5's, and neither half stands in for the other: a
-// text test proves the encoder consistent with itself, and only a browser
-// proves it means the same thing there.
+// It is one half of a pair. `latte.js` applies the exact same edit stream to
+// a real DOM, and both must land on the serializer's HTML of the new tree —
+// checked over thousands of random trees and mutations. A test here proves
+// this applier consistent with itself; only a browser running latte.js
+// proves the edits mean the same thing there.
 //
-// The applier holds a LOGICAL tree, which is what the edit stream addresses:
-// a region, a fragment and a boundary are nodes here even though they write no
-// HTML of their own, and so is a mounted child. That is the shape latte.js has
-// to keep too, and it is the reason a keyed row may hold several roots and
-// still move as one thing.
+// The tree is LOGICAL: a region, a fragment and a boundary are nodes here
+// even though they write no HTML of their own, and so is a mounted child.
+// `latte.js` keeps the same shape, which is why a keyed row can hold several
+// roots and still move as one thing.
 //
-// It does NOT have a serializer of its own. It flattens its tree back into
-// frames and hands them to the one in `serialize.b`. Two serializers would
-// make gate 3 compare two bugs for equality — and this way the gate proves
-// something stronger than it was asked to: that the applier reconstructed the
-// frame list, not merely a string that looks like it.
+// It has no serializer of its own — it flattens back into frames and hands
+// them to `serialize.b`'s. A second serializer here could hide the same bug
+// on both sides of a comparison; this way the check proves the applier
+// reconstructed the frame list, not just a string that looks like it.
 package latte
 
 pub class Node {
@@ -58,10 +55,11 @@ pub class Node {
 //
 // A kind-mismatched edit is DROPPED, one fault is recorded, the rest of the
 // stream applies, and nothing ends. That is the same drop-and-record the
-// eleven index and lookup refusals in `run` already use, and it is the rule
-// `latte.js` applies to a real DOM with the SAME sentence, byte for byte —
-// lanes/W5.md, THE APPLIER CONTRACT. Two appliers that answer a malformed
-// batch differently are two appliers, and gate 3 exists to compare them.
+// eleven index and lookup refusals in `run` already use, and `latte.js`
+// applies the same rule to a real DOM with the SAME fault sentence, byte for
+// byte. Two appliers that answered a malformed batch differently would not be
+// one contract, and running both against the same edits is what would catch
+// that.
 //
 // What it closes, and this is why it is a rule and not a nicety:
 //
@@ -273,9 +271,8 @@ pub class Applier {
                         // balances. Only an INDEX-out-of-range `step_in` gets a
                         // placeholder, because there is no node to descend into.
                         //
-                        // lanes/W5.md, THE APPLIER CONTRACT: `latte.js` does
-                        // the same, so the two appliers fault identically on
-                        // one stream.
+                        // `latte.js` does the same, so the two appliers fault
+                        // identically on one stream.
                         stack.push(cur.kids[index])
                     } else {
                         stack.push(cur.kids[index])
@@ -424,10 +421,10 @@ pub class Applier {
     /// sentence names it, because "set_text needs a text node" against a node
     /// with four children says nothing about which one was meant.
     ///
-    /// The wording is fixed by lanes/W5.md, THE APPLIER CONTRACT: `latte.js`
-    /// emits this sentence byte for byte from the same stream, so a reword
-    /// here is a wire-contract change and breaks the two-appliers-one-answer
-    /// premise gate 3 rests on.
+    /// `latte.js` emits this exact sentence, byte for byte, from the same
+    /// stream — so rewording it here is a wire-contract change: the point of
+    /// running both appliers against the same edits is that they answer a
+    /// malformed batch identically, not just a well-formed one.
     fn wrong_kind_at(component: int, op: string, index: int, want: int, got: int) {
         self.faults.push(
             "component {component}: {op} {index} needs a {want_name(want)} node, not a {node_kind_name(got)} node")
@@ -586,8 +583,8 @@ pub class Applier {
     }
 
     /// The frames the applier reconstructed, one per line — the same shape
-    /// `Builder.dump_tree()` prints, so a failing gate-3 case can be read as
-    /// two frame lists side by side rather than two long strings.
+    /// `Builder.dump_tree()` prints, so a failing apply-equivalence case can
+    /// be read as two frame lists side by side rather than two long strings.
     pub fn dump() -> string { return self.to_builder().dump_tree() }
 }
 

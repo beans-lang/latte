@@ -6,8 +6,8 @@
 // `shelf.atoms.Badge`. Three packages of one library module, on top of a base
 // class from a fourth package in another module entirely.
 //
-// This file is what PLAN.md's gate 5 means by "a three-level library component
-// used from another package", and `examples/shop` is the other package.
+// This file is a three-level library component used from another package:
+// `examples/shop` is the other package.
 package shelf
 
 import {Builder, Callback, Component, MouseEvent, ParamWatch, param} from latte

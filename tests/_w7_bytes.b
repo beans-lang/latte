@@ -4,10 +4,10 @@
 //     cd community-libs/latte && ../../beans/build/beansc run tests/_w7_bytes.b
 //     cd community-libs/latte && ../../beans/build/beansc build tests/_w7_bytes.b -o /tmp/w7bytes && /tmp/w7bytes
 //
-// PLAN.md D3 makes wire v2 (binary) conditional on a measurement: "Deflate over
-// JSON may already take most of what binary would, and a second encoding is a
-// permanent tax on every protocol change. The gate is a real number from a real
-// workload." This is that number.
+// Whether a binary wire format is worth building depends on a real
+// measurement: deflate over JSON may already take most of what binary would,
+// and a second encoding on the wire is a permanent tax on every future
+// protocol change. This file produces that number.
 //
 // **What is measured, exactly.** Not a model of deflate — the bytes a real
 // kernel delivered. Three runs against one real espresso server on port 0,
@@ -100,10 +100,11 @@ fn click_message(handler: int) -> string {
 
 /// The slot id of the first click handler in a batch's reference pool.
 ///
-/// Hard-coding it was the first version and it was wrong: the id a builder
-/// assigns depends on the page, so `h:2` landed nowhere and every run measured
-/// ONE batch instead of twenty-one. A probe that quietly measures a tenth of
-/// its workload is worse than one that fails.
+/// It cannot be hard-coded: the id a builder assigns depends on the page, so
+/// a fixed guess like `h:2` can land on nothing and leave every later click
+/// unsent — every run would then measure ONE batch instead of twenty-one,
+/// silently. A probe that quietly measures a tenth of its workload is worse
+/// than one that fails.
 fn click_slot(batch: string) -> int {
     let marker: string = "[\"h\","
     var from: int = 0
@@ -266,7 +267,8 @@ pub class RunRaw {
     /// The size of every frame, header included, in arrival order. Frame 1 is
     /// the hello, frame 2 the attach batch, and 3.. the one-edit click
     /// batches — three shapes with very different compression, and an average
-    /// over all of them would hide exactly the one the v2 decision rests on.
+    /// over all of them would hide exactly the number a binary-wire-format
+    /// decision would turn on.
     pub sizes: List<int> = []
     pub reads: int = 0
     pub wrote: int = 0
@@ -441,8 +443,7 @@ fn first_frame_body(data: Bytes) -> string {
     // The STREAMING inflater, not `inflate_raw`. A sync-flushed block plus
     // those four bytes is NOT a terminated DEFLATE stream — there is no final
     // block — so the one-shot form refuses it with "the stream ends before its
-    // data does". That was the second bug in this probe and it is the same
-    // rule the real receiver follows.
+    // data does". This is the same rule the real receiver follows.
     payload.push(0)
     payload.push(0)
     payload.push(255)

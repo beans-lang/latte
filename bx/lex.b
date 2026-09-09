@@ -819,10 +819,11 @@ pub fn end_of_chain(source: string, at: int) -> int {
 /// Whether `code` uses `name` as an identifier of its own.
 ///
 /// Used for one job: refusing markup that spells a generic component's type
-/// parameter, which the generated half may never write
-/// (`probes/ANSWERS.md` §4). Strings and comments are skipped, and a name that
-/// sits straight after a `.` is a *member* rather than a type — so `self.T` is
-/// not a use of `T` and `let x: T` is.
+/// parameter, which the generated half may never write — `partial class` may
+/// carry its type parameters on exactly one part, and latte-bx writes its own
+/// half with none. Strings and comments are skipped, and a name that sits
+/// straight after a `.` is a *member* rather than a type — so `self.T` is not
+/// a use of `T` and `let x: T` is.
 pub fn uses_identifier(code: string, name: string) -> bool {
     var i: int = 0
     for i < code.len() {

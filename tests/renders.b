@@ -1,4 +1,4 @@
-// tests/renders.b — PLAN.md gate 6, the update model.
+// tests/renders.b — the update model.
 //
 // This is the gate that proves latte's headline claim, and the one a framework
 // quietly fails: "the page is never re-rendered. Not on an event, not on a
@@ -515,10 +515,10 @@ fn main() {
 
     io.println("")
     io.println("== 10. a signal write runs ZERO renders ==")
-    // PLAN.md's third tier: "the one bound expression. No render pass, no
-    // diff. | one edit". Both halves are asserted, and the second one is why
-    // the tier exists at all — a signal that still cost a diff would cost
-    // exactly what the second tier costs.
+    // A signal write updates the one bound expression directly — no render
+    // pass, no diff, one edit. Both halves are asserted here, and the second
+    // is why signals exist at all: a signal that still cost a diff would
+    // cost the same as an ordinary re-render.
     let lb: LiveBoard = new LiveBoard()
     var k: int = 0
     for k < ROWS {

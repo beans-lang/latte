@@ -1,14 +1,11 @@
-// `latte.Renderer` — the dirty set, and the thing gate 6 measures.
+// `latte.Renderer` — the dirty set the framework renders from.
 //
-// PLAN.md's headline claim is that the page is never re-rendered: "there is no
-// code path that starts at the root and walks down. The renderer holds a dirty
-// set and renders exactly its members." This file is that renderer, and it
-// carries its own per-component render counter so the claim is a number in a
-// golden file rather than a sentence in a design.
+// The page is never re-rendered top down: the renderer holds a set of dirty
+// component ids and `flush()` renders exactly those. It also counts each
+// component's renders (`renders`), so a test can assert an exact count.
 //
-// Nothing here imports std.io, std.fs, std.net, std.time or std.random —
-// `test.sh --wasm` builds the root package for wasm32-unknown-unknown and a
-// single OS-bound import at the module root kills that leg for everybody.
+// Nothing here imports std.io, std.fs, std.net, std.time or std.random:
+// `test.sh --wasm` builds this package for wasm32-unknown-unknown.
 package latte
 
 import std.reflect
@@ -58,11 +55,10 @@ pub class Renderer extends DirtySink {
     /// The root component. `none` until `mount` is called.
     pub page: Option<Component> = none
 
-    /// How many times each component's `render` has run, by component id.
-    /// **This is gate 6's instrument.** It is counted here, in the framework,
-    /// and not by a component incrementing a field of its own, because a
-    /// counter a test component keeps only counts the components the test
-    /// remembered to instrument.
+    /// How many times each component's `render` has run, by component id. It
+    /// is counted here, in the framework, and not by a component incrementing
+    /// a field of its own, because a counter a test component keeps only
+    /// counts the components the test remembered to instrument.
     pub renders: Map<int, int> = {}
 
     /// How many `flush` calls have happened. A flush that renders nothing
@@ -428,9 +424,9 @@ pub class Renderer extends DirtySink {
 
     // ---- dispatch ---------------------------------------------------------
     //
-    // A handler runs and the component that bound it is marked dirty. That is
-    // Blazor's rule and it is the reason a page needs no `notify()` on the
-    // ordinary path: the framework knows which component owns the id it just
+    // A handler runs and the component that bound it is marked dirty
+    // automatically. That is why a page needs no `notify()` on the ordinary
+    // path: the framework knows which component owns the id it just
     // dispatched, so an author who forgets to say "I changed" still gets the
     // render they meant.
     //

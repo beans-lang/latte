@@ -1,4 +1,4 @@
-// PLAN.md gate 4: the markup compiler.
+// The markup compiler.
 //
 // Five things, in this order, because each one is worthless without the one
 // before it.
@@ -22,14 +22,14 @@
 // regenerated here and diffed. A stale generated file fails the gate instead
 // of shipping.
 //
-// **Gate 4's own words: "hand-written builder versus generated builder
-// producing identical frames."** Two halves. The *frames* half is
-// `tests/w2_equiv.b`, which renders a generated component and a hand-written
-// twin and compares frame dumps on both backends. The *text* half is here:
-// `probes/p8_builder/pages/counter_gen.b` was hand-written by W0 from
-// PLAN.md's worked example, before any of this existed, and
-// `probes/p8_builder/pages/counter.bx` is the markup it must come from. Every
-// sequence number W0 wrote has to mean the same thing in latte-bx's output.
+// **Hand-written builder versus generated builder producing identical
+// frames.** Two halves. The *frames* half is `tests/w2_equiv.b`, which
+// renders a generated component and a hand-written twin and compares frame
+// dumps on both backends. The *text* half is here:
+// `probes/p8_builder/pages/counter_gen.b` is a hand-written twin, written
+// before any of this existed, of the markup in
+// `probes/p8_builder/pages/counter.bx`. Every sequence number it uses has to
+// mean the same thing in latte-bx's output.
 package main
 
 import std.fs
