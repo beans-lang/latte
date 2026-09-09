@@ -1,15 +1,27 @@
-// The refused half of p13: type names inside a string interpolation that the
-// checker rejects, each with the wrong package composed into the message.
+// p13, the half that used to be refused — and is not any more.
 //
-// Every one of these is ACCEPTED when the same expression is written outside
-// the quotes — the `outside:` line above each — so the refusal is about the
-// interpolation, not about the program. `expected.txt` records the exact
-// messages; `check_refusals.sh` re-checks them, so the day this starts
-// compiling somebody has to read why.
+// This was `p13_interpolation_bad/`: type names inside a string interpolation
+// that the checker rejected, each with the wrong package composed into the
+// message, recorded in an `expected.txt` that `check_refusals.sh` re-checked.
+// Its own comment said "the day this starts compiling somebody has to read
+// why". That day was 2026-09-09 and the why is **beans #164** (BLOCKERS.md
+// B8/B9/B10): a type named inside `"{ }"` is now resolved with the file's
+// imports, so every line below compiles and answers correctly.
+//
+// It is kept, and not deleted, because it is the coverage for that fix: seven
+// positions in one program. On 0.1.41 both backends print, identically:
+//
+//     new inside:      7
+//     as? inside:      true
+//     generic inside:  2
+//     as inside:       7
+//
+// The `outside:` line above each case is the same expression written outside
+// the quotes. Both spellings were always meant to agree; now they do.
 package main
 
 import std.io
-import {Widget, Fancy, make, twice, Tone, Shop, apply} from p13_interp_bad.kit
+import {Widget, Fancy, make, twice, Tone, Shop, apply} from p13_interp_fixed.kit
 
 fn main() {
     let w: Widget = new Widget()

@@ -514,7 +514,7 @@ ok relocate at a container cursor applied
 -- a-mount-whose-activation-failed
    site:    one / no frame buffer for the T mounted at slot N
    faults:  no frame buffer for the NeedsSeed mounted at slot 1
-   builder: 0: cannot activate NeedsSeed: wrong reflected argument count
+   builder: 0: cannot activate NeedsSeed: wrong reflected argument count (constructing latte$entry.NeedsSeed)
    left:    <div></div>
    control: <div><span>badge</span></div>
 ok a-mount-whose-activation-failed: the exact serializer faults

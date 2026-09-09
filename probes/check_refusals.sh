@@ -20,8 +20,8 @@ beansc="${BEANSC:-$beans/build/beansc}"
 
 [[ -x "$beansc" ]] || { echo "no beansc at $beansc" >&2; exit 1; }
 case "$("$beansc" --version)" in
-    *"0.1.40"*) ;;
-    *) echo "the refusals are recorded against beansc 0.1.40" >&2; exit 1 ;;
+    *"0.1.41"*) ;;
+    *) echo "the refusals are recorded against beansc 0.1.41" >&2; exit 1 ;;
 esac
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/latte-refusals.XXXXXX")

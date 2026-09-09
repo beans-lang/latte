@@ -802,7 +802,7 @@ ok mount-a-non-component: the control raises nothing
 ok mount-a-non-component: and the control renders
 -- mount-a-component-whose-init-takes-an-argument
    site:    mount / cannot activate X
-   faults:  0: cannot activate NeedsSeed: wrong reflected argument count
+   faults:  0: cannot activate NeedsSeed: wrong reflected argument count (constructing latte$entry.NeedsSeed)
    left:    
    control: <p>ok/1</p>
 ok mount-a-component-whose-init-takes-an-argument: the exact faults
@@ -812,7 +812,7 @@ ok mount-a-component-whose-init-takes-an-argument: the control raises nothing
 ok mount-a-component-whose-init-takes-an-argument: and the control renders
 -- mount-a-component-whose-init-is-not-public
    site:    mount / cannot activate X
-   faults:  0: cannot activate HiddenInit: reflected member is not public
+   faults:  0: cannot activate HiddenInit: reflected member is not public (constructing latte$entry.HiddenInit)
    left:    
    control: <p>ok/1</p>
 ok mount-a-component-whose-init-is-not-public: the exact faults

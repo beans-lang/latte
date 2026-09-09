@@ -1,2 +1,0 @@
-module p13_interp_bad
-kind application

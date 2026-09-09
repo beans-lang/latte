@@ -7,9 +7,10 @@
 // rest of the question RULES.md 2 demands: every expression form that names a
 // type inside `"{ }"`.
 //
-// The accepted-and-wrong half is here. The refused half, with its exact
-// messages, is `p13_interpolation_bad/`, which `check_refusals.sh` re-checks —
-// so the day the compiler stops refusing them, something goes red.
+// The accepted-and-wrong half is here. The half that used to be REFUSED is
+// `p13_interpolation_fixed/` — it was `p13_interpolation_bad/`, and
+// `check_refusals.sh` went red the day beans #164 made it compile, which is
+// what that record was for. It is now a plain probe of the fixed behaviour.
 //
 // Every line is written twice: the name inside the quotes, and the same name
 // bound to a `let` one line above and interpolated. They must agree.
@@ -65,7 +66,7 @@ fn main() {
     row("make().label() — a call, no type name",
         "{make().label()}", w.label())
 
-    // ---- the POSITIVE CONTROLS for `p13_interpolation_bad/` -------------
+    // ---- the POSITIVE CONTROLS for `p13_interpolation_fixed/` -----------
     //
     // Four shapes are REFUSED inside an interpolation, each naming the wrong
     // package. Written outside the quotes, every one of them compiles and

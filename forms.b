@@ -672,16 +672,6 @@ fn bind_fields(plan: FormPlan, described: reflect.Type) {
             continue
         }
 
-        // BLOCKERS.md B1a, the same rule `pages.b` applies to a `@param`. Read
-        // `generic_declaration` before touching this: the obvious test reads
-        // FALSE for exactly the fields that fail.
-        let generic: string = generic_declaration(described, member)
-        if generic != "" {
-            plan.faults.push(
-                "{plan.type_name}.{bound.field_name} is a @field declared by {generic}; a reflective write to a field whose declaring type is generic is ok under beansc run and unsupported natively (BLOCKERS.md B1a), so latte refuses it here rather than at request time")
-            continue
-        }
-
         match bound.kind {
             other => {
                 plan.faults.push(

@@ -49,13 +49,18 @@ if [[ -n ${BEANS_ROOT:-} ]]; then
     [[ -z ${BEANS_LOG:-}      && -d "$BEANS_ROOT/runtime/log"       ]] && export BEANS_LOG="$BEANS_ROOT/runtime/log"
 fi
 
-# The compiler must be 0.1.40. Latte uses permessage-deflate, Deflater, and
-# encode_response_head_append, none of which exist in 0.1.39, and a 0.1.39
-# failure reads as a latte bug. Refuse rather than mislead.
+# The compiler must be 0.1.41. Latte uses permessage-deflate, Deflater and
+# encode_response_head_append, none of which exist in 0.1.39, and it now also
+# needs what 0.1.41 repaired: reflection over a member a generic class declares
+# answers on both backends rather than `unsupported` natively, a closed
+# generic's annotations are found at all, and a type named inside a string
+# interpolation is resolved with the file's imports. On 0.1.40 a generic
+# component's @param scan is silently empty in a native build, which reads as a
+# latte bug and is not one. Refuse rather than mislead.
 version_line=$("$BEANSC" --version 2>/dev/null || true)
 case "$version_line" in
-    *"0.1.40"*) ;;
-    *) echo "latte needs beansc 0.1.40; this one says: ${version_line:-<no answer>}" >&2
+    *"0.1.41"*) ;;
+    *) echo "latte needs beansc 0.1.41; this one says: ${version_line:-<no answer>}" >&2
        echo "  build it: cd $BEANS_ROOT && rm -f build/beansc && make BEANSC_BOOT=\$HOME/.beans/bin/beansc" >&2
        exit 1 ;;
 esac
@@ -967,7 +972,7 @@ refusal_coverage_none() {
 # same instructions as everywhere else. `render.b`'s two sites are the only
 # ones in latte's core with no case at all.
 #
-# `pages.b`'s 31 include FOUR that no program can reach: `@page`, `@layout` and
+# `pages.b`'s 30 include FOUR that no program can reach: `@page`, `@layout` and
 # `@param` are not `@repeatable`, so a "carries @X more than once" refusal
 # stands behind a compile error. They are marked as such beside
 # `annotations_named` in pages.b, with the probe that measured it. A number
@@ -1059,7 +1064,7 @@ run_refusal_coverage_leg() {
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
     refusal_coverage_pending render.b 2
-    refusal_coverage_pending pages.b 31
+    refusal_coverage_pending pages.b 30
     refusal_coverage_pending circuit.b 4
     refusal_coverage_sweep
     # One line, and only when every file passed. A partial "ok … all 42" printed
@@ -1099,7 +1104,14 @@ run_refusal_coverage_leg
 # so it stays green after a `*_bad/` directory is deleted — it would simply
 # check fewer and still say ok. Pinning means removing a refusal is a decision
 # someone has to write down here, not something a `rm -rf` does quietly.
-RECORDED_REFUSALS=3
+#
+# 3 -> 2 on 2026-09-09: `p13_interpolation_bad` was retired. Every refusal it
+# recorded now COMPILES, because beans #164 (BLOCKERS.md B8/B9/B10) taught a
+# string interpolation to resolve a type name with the file's imports. The
+# probe is not deleted — it is `probes/p13_interpolation_fixed/` and both
+# backends print the same four correct lines — it just has no refusal left to
+# record. This leg going red is what sent anyone to read that.
+RECORDED_REFUSALS=2
 run_recorded_refusals_leg() {
     local script="$ROOT/probes/check_refusals.sh"
     # Missing is a FAILURE, never a skip: the whole point is that it cannot
