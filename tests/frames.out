@@ -800,6 +800,16 @@ ok mount-a-non-component: what the refusal left
 ok mount-a-non-component: the pass is still balanced
 ok mount-a-non-component: the control raises nothing
 ok mount-a-non-component: and the control renders
+-- mount-a-component-whose-inject-cannot-be-filled
+   site:    mount / an @inject field could not be filled
+   faults:  0: latte$entry.Needy.thing is @inject, but this page has no service container to fill it from
+   left:    <p>thing</p>
+   control: <p>ok/1</p>
+ok mount-a-component-whose-inject-cannot-be-filled: the exact faults
+ok mount-a-component-whose-inject-cannot-be-filled: what the refusal left
+ok mount-a-component-whose-inject-cannot-be-filled: the pass is still balanced
+ok mount-a-component-whose-inject-cannot-be-filled: the control raises nothing
+ok mount-a-component-whose-inject-cannot-be-filled: and the control renders
 -- mount-a-component-whose-init-takes-an-argument
    site:    mount / cannot activate X
    faults:  0: cannot activate NeedsSeed: wrong reflected argument count (constructing latte$entry.NeedsSeed)
@@ -1059,6 +1069,7 @@ ok a-slot-that-holds-another-class: and the instance survived all three passes
    2x live_text / live expression N read no signal
    1x mount / X has no zero-argument initializer
    1x mount / X is not a Component
+   1x mount / an @inject field could not be filled
    2x mount / cannot activate X
    1x mount_made / X is not a Component
    3x name_is_writable / refused attribute name
@@ -1074,4 +1085,4 @@ ok a-slot-that-holds-another-class: and the instance survived all three passes
    3x unwind_to / an element was left open
 ok every fault site in builder.b has a case
 == summary
-checks: 469, failed: 0
+checks: 474, failed: 0

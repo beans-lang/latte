@@ -78,6 +78,32 @@ pub annotation authorize {
     roles: List<string> = []
 }
 
+/// A field the framework fills from the application's service container.
+///
+/// Constructor injection reaches a `@page`, because the container builds one.
+/// It cannot reach a CHILD component: children are constructed by the renderer
+/// at mount, from a zero-argument initializer, and the renderer is not the
+/// container. Before this, a nested component could only see a shared object if
+/// every ancestor between it and the page passed it down as a `@param`.
+///
+/// The mechanism is the one `@param` already uses — a `reflect.Field` written
+/// through a plan compiled once per component type — so the reflection happens
+/// at mount and not on any event path.
+///
+/// Two limits, both stated rather than discovered:
+///
+///  * **The field must be `pub`.** Reflection answers `inaccessible` for
+///    anything else, cross-package and same-package alike, and `scan_injections`
+///    refuses it at startup with that sentence rather than leaving the field at
+///    its default.
+///  * **A `weak` field cannot be injected.** Weak slots are invisible to
+///    reflection (`spec/SYNTAX.md`), so `@inject weak` is not refused — it is
+///    not seen at all. Do not write one.
+@target(value: ["field"])
+@retention(value: "runtime")
+pub annotation inject {
+}
+
 /// A parameter: a field a parent — or a route — supplies.
 ///
 /// `name` is the wire name; empty means the field's own name. `required` means
@@ -743,6 +769,58 @@ pub class PageMatch {
 }
 
 // ============================================================== the scan
+
+/// Every `@inject` field in the executable that could not be filled.
+///
+/// An empty list is a clean application. Anything in it is a component that
+/// would have mounted with the field at its default and a fault buried in a
+/// buffer's list — a page that renders, answers 200, and is wrong.
+///
+/// **Why this is a startup scan and not a render-time check.** latte's
+/// rendering already treats a mount fault as a hole rather than a failure: a
+/// subtree that cannot be built leaves the rest of the page standing, which is
+/// the right call for a live circuit and the wrong one for "the service you
+/// asked for does not exist". That is not a rendering condition at all — it is
+/// a configuration one, decidable before a socket exists, which is where every
+/// other configuration refusal in latte already lives.
+///
+/// Three things are checked, and each is fatal for the same reason: the field
+/// will silently keep its default.
+///
+///  * the field is not `pub`, so reflection cannot write it;
+///  * nothing is registered for its type;
+///  * there is no container at all, and some component asks for one.
+pub fn scan_injections(source: Option<ServiceSource>) -> List<string> {
+    var problems: List<string> = []
+    let component_name: string = type_of(Component).qualified_name()
+    for described: reflect.Type in reflect.types() {
+        if !extends_named(described, component_name) { continue }
+        for field: reflect.Field in described.fields() {
+            if annotations_named(field.annotations(), "inject").len() == 0 {
+                continue
+            }
+            let shown: string = "{described.qualified_name()}.{field.name()}"
+            if !field.is_public() {
+                problems.push(
+                    "{shown} is @inject but is not public, and reflection does not bypass visibility")
+                continue
+            }
+            match source {
+                none => {
+                    problems.push(
+                        "{shown} is @inject, but this application has no service container to fill it from")
+                }
+                some(known) => {
+                    if !known.knows(field.type()) {
+                        problems.push(
+                            "{shown} is @inject but nothing is registered for {field.type().qualified_name()}")
+                    }
+                }
+            }
+        }
+    }
+    return move problems
+}
 
 /// Every plan in the executable, and every reason one could not be made.
 pub class PageMap {

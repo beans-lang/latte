@@ -1136,7 +1136,7 @@ pub class PageHost {
     /// Serve one request, activating the page with its zero-argument
     /// initializer.
     pub fn handle(request: PageRequest, now: int) -> PageResponse {
-        return self.handle_with(request, now, none)
+        return self.handle_with(request, now, none, none)
     }
 
     /// Serve one request, constructing the page through `activator`.
@@ -1149,7 +1149,8 @@ pub class PageHost {
     /// request's scope. Passing it down the call is the only shape that cannot
     /// do that.
     pub fn handle_with(request: PageRequest, now: int,
-                       activator: Option<Activator>) -> PageResponse {
+                       activator: Option<Activator>,
+                       source: Option<ServiceSource>) -> PageResponse {
         var reply: PageResponse = new PageResponse()
         if !self.pages.ok() || !self.forms.ok() {
             reply.status = 500
@@ -1174,12 +1175,15 @@ pub class PageHost {
                     "{request.path} does not answer {request.method}; it answers {listed}")
                 return move reply
             }
-            some(found) => { return self.serve(found, request, now, activator) }
+            some(found) => {
+                return self.serve(found, request, now, activator, source)
+            }
         }
     }
 
     fn serve(found: PageMatch, request: PageRequest, now: int,
-             activator: Option<Activator>) -> PageResponse {
+             activator: Option<Activator>,
+             source: Option<ServiceSource>) -> PageResponse {
         var reply: PageResponse = new PageResponse()
 
         // Authorization first, and before activation: a page the caller may not
@@ -1238,7 +1242,8 @@ pub class PageHost {
                     return move reply
                 }
                 some(form_page) => {
-                    return self.post(found, instance, form_page, request, now)
+                    return self.post(found, instance, form_page, request,
+                                     now, source)
                 }
             }
         }
@@ -1251,11 +1256,12 @@ pub class PageHost {
             }
             none => {}
         }
-        return self.render(instance)
+        return self.render(instance, source)
     }
 
     fn post(found: PageMatch, instance: PageInstance, page: FormComponent,
-            request: PageRequest, now: int) -> PageResponse {
+            request: PageRequest, now: int,
+            source: Option<ServiceSource>) -> PageResponse {
         var reply: PageResponse = new PageResponse()
         var posted: Map<string, string> = parse_form_body(request.body)
         var token: string = ""
@@ -1306,14 +1312,15 @@ pub class PageHost {
                     page.on_submit()
                     page.state.submitted = true
                 }
-                return self.render(instance)
+                return self.render(instance, source)
             }
         }
     }
 
-    fn render(instance: PageInstance) -> PageResponse {
+    fn render(instance: PageInstance, source: Option<ServiceSource>) -> PageResponse {
         var reply: PageResponse = new PageResponse()
         let renderer: Renderer = new Renderer()
+        renderer.services = source
         if !mount_page(renderer, instance) {
             reply.status = 500
             for problem: string in instance.problems { reply.problems.push(problem) }

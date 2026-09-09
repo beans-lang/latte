@@ -229,6 +229,49 @@ pub class Callback<T> {
 // One per page, shared by every Builder in it. It owns the id counter and the
 // handler tables, so dispatching `ev {h: 41}` is one map lookup rather than a
 // walk of the component tree.
+/// Where a component's `@inject` fields come from.
+///
+/// An interface over `reflect` and nothing else, so latte's core needs no
+/// dependency on a container: `latte_app` implements it over barista, and a
+/// host with some other idea implements it over that. The core never learns
+/// what a service collection is.
+pub interface ServiceSource {
+    fn provide(described: reflect.Type) -> Result<reflect.Value, string>
+
+    /// Whether this source could answer for `described` — without building
+    /// anything.
+    ///
+    /// It is what makes `scan_injections` possible: a whole application's
+    /// `@inject` fields can be checked at startup, once, instead of each one
+    /// failing at the render that needed it. A question that has to construct
+    /// the object to be asked is not a question you can ask about two hundred
+    /// components.
+    fn knows(described: reflect.Type) -> bool
+}
+
+/// The `@inject` bindings for one component type.
+///
+/// A class around the list and not a bare `List<InjectBinding>`, because a
+/// list of these is move-only: reading one out of the cache would take it out
+/// of the cache. A class is a reference, so the map keeps it and every mount
+/// borrows the same one.
+class InjectPlan {
+    pub bindings: List<InjectBinding> = []
+    fn init() {}
+}
+
+/// One `@inject` field, resolved to what it needs.
+class InjectBinding {
+    field: reflect.Field
+    wanted: reflect.Type
+    fault: string = ""
+
+    fn init(field: reflect.Field, wanted: reflect.Type) {
+        self.field = field
+        self.wanted = wanted
+    }
+}
+
 pub class Registry {
     next: int = 1
     pub mouse: Map<int, fn(MouseEvent)> = {}
@@ -265,6 +308,16 @@ pub class Registry {
     /// statement.
     watched: Option<LiveBinding> = none
 
+    /// Where `@inject` fields come from, or `none` for a page with no
+    /// container. A component with no `@inject` field never asks.
+    pub services: Option<ServiceSource> = none
+
+    /// The `@inject` plan per component type, worked out on first mount of
+    /// that type and kept for the life of the page. A type's fields and their
+    /// annotations cannot change while a program runs, and a page that mounts
+    /// two hundred rows of one component should reflect over it once.
+    inject_plans: Map<string, InjectPlan> = {}
+
     /// Live-binding ids, page-unique and separate from the slot counter so a
     /// binding never spends a wire id.
     next_binding: int = 1
@@ -272,6 +325,73 @@ pub class Registry {
     pub fn init() {}
 
     pub fn watching() -> Option<LiveBinding> { return self.watched }
+
+    /// The `@inject` bindings for one component type.
+    fn inject_plan(described: reflect.Type) -> InjectPlan {
+        let key: string = described.qualified_name()
+        match self.inject_plans.get(key) {
+            some(found) => { return found }
+            none => {}
+        }
+        var plan: InjectPlan = new InjectPlan()
+        for field: reflect.Field in described.fields() {
+            var wanted: bool = false
+            for use: reflect.Annotation in field.annotations() {
+                if use.qualified_name() == "latte.inject" { wanted = true }
+            }
+            if !wanted { continue }
+            var binding: InjectBinding = new InjectBinding(field, field.type())
+            if !field.is_public() {
+                binding.fault =
+                    "{key}.{field.name()} is @inject but is not public, and reflection does not bypass visibility"
+            }
+            plan.bindings.push(binding)
+        }
+        self.inject_plans[key] = plan
+        return plan
+    }
+
+    /// Fill one freshly built component's `@inject` fields. Answers what could
+    /// not be filled; an empty list is the ordinary case, and a component with
+    /// no `@inject` field never reaches the source at all.
+    fn inject(receiver: reflect.Value, described: reflect.Type) -> List<string> {
+        var problems: List<string> = []
+        let plan: InjectPlan = self.inject_plan(described)
+        if plan.bindings.len() == 0 { return move problems }
+        match self.services {
+            none => {
+                for binding: InjectBinding in plan.bindings {
+                    problems.push(
+                        "{described.qualified_name()}.{binding.field.name()} is @inject, but this page has no service container to fill it from")
+                }
+                return move problems
+            }
+            some(source) => {
+                for binding: InjectBinding in plan.bindings {
+                    if binding.fault != "" {
+                        problems.push(binding.fault)
+                        continue
+                    }
+                    match source.provide(binding.wanted) {
+                        err(problem) => {
+                            problems.push(
+                                "{described.qualified_name()}.{binding.field.name()}: {problem}")
+                        }
+                        ok(value) => {
+                            match binding.field.set(receiver.copy(), value) {
+                                ok(_) => {}
+                                err(problem) => {
+                                    problems.push(
+                                        "{described.qualified_name()}.{binding.field.name()}: {problem.message()}")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return move problems
+    }
 
     /// Open a live evaluation, answering what it displaced. Nesting is not
     /// something latte generates, but a thunk that writes a signal reaches
@@ -936,6 +1056,13 @@ pub class Builder {
                             some(component) => {
                                 self.children[slot] = made.copy()
                                 self.wire(component, slot)
+                                // Before `on_init`, so a component can use an
+                                // injected service in the one place it is meant
+                                // to set itself up.
+                                for problem: string in
+                                        self.registry.inject(made.copy(), described) {
+                                    self.faults.push(problem)
+                                }
                                 component.on_init()
                             }
                             none => {

@@ -216,6 +216,13 @@ pub class Circuit {
     pub options: CircuitOptions = new CircuitOptions()
     pub renderer: Renderer = new Renderer()
 
+    /// Where this circuit's components get their `@inject` fields. A circuit
+    /// resolves from the application's ROOT provider, not a scope: its
+    /// components live as long as the socket, and latte has no hook yet to
+    /// close a per-circuit scope when one ends. Asking a root provider for a
+    /// `scoped` service is refused by name, which is the honest failure.
+    pub services: Option<ServiceSource> = none
+
     /// Server-side only, and it never reaches the wire. A contained panic's
     /// message goes here; what the client sees is a trace id.
     pub log: List<string> = []
@@ -461,6 +468,7 @@ pub class Circuit {
                 self.url = message.url
                 self.authorized_ms = now_ms
                 self.renderer = new Renderer()
+                self.renderer.services = self.services
                 self.renderer.mount(component)
                 self.publish()
             }
@@ -949,6 +957,11 @@ pub class CircuitSet {
     pub guard: fn(fn() -> bool) -> string =
         fn(body: fn() -> bool) -> string { let _: bool = body(); return "" }
 
+    /// Where every circuit's components get their `@inject` fields, handed on
+    /// the same way `guard` is. `none` for an application with no container,
+    /// and a component with no `@inject` field never asks for it.
+    pub services: Option<ServiceSource> = none
+
     live: Map<int, Circuit> = {}
     handles: Map<string, int> = {}
     /// The session each circuit was opened for, from `facts["session"]`. It is
@@ -1000,6 +1013,7 @@ pub class CircuitSet {
         self.next_handle += 1
         let made: Circuit = new Circuit(id, self.options, self.page_maker(facts))
         made.guard = self.guard
+        made.services = self.services
         made.open(now_ms)
         self.live[handle] = made
         self.handles[id] = handle

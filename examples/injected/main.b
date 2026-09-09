@@ -19,7 +19,7 @@ package main
 import barista
 import espresso
 import std.io
-import {Builder, Component, page} from latte
+import {Builder, Component, inject, page} from latte
 import {LatteApp, LatteOptions, build_with} from latte_app
 
 // ---------------------------------------------------------------- services
@@ -55,6 +55,36 @@ pub class Visit {
     pub fn greeting() -> string { return "{self.menu.first()} #{self.id}" }
 }
 
+/// A third service, with no counter, because the component below keeps one of
+/// these as its field default and a counted type would make the "built once"
+/// numbers lie about what the container did.
+@barista.service(lifetime: barista.ServiceLifetime.singleton)
+pub class Label {
+    pub fn init() {}
+    pub fn text() -> string { return "cafe" }
+}
+
+// ---------------------------------------------------------------- the child
+
+/// A CHILD component, which the container never constructs.
+///
+/// This is the half constructor injection cannot reach: children are built by
+/// the renderer at mount, from a zero-argument initializer. Before `@inject`,
+/// the only way this component could see `Label` was for the page to take it
+/// and pass it down as a `@param` — a prop chain for something that is not a
+/// prop, and one that every component in between has to carry.
+pub class Badge extends Component {
+    @inject pub label: Label = new Label()
+
+    pub fn init() {}
+
+    pub override fn render(b: Builder) {
+        b.open(0, "em")
+        b.text(1, "{self.label.text()}")
+        b.close()
+    }
+}
+
 // ---------------------------------------------------------------- the page
 
 /// The page asks for both. Neither is a `@param` and neither is threaded down
@@ -72,6 +102,7 @@ pub class Home extends Component {
     pub override fn render(b: Builder) {
         b.open(0, "p")
         b.text(1, "{self.visit.greeting()}")
+        b.component<Badge>(2, fn(c: Badge) {})
         b.close()
     }
 }
@@ -105,7 +136,7 @@ fn main() {
     var services: barista.ServiceCollection = new barista.ServiceCollection()
     let found: int = barista.add_services(services).expect("scan services")
     io.println("== a page built by the container ==")
-    report("services discovered", "{found}", "2")
+    report("services discovered", "{found}", "3")
 
     match build_with(options, services) {
         err(problem) => { io.println("FAIL the application did not start: {problem}") }
@@ -128,15 +159,15 @@ fn drive(app: LatteApp) {
     // Three requests. The singleton is built once across all of them; the
     // scoped service is built once per request, and its id counts up.
     match host.get("/") {
-        ok(reply) => { report("request 1", body_of(reply), "espresso #1") }
+        ok(reply) => { report("request 1", body_of(reply), "espresso #1<em>cafe</em>") }
         err(problem) => { io.println("FAIL request 1: {problem.msg}") }
     }
     match host.get("/") {
-        ok(reply) => { report("request 2", body_of(reply), "espresso #2") }
+        ok(reply) => { report("request 2", body_of(reply), "espresso #2<em>cafe</em>") }
         err(problem) => { io.println("FAIL request 2: {problem.msg}") }
     }
     match host.get("/") {
-        ok(reply) => { report("request 3", body_of(reply), "espresso #3") }
+        ok(reply) => { report("request 3", body_of(reply), "espresso #3<em>cafe</em>") }
         err(problem) => { io.println("FAIL request 3: {problem.msg}") }
     }
 
@@ -144,6 +175,9 @@ fn drive(app: LatteApp) {
            "{FixedMenu.made}", "1")
     report("the scoped service was built once per request",
            "{Visit.made}", "3")
+    // The `<em>cafe</em>` in each body above is the child's @inject field.
+    // Constructor injection could not have put it there: the renderer built
+    // that component, not the container.
 
     match host.close() {
         ok(_) => {}
