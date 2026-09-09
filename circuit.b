@@ -216,6 +216,20 @@ pub class Circuit {
     pub options: CircuitOptions = new CircuitOptions()
     pub renderer: Renderer = new Renderer()
 
+    /// The session this circuit was opened for. An input to the MAC on a
+    /// `@persist` island, so an island lifted off another user's page is
+    /// refused the way another user's antiforgery token is.
+    pub session: string = ""
+
+    /// Restore a page from the island the client sent, before it is mounted.
+    ///
+    /// A hook and not a step, because verifying an island needs the
+    /// application's signer and its clock, and neither can live here: this
+    /// package is in latte's core and the core imports no crypto and no time.
+    /// The host closes over both. It answers a problem to log, or `""`.
+    pub restore: fn(Component, string, string, string) -> string =
+        fn(page: Component, session: string, url: string, island: string) -> string { return "" }
+
     /// Where this circuit's components get their `@inject` fields. A circuit
     /// resolves from the application's ROOT provider, not a scope: its
     /// components live as long as the socket, and latte has no hook yet to
@@ -409,6 +423,19 @@ pub class Circuit {
         let build: fn(string) -> Option<Component> = self.make_page
         match build(message.url) {
             some(component) => {
+                // BEFORE the mount, so the FIRST render is the restored page
+                // rather than the pristine one corrected a frame later — which
+                // on a real screen is a flash of the empty form.
+                //
+                // Only here. A `nav` is a new page inside a circuit that is
+                // already live and carries no island; a `resume` is a socket
+                // coming back to a circuit the server still holds, which
+                // already has whatever the island restored.
+                let restore: fn(Component, string, string, string) -> string =
+                    self.restore
+                let problem: string = restore(component, self.session,
+                                              message.url, message.state)
+                if problem != "" { self.log.push(problem) }
                 self.page = some(component)
                 self.attached = true
                 self.url = message.url
@@ -962,6 +989,12 @@ pub class CircuitSet {
     /// and a component with no `@inject` field never asks for it.
     pub services: Option<ServiceSource> = none
 
+    /// How a page is restored from a `@persist` island, handed on the same way.
+    /// The default ignores the island, which is what an application that
+    /// persists nothing wants.
+    pub restore: fn(Component, string, string, string) -> string =
+        fn(page: Component, session: string, url: string, island: string) -> string { return "" }
+
     live: Map<int, Circuit> = {}
     handles: Map<string, int> = {}
     /// The session each circuit was opened for, from `facts["session"]`. It is
@@ -1014,6 +1047,8 @@ pub class CircuitSet {
         let made: Circuit = new Circuit(id, self.options, self.page_maker(facts))
         made.guard = self.guard
         made.services = self.services
+        made.restore = self.restore
+        made.session = read_fact(facts, "session")
         made.open(now_ms)
         self.live[handle] = made
         self.handles[id] = handle

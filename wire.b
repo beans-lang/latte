@@ -878,6 +878,10 @@ pub class ClientMessage {
 
     pub circuit: string = ""
     pub url: string = ""
+    /// The sealed `@persist` island the client read out of the document, or
+    /// `""`. It is a value the browser chose, so nothing reads it before the
+    /// host has checked its MAC.
+    pub state: string = ""
 
     pub handler: int = 0
     pub event: string = ""
@@ -955,6 +959,7 @@ fn decode_body(root: Json) -> ClientMessage {
         out.kind = CLIENT_ATTACH
         out.circuit = root.text_field("c", "")
         out.url = root.text_field("u", "")
+        out.state = root.text_field("s", "")
         if out.circuit == "" { return refuse("attach carries no circuit id") }
         return out
     }

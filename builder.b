@@ -255,7 +255,7 @@ pub interface ServiceSource {
 /// move-only: reading one out of the cache would take it out of the cache. A
 /// class is a reference, so the map keeps it and every mount borrows the same
 /// one.
-class MountPlan {
+pub class MountPlan {
     /// `@inject` fields, and what each needs.
     pub bindings: List<InjectBinding> = []
     /// `Signal` fields the framework owns against the component, so an author
@@ -335,7 +335,7 @@ pub class Registry {
     pub fn watching() -> Option<LiveBinding> { return self.watched }
 
     /// Everything the framework does to one type at mount.
-    fn mount_plan(described: reflect.Type) -> MountPlan {
+    pub fn mount_plan(described: reflect.Type) -> MountPlan {
         let key: string = described.qualified_name()
         match self.mount_plans.get(key) {
             some(found) => { return found }

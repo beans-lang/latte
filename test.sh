@@ -1061,6 +1061,7 @@ run_refusal_coverage_leg() {
     refusal_coverage_for virtual.b   tests/w6_virtual.out "tests/w6_virtual.b § 4"
     refusal_coverage_for upload.b    tests/w6_upload.out  "tests/w6_upload.b § 6"
     refusal_coverage_for forms.b     tests/w4_forms.out   "tests/w4_forms.b § 6"
+    refusal_coverage_for persist.b   tests/l8_persist.out "tests/l8_persist.b § 8"
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
     refusal_coverage_pending render.b 3
