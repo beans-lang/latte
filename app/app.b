@@ -35,9 +35,9 @@ import std.time
 import std.reflect
 import {Activator, Anonymous, Antiforgery, CircuitOptions, CircuitSet,
         Component, FormComponent, FormMap, FormState, PageHost, PageInstance,
-        PageMap, PageRequest, PageResponse, Principal, ShellOptions, Signer,
-        SeamSigner, NO_POLLER_MESSAGE, is_safe_method, open_page, render_shell,
-        scan_forms, scan_pages} from latte
+        PageMap, PageRequest, PageResponse, Principal, ServiceSource,
+        ShellOptions, Signer, SeamSigner, NO_POLLER_MESSAGE, is_safe_method,
+        open_page, render_shell, scan_forms, scan_pages_for} from latte
 import {run} from latte.boundary
 import {CircuitSeam, ClientOptions, EndpointOptions, HeaderOptions, WebRequest,
         WebReply, SOCKET_PATH, fresh_id, has_fiber_poller, hmac_signer,
@@ -136,7 +136,17 @@ pub class LatteOptions {
 /// provider and calls it. The page type itself needs **no registration** —
 /// only its constructor's parameters do — so mounting caller-written page
 /// types does not turn every one of them into a service.
-pub class ContainerActivator implements Activator {
+/// It answers both of latte's service questions, because they are two
+/// questions about one provider.
+///
+/// `Activator.make` **constructs** a type the container does not have to know
+/// about — a page — resolving only what its initializer asks for.
+/// `ServiceSource.provide` **resolves** a type the container does know about —
+/// an `@inject` field on a component. One class, two interfaces, so a host
+/// hands the same object to both seams; a single interface would have had to
+/// mean both things, and a downcast between them is refused natively
+/// (beans-lang/beans#195).
+pub class Container implements Activator, ServiceSource {
     provider: barista.ServiceProvider
 
     pub fn init(provider: barista.ServiceProvider) {
@@ -145,6 +155,13 @@ pub class ContainerActivator implements Activator {
 
     pub fn make(described: reflect.Type) -> Result<reflect.Value, string> {
         match self.provider.activate(described) {
+            ok(value) => { return ok(value) }
+            err(problem) => { return err(problem.msg) }
+        }
+    }
+
+    pub fn provide(described: reflect.Type) -> Result<reflect.Value, string> {
+        match self.provider.resolve_type(described) {
             ok(value) => { return ok(value) }
             err(problem) => { return err(problem.msg) }
         }
@@ -217,6 +234,15 @@ pub class PageFactory {
                 return instance.root()
             }
         }
+    }
+}
+
+/// Release a request scope, if one was opened. A free function because
+/// `defer` takes a call and this one has to be safe with `none`.
+fn close_scope(scope: Option<barista.ServiceProvider>) {
+    match scope {
+        some(held) => { let closed: Result<bool> = held.close() }
+        none => {}
     }
 }
 
@@ -315,44 +341,9 @@ pub class LatteApp {
                       asset.cache)?
         }
 
-        let host: PageHost = self.host
-        let shell: ShellOptions = self.shell
-        let static_shell: ShellOptions = self.static_shell
-        let who: Principal = self.factory.who
-        let when: int = self.now()
-        let counter: LatteApp = self
+        let holder: LatteApp = self
         map_pages(web, fn(request: WebRequest) -> Option<WebReply> {
-            var asked: PageRequest = new PageRequest()
-            asked.method = request.method
-            asked.path = request.path
-            asked.body = request.body
-            asked.session = request.session
-            asked.who = who
-            let answer: PageResponse = host.handle(asked, when)
-            // A 404 with no allowed methods is "latte has no page here" — hand
-            // it back to espresso so the application's own routes still work.
-            if answer.status == 404 && answer.allowed.len() == 0 { return none }
-
-            var reply: WebReply = new WebReply()
-            reply.status = answer.status
-            reply.allow = answer.allowed.join(", ")
-            if answer.status != 200 {
-                reply.body = answer.detail()
-                reply.content_type = "text/plain; charset=utf-8"
-                return some(reply)
-            }
-            counter.pages_served += 1
-            var used: ShellOptions = shell
-            if !is_safe_method(asked.method) { used = static_shell }
-            match render_shell(used, answer.body) {
-                ok(document) => { reply.body = document }
-                err(problem) => {
-                    reply.status = 500
-                    reply.body = problem
-                    reply.content_type = "text/plain; charset=utf-8"
-                }
-            }
-            return some(reply)
+            return holder.answer(request)
         }, self.options.secure_cookies)?
 
         endpoint.poll_ms = self.options.poll_ms
@@ -366,6 +357,85 @@ pub class LatteApp {
             set.resume_fn(), set.wake_fn())
         map_circuit(web, SOCKET_PATH, seam, endpoint)?
         return ok(true)
+    }
+
+    /// Answer one HTTP request, in its own service scope.
+    ///
+    /// **The scope is why this is a method and not the closure it used to be.**
+    /// A `scoped` service must be built once per request and released after it,
+    /// and the release has to happen on every exit — the 404 fall-through, the
+    /// non-200 reply, the shell that failed to render. `defer` does that, and
+    /// `defer` must sit at the top level of a function body, which a closure
+    /// with four returns in it could not offer.
+    ///
+    /// The scope is opened only when something is registered. An application
+    /// with no services allocates nothing per request, which is the difference
+    /// between DI costing what it costs and DI costing something for people who
+    /// do not use it.
+    fn answer(request: WebRequest) -> Option<WebReply> {
+        var scope: Option<barista.ServiceProvider> = none
+        var activator: Option<Activator> = none
+        var source: Option<ServiceSource> = none
+        if self.provider.has_registrations() {
+            match self.provider.create_scope() {
+                ok(made) => {
+                    scope = some(made)
+                    let container: Container = new Container(made)
+                    activator = some(container)
+                    source = some(container)
+                }
+                // A provider that cannot open a scope is one that is closed,
+                // which means the application is shutting down. Serve the
+                // request with no container rather than failing it: a page
+                // that needs a service will say so itself, by name.
+                err(problem) => {}
+            }
+        }
+        defer close_scope(scope)
+
+        var asked: PageRequest = new PageRequest()
+        asked.method = request.method
+        asked.path = request.path
+        asked.body = request.body
+        asked.session = request.session
+        asked.who = self.factory.who
+        let answer: PageResponse =
+            self.host.handle_with(asked, self.now(), activator, source)
+        // A 404 with no allowed methods is "latte has no page here" — hand it
+        // back to espresso so the application's own routes still work.
+        if answer.status == 404 && answer.allowed.len() == 0 { return none }
+
+        var reply: WebReply = new WebReply()
+        reply.status = answer.status
+        reply.allow = answer.allowed.join(", ")
+        if answer.status != 200 {
+            reply.body = answer.detail()
+            reply.content_type = "text/plain; charset=utf-8"
+            return some(reply)
+        }
+        self.pages_served += 1
+        // A page a circuit could not produce is served WITHOUT one: this body
+        // is the answer to a POST and holds what the post produced — the field
+        // errors, or the receipt — and a circuit attaching to it would replace
+        // all of that with the pristine form.
+        var used: ShellOptions = self.shell
+        if !is_safe_method(asked.method) { used = self.static_shell }
+        match render_shell(used, answer.body) {
+            ok(document) => { reply.body = document }
+            err(problem) => {
+                reply.status = 500
+                reply.body = problem
+                reply.content_type = "text/plain; charset=utf-8"
+            }
+        }
+        return some(reply)
+    }
+
+    /// Mount onto a `WebApplication` the caller already built, with default
+    /// endpoint options. The common shape for a test host.
+    pub fn web_on(web: espresso.WebApplication) -> Result<bool> {
+        var endpoint: EndpointOptions = new EndpointOptions()
+        return self.mount(web, endpoint)
     }
 
     /// Build an espresso application with this latte application on it.
@@ -458,7 +528,13 @@ pub fn build(options: LatteOptions) -> Result<LatteApp, string> {
 /// `build`, with a service collection the caller has already filled in.
 pub fn build_with(options: LatteOptions,
                   services: barista.ServiceCollection) -> Result<LatteApp, string> {
-    let pages: PageMap = scan_pages()
+    // The provider first, because the page scan needs to know whether a
+    // container exists: a page whose `init` takes services is servable with one
+    // and a guaranteed 500 without one, and that is a startup refusal either
+    // way rather than a surprise on the first request.
+    let provider: barista.ServiceProvider = services.build_provider()
+
+    let pages: PageMap = scan_pages_for(provider.has_registrations())
     if pages.report() != "" { return err(pages.report()) }
     let forms: FormMap = scan_forms(pages)
     if forms.report() != "" { return err(forms.report()) }
@@ -492,8 +568,6 @@ pub fn build_with(options: LatteOptions,
     for problem: string in static_shell.faults() { faults.push(problem) }
     if faults.len() > 0 { return err(faults.join(" | ")) }
 
-    let provider: barista.ServiceProvider = services.build_provider()
-
     let factory: PageFactory = new PageFactory(pages, anti)
     factory.now = options.now
     // A circuit resolves from the ROOT provider, not from a scope, and that is
@@ -509,7 +583,8 @@ pub fn build_with(options: LatteOptions,
     // closed on ending, which is the same shape espresso already uses per
     // request. It belongs with the view-model work, where a circuit-lifetime
     // object is the point rather than an accident.
-    factory.activator = some(new ContainerActivator(provider))
+    let root_container: Container = new Container(provider)
+    factory.activator = some(root_container)
 
     var circuit_options: CircuitOptions = new CircuitOptions()
     circuit_options.idle_ms = options.idle_ms
@@ -521,6 +596,10 @@ pub fn build_with(options: LatteOptions,
             return factory.page_for(session, url)
         })
     if options.contain_panics { set.guard = run }
+    // A circuit's components resolve their `@inject` fields from the ROOT
+    // provider — see the note beside `factory.activator` for why it is not a
+    // scope, and what would change that.
+    set.services = some(root_container)
 
     return ok(new LatteApp(pages, forms, host, anti, set, factory, shell,
                            static_shell, options, services, provider))

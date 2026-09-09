@@ -1,0 +1,15 @@
+== 1. no container: the page is refused at startup ==
+ok   NeedsServices is refused: false
+ok   the refusal names the argument count: true
+ok   ...and says what to do about it: true
+ok   THE CONTROL: the plain page survives the same scan: true
+ok   so the scan refused one page, not the table: 1
+
+== 2. with a container: the same page is ordinary ==
+ok   NeedsServices is accepted: true
+ok   the control is still fine: true
+ok   and nothing was refused at all: 0
+
+== 3. scan_pages() is scan_pages_for(false) ==
+ok   the no-argument scan refuses it too: false
+ok   with the same one fault: 1

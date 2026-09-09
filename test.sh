@@ -972,7 +972,7 @@ refusal_coverage_none() {
 # same instructions as everywhere else. `render.b`'s two sites are the only
 # ones in latte's core with no case at all.
 #
-# `pages.b`'s 30 include FOUR that no program can reach: `@page`, `@layout` and
+# `pages.b`'s 31 include FOUR that no program can reach: `@page`, `@layout` and
 # `@param` are not `@repeatable`, so a "carries @X more than once" refusal
 # stands behind a compile error. They are marked as such beside
 # `annotations_named` in pages.b, with the probe that measured it. A number
@@ -1064,7 +1064,7 @@ run_refusal_coverage_leg() {
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
     refusal_coverage_pending render.b 2
-    refusal_coverage_pending pages.b 30
+    refusal_coverage_pending pages.b 31
     refusal_coverage_pending circuit.b 4
     refusal_coverage_sweep
     # One line, and only when every file passed. A partial "ok … all 42" printed

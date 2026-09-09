@@ -1133,7 +1133,23 @@ pub class PageHost {
         return self.anti.issue(session, form_id, now)
     }
 
+    /// Serve one request, activating the page with its zero-argument
+    /// initializer.
     pub fn handle(request: PageRequest, now: int) -> PageResponse {
+        return self.handle_with(request, now, none)
+    }
+
+    /// Serve one request, constructing the page through `activator`.
+    ///
+    /// A separate entry point rather than a third parameter on `handle`,
+    /// because the activator is **per request** and must not be a field. A
+    /// host serves many requests on one `PageHost`, and espresso's connection
+    /// fibers interleave: a field written at the top of one request and read
+    /// after another had parked would activate a page out of the wrong
+    /// request's scope. Passing it down the call is the only shape that cannot
+    /// do that.
+    pub fn handle_with(request: PageRequest, now: int,
+                       activator: Option<Activator>) -> PageResponse {
         var reply: PageResponse = new PageResponse()
         if !self.pages.ok() || !self.forms.ok() {
             reply.status = 500
@@ -1158,11 +1174,12 @@ pub class PageHost {
                     "{request.path} does not answer {request.method}; it answers {listed}")
                 return move reply
             }
-            some(found) => { return self.serve(found, request, now) }
+            some(found) => { return self.serve(found, request, now, activator) }
         }
     }
 
-    fn serve(found: PageMatch, request: PageRequest, now: int) -> PageResponse {
+    fn serve(found: PageMatch, request: PageRequest, now: int,
+             activator: Option<Activator>) -> PageResponse {
         var reply: PageResponse = new PageResponse()
 
         // Authorization first, and before activation: a page the caller may not
@@ -1188,7 +1205,8 @@ pub class PageHost {
             }
         }
 
-        let instance: PageInstance = open_page(found, request.who, none)
+        let instance: PageInstance =
+            open_page(found, request.who, activator)
         if !instance.ok() {
             reply.status = 400
             for problem: string in instance.problems { reply.problems.push(problem) }
