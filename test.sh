@@ -1426,7 +1426,14 @@ fi
 # when the layout moves, and then everything is green forever (RULES.md 5).
 note=""
 [[ $skipped -gt 0 ]] && note=" — $skipped leg(s) SKIPPED, read the SKIP lines above"
-if [[ $suites -eq 0 ]]; then
+if [[ $suites -eq 0 && $examples_ran -gt 0 ]]; then
+    # `--examples`, or a name that matched an example and no suite. This used to
+    # fall into the line below and answer "the tree is scaffolding" — a message
+    # written when latte had no suites at all, which now reads like a pass over
+    # a gate that ran none of it. Say what actually ran (RULES.md, "a green
+    # count can mean two different things").
+    echo "ok latte — $examples_ran example(s) on both backends; no suite was selected${note}"
+elif [[ $suites -eq 0 ]]; then
     echo "latte: no suites yet — the tree is scaffolding${note}"
 elif [[ $native -eq 1 ]]; then
     echo "ok latte — $suites suites, $legs legs (interpreter + native), all byte-identical to the goldens${note}"
