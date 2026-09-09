@@ -19,27 +19,33 @@ import {Builder, Callback, Component, FocusEvent, InputEvent, KeyboardEvent, Mou
 // nothing would have told the renderer which component changed. A `Callback`
 // marks the component that SUPPLIED it — the page, not this row.
 //
-// `should_render` answers from the parameters recorded in `on_params_set`, so
-// picking one drink re-renders that drink and the page and leaves the other
-// two alone. `main.b -- check` asserts exactly that on the batch that crosses
-// the wire, so a framework that re-rendered the world would fail the example
-// rather than pass it.
+// `@memo` skips the RENDER of a row whose parameters did not move. It is not
+// what keeps that row off the wire — the differ is, by comparing frames and
+// emitting nothing for two that match — and `main.b -- check`'s 4.12 passes
+// with or without the memo, which is worth knowing before reading it as
+// evidence. `tests/l9_memo.b` counts renders, which is the thing the memo
+// actually changes.
+//
+// It used to be four hand-written lines — a `ParamWatch` field, an
+// `on_params_set` that recorded `[self.name, "{self.price}", "{self.chosen}"]`,
+// and a `should_render` that asked it. The list was the problem: it is written
+// by hand beside the fields it mirrors, and a parameter left out of it is a
+// parameter whose changes stop reaching the screen, silently. `@memo` reads the
+// `@param` fields themselves.
+//
+// `on_pick` is not compared, and that is deliberate: this page builds a fresh
+// `Callback` every render, so comparing one would make the memo never fire.
 //          
 
-import {ParamWatch, param} from latte
+import {memo, param} from latte
 
+@memo
 pub partial class Drink extends Component {
     @param pub name: string = ""
     @param pub price: int = 0
     @param pub chosen: bool = false
     @param pub on_pick: Option<Callback<string>> = none
-    watch: ParamWatch = new ParamWatch()
     pub fn init() {}
-
-    pub override fn on_params_set() {
-        self.watch.record([self.name, "{self.price}", "{self.chosen}"])
-    }
-    pub override fn should_render() -> bool { return self.watch.differs() }
 
     /// The button's text. A method and not `$self.name — $self.price p`,
     /// because an implicit expression's chain stops at the first character
@@ -57,13 +63,13 @@ pub partial class Drink extends Component {
 
 partial class Drink {
     pub override fn render(b: Builder) {
-        b.open(0, "li")  // drink.bx:46
+        b.open(0, "li")  // drink.bx:52
         b.attr(1, "class", "{if self.chosen { "drink chosen" } else { "drink" }}")
-        b.open(2, "button")  // drink.bx:47
+        b.open(2, "button")  // drink.bx:53
         b.attr(3, "type", "button")
         b.attr(4, "data-drink", "{self.name}")
         b.on_click(5, fn(e: MouseEvent) { self.pick() })
-        b.text(6, "{self.label()}")  // drink.bx:49
+        b.text(6, "{self.label()}")  // drink.bx:55
         b.close()
         b.close()
     }

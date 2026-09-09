@@ -78,6 +78,48 @@ pub annotation authorize {
     roles: List<string> = []
 }
 
+/// Re-render this component only when one of its parameters changed.
+///
+/// It replaces four lines an author used to write by hand, once per component:
+///
+/// ```beans
+/// watch: ParamWatch = new ParamWatch()
+/// pub override fn on_params_set() {
+///     self.watch.record([self.name, "{self.price}", "{self.chosen}"])
+/// }
+/// pub override fn should_render() -> bool { return self.watch.differs() }
+/// ```
+///
+/// **The list was the problem, not the length.** It is written by hand and
+/// stringly typed, so a parameter left out of it is a parameter whose changes
+/// stop reaching the screen — and nothing says so. `@memo` reads the `@param`
+/// fields themselves, so the list cannot drift from the fields it is meant to
+/// mirror.
+///
+/// ## What is compared, and what is not
+///
+/// * **`string`, `int`, `bool`, `float` are compared.** These are a
+///   component's state.
+/// * **`Callback<T>` is not**, and this is deliberate rather than an omission.
+///   A parent builds a fresh `Callback` on every render, so comparing one would
+///   make the memo *never* fire — which is worse than not comparing it. Nothing
+///   is lost: a handler is read when it is called, not when it is rendered.
+/// * **Anything else is refused at startup**, by name, with the field named. A
+///   `List`, a `Map`, another component — latte cannot compare it, and
+///   *silently* not comparing it is exactly the trap the hand-written list set.
+///   Write `should_render` yourself for those.
+///
+/// ## And a component that takes child content may not carry it
+///
+/// A `@param pub body: fn(Builder)` is a closure the parent rebuilds every
+/// render, holding markup that may be completely different. Its parameters can
+/// all be equal while its content is not. `shelf/cards/card.b` records this as
+/// a rule an author has to remember; under `@memo` it is a startup refusal.
+@target(value: ["type"])
+@retention(value: "runtime")
+pub annotation memo {
+}
+
 /// A field the framework fills from the application's service container.
 ///
 /// Constructor injection reaches a `@page`, because the container builds one.
@@ -769,6 +811,83 @@ pub class PageMatch {
 }
 
 // ============================================================== the scan
+
+/// What `@memo` compares on one component type.
+pub class MemoPlan {
+    /// Whether the type carries `@memo` at all.
+    pub present: bool = false
+    /// The `@param` fields to compare, in declaration order, with the scalar
+    /// kind to read each as.
+    pub params: List<reflect.Field> = []
+    pub kinds: List<ParamKind> = []
+    /// Why `@memo` cannot work here. A type with any of these never memoizes —
+    /// `scan_memo` refuses the application at startup, and a host that skipped
+    /// the scan gets every render rather than a wrong one.
+    pub faults: List<string> = []
+    pub fn init() {}
+}
+
+/// Work out what `@memo` compares on one type.
+///
+/// One function and two callers — the mount path and the startup scan — so
+/// what a page refuses at startup and what it memoizes at render can never be
+/// two different answers.
+pub fn memo_plan_for(described: reflect.Type) -> MemoPlan {
+    var plan: MemoPlan = new MemoPlan()
+    plan.present = annotations_named(described.annotations(), "memo").len() > 0
+    if !plan.present { return move plan }
+    let key: string = described.qualified_name()
+    for field: reflect.Field in described.fields() {
+        if annotations_named(field.annotations(), "param").len() == 0 { continue }
+        let shown: string = "{key}.{field.name()}"
+        if !field.is_public() {
+            plan.faults.push(
+                "{shown} is a @param on a @memo component but is not public, and reflection does not bypass visibility")
+            continue
+        }
+        let type_name: string = field.type().qualified_name()
+        let kind: ParamKind = kind_of(field.type())
+        if kind != ParamKind.other {
+            plan.params.push(field)
+            plan.kinds.push(kind)
+        } else if type_name.starts_with("fn(") {
+            plan.faults.push(
+                "{shown} is a @param of type {type_name} on a @memo component — a closure the parent rebuilds every render, holding markup that may be completely different. Its parameters can all be equal while its content is not. Drop @memo, or take the content another way")
+        } else if type_name.contains("latte.Callback<") {
+            // Skipped on purpose and not overlooked: a parent builds a fresh
+            // Callback every render, so comparing one would make the memo never
+            // fire. Nothing is lost — a handler is read when it is called, not
+            // when it is rendered.
+        } else {
+            plan.faults.push(
+                "{shown} is a @param of type {type_name} on a @memo component, and latte cannot compare one — only string, int, bool and float. Write should_render yourself, or drop @memo")
+        }
+    }
+    return move plan
+}
+
+/// Every `@memo` in the executable that cannot work, and every `@memo` on a
+/// type that is not a component.
+///
+/// A startup scan for the reason `scan_injections` is one: a `@memo` that
+/// cannot compare a parameter is a component that stops updating, and there is
+/// nothing about that which needs a request to discover.
+pub fn scan_memo() -> List<string> {
+    var problems: List<string> = []
+    let component_name: string = type_of(Component).qualified_name()
+    for described: reflect.Type in reflect.types() {
+        if annotations_named(described.annotations(), "memo").len() == 0 {
+            continue
+        }
+        if !extends_named(described, component_name) {
+            problems.push(
+                "{described.qualified_name()} is annotated @memo but does not extend {component_name}, so nothing would ever consult it")
+            continue
+        }
+        for fault: string in memo_plan_for(described).faults { problems.push(fault) }
+    }
+    return move problems
+}
 
 /// Every `@inject` field in the executable that could not be filled.
 ///

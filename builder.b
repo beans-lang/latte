@@ -97,6 +97,14 @@ pub class MountHandle {
     /// does nothing, instead of marking a renderer that is gone.
     pub weak sink: Option<DirtySink> = none
 
+    /// The `@memo` snapshot of this component's parameters, or `none`.
+    ///
+    /// Framework-owned: a `@memo` component gets one at its first parameter
+    /// pass and never sees it. A component without `@memo` never gets one, and
+    /// `params_changed()` answers `true` — so nothing about rendering changes
+    /// for a component that did not ask.
+    pub memo: Option<ParamWatch> = none
+
     /// The page this component was mounted into, which is the object a
     /// `Signal` read has to reach to find the live expression currently being
     /// evaluated (`signal.b`, `Cell`). Weak for the same reason `sink` is: the
@@ -168,6 +176,32 @@ pub class Component {
     /// Consulted before every render after the first. A component that
     /// answers false keeps the frames it already has.
     pub fn should_render() -> bool { return true }
+
+    /// The framework's parameter pass: the author's `on_params_set`, and then
+    /// the `@memo` snapshot if this type has one.
+    ///
+    /// One method and not two call sites, because the two must never drift:
+    /// a component whose parameters were recorded without `on_params_set`
+    /// having run would memoize against values its own code had not seen.
+    pub fn params_arrived() {
+        self.on_params_set()
+        match self.mount.page {
+            some(registry) => { registry.note_params(self) }
+            none => {}
+        }
+    }
+
+    /// Whether this component's parameters differ from the last render's.
+    ///
+    /// **`true` for a component with no `@memo`**, which is every component
+    /// unless it asked. A memo is a component saying "skip me when nothing
+    /// changed"; the absence of one cannot mean "skip me".
+    pub fn params_changed() -> bool {
+        match self.mount.memo {
+            some(watch) => { return watch.differs() }
+            none => { return true }
+        }
+    }
 
     /// When the slot that mounted this component is not reached by a render
     /// pass, so the component is dropped.
@@ -265,6 +299,8 @@ pub class MountPlan {
     /// `ViewModel` fields the framework attaches to the component, and whose
     /// own signals it owns.
     pub models: List<reflect.Field> = []
+    /// What `@memo` compares on this type, if it carries one.
+    pub memo: MemoPlan = new MemoPlan()
     fn init() {}
 }
 
@@ -277,6 +313,30 @@ class InjectBinding {
     fn init(field: reflect.Field, wanted: reflect.Type) {
         self.field = field
         self.wanted = wanted
+    }
+}
+
+/// One scalar parameter, as text the memo can compare.
+///
+/// Interpolation and not a cast, because what is compared has to be one type,
+/// and a `float` and an `int` that both read `2` are two different parameters
+/// only if their fields are two different fields — which they are, and the
+/// position in the list says so.
+fn scalar_text(value: reflect.Value, kind: ParamKind) -> string {
+    match kind {
+        text => {
+            match value as? string { some(held) => { return held } none => { return "?" } }
+        }
+        integer => {
+            match value as? int { some(held) => { return "{held}" } none => { return "?" } }
+        }
+        boolean => {
+            match value as? bool { some(held) => { return "{held}" } none => { return "?" } }
+        }
+        number => {
+            match value as? float { some(held) => { return "{held}" } none => { return "?" } }
+        }
+        other => { return "?" }
     }
 }
 
@@ -343,6 +403,7 @@ pub class Registry {
         }
         let model_name: string = type_of(ViewModel).qualified_name()
         var plan: MountPlan = new MountPlan()
+        plan.memo = memo_plan_for(described)
         for field: reflect.Field in described.fields() {
             var wanted: bool = false
             for use: reflect.Annotation in field.annotations() {
@@ -369,6 +430,35 @@ pub class Registry {
         }
         self.mount_plans[key] = plan
         return plan
+    }
+
+    /// Record this render's parameters for a `@memo` component.
+    ///
+    /// Called after every `on_params_set`, at all three sites the framework
+    /// runs one — a component's record of what its parameters were must not
+    /// depend on who asked for the render.
+    fn note_params(component: Component) {
+        let boxed: reflect.Value = reflect.value(component)
+        let plan: MountPlan = self.mount_plan(boxed.type())
+        if !plan.memo.present { return }
+        if plan.memo.faults.len() > 0 { return }
+        match component.mount.memo {
+            none => { component.mount.memo = some(new ParamWatch()) }
+            some(_) => {}
+        }
+        var values: List<string> = []
+        var index: int = 0
+        for field: reflect.Field in plan.memo.params {
+            match field.get(boxed.copy()) {
+                err(problem) => { values.push("?") }
+                ok(value) => { values.push(scalar_text(value, plan.memo.kinds[index])) }
+            }
+            index += 1
+        }
+        match component.mount.memo {
+            some(watch) => { watch.record(values) }
+            none => {}
+        }
     }
 
     /// Own one `Signal` field against `owner`.
@@ -1131,8 +1221,12 @@ pub class Builder {
 
     fn render_child(slot: int, child: Component) {
         let buffer: Builder = self.buffer_for(slot)
-        child.on_params_set()
+        child.params_arrived()
         if buffer.rendered && !child.should_render() { return }
+        // The memo is asked SECOND and separately, so a component that has both
+        // a `@memo` and a hand-written `should_render` needs both to agree
+        // before it renders. Neither can quietly override the other.
+        if buffer.rendered && !child.params_changed() { return }
         buffer.render_root(child)
     }
 
@@ -1164,7 +1258,7 @@ pub class Builder {
                                 // injected service in the one place it is meant
                                 // to set itself up.
                                 for problem: string in self.registry.adopt(
-                                        made.copy(), described, component) {
+                                        made.copy(), made.type(), component) {
                                     self.faults.push(problem)
                                 }
                                 component.on_init()
@@ -1196,6 +1290,24 @@ pub class Builder {
             some(component) => {
                 self.children[slot] = boxed.copy()
                 self.wire(component, slot)
+                // The same adopt pass `mount` runs, and it has to be here too:
+                // a `@page` under a `@layout` is mounted through THIS route,
+                // not that one — `LayoutLink.render_body` places the next link
+                // with `component_made`. Without it a page with a layout got no
+                // `@inject` fields, no owned signals and no attached
+                // view-model, while the same page without a layout got all
+                // three. The demo found it: a Command whose `on_attach` never
+                // ran answered "cannot run" to every click, and the server
+                // replied "your message changed nothing".
+                //
+                // `boxed.type()` and not `type_of(T)`: T here is whatever the
+                // caller wrote, and the layout chain writes `Component`.
+                // `reflect.value` boxes the runtime type (beans #163), so this
+                // is the concrete class.
+                for problem: string in self.registry.adopt(
+                        boxed.copy(), boxed.type(), component) {
+                    self.faults.push(problem)
+                }
                 component.on_init()
             }
             none => { self.faults.push("{type_of(T).name()} is not a Component") }

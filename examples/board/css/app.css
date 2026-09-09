@@ -1,0 +1,9 @@
+/* The Tailwind input. `build-css.sh` turns this into `app.build.css`.
+ *
+ * `@source` points at the markup rather than at generated Beans: the class
+ * names are written in the `.bx` files, and scanning the generated `.b` would
+ * work too but would make the build depend on a step that has already run.
+ */
+@import "tailwindcss";
+
+@source "../site/*.bx";

@@ -8,13 +8,14 @@
 # each `self.faults.push(...)` site in turn, runs the suite that owns it, and
 # requires that a check naming THAT site turns red.
 #
-#   builder.b     26 sites   tests/frames.b § 13
+#   builder.b     27 sites   tests/frames.b § 13
 #   apply.b       14 sites   tests/w1_faults.b § 1
 #   serialize.b    4 sites   tests/w1_faults.b § 3
 #   stream.b      24 sites   tests/w6_stream.b § 4
 #   virtual.b      1 site    tests/w6_virtual.b § 4
 #   upload.b       1 site    tests/w6_upload.b § 6
-#   forms.b       17 sites   tests/w4_forms.b § 6
+#   forms.b       16 sites   tests/w4_forms.b § 6
+#   persist.b      2 sites   tests/l8_persist.b § 8
 #
 # Run it with no argument for all three, or name one source file to run just
 # that one: `probes/delete_faults.sh apply.b`.
@@ -81,6 +82,15 @@ only = sys.argv[3]
 # The mapping from a site to its cases is proven by the run itself rather than
 # asserted: if two labels were swapped, deleting one site would fail the other
 # site's cases and this would report it as unguarded.
+#
+# But "reported as unguarded" is exactly what a real hole looks like too. On
+# 2026-09-09 a label inserted three positions early sent a reader into the wrong
+# code: three consecutive sites reported DELETED AND NOTHING NOTICED and every
+# one of them was in fact guarded. So the order is CHECKED before a single site
+# is deleted — `check_order` reads the `fn`, and any `match` arm, each site sits
+# inside, and requires the label's own prefix to name one of them. A label in
+# the wrong place is now a refusal that names both the line and the label,
+# rather than a run that blames the code.
 FILES = [
     {
         "source": "builder.b",
@@ -103,6 +113,7 @@ FILES = [
             "mount / X is not a Component",
             "mount / cannot activate X",
             "mount / X has no zero-argument initializer",
+            "mount_made / an @inject field could not be filled",
             "mount_made / X is not a Component",
             "region / duplicate key",
             "end_region / end_region with no open region",
@@ -138,15 +149,14 @@ FILES = [
         "source": "forms.b",
         "suite": "tests/w4_forms.b",
         "labels": [
-            "scan / a @field on a type that is not a @form",
-            "scan / a rule on a type that is not a @form",
+            "scan_forms / a @field on a type that is not a @form",
+            "scan_forms / a rule on a type that is not a @form",
             "check_form_pages / a form page no unsafe method reaches",
             "check_form_pages / an unsafe method with no form",
             "plan_for_form / a @form that declares no @field",
             "bind_fields / a rule on a field that is not a @field",
             "bind_fields / two @fields with one posted name",
             "bind_fields / a @field that is not public",
-            "bind_fields / a @field declared by a generic type",
             "bind_fields / a @field a form cannot bind",
             "read_rules / @required on a checkbox",
             "read_rules / a negative @length floor",
@@ -202,6 +212,14 @@ FILES = [
         ],
     },
     {
+        "source": "persist.b",
+        "suite": "tests/l8_persist.b",
+        "labels": [
+            "persist_plan / a @persist field that is not public",
+            "persist_plan / a @persist field that is not a scalar",
+        ],
+    },
+    {
         "source": "serialize.b",
         "suite": "tests/w1_faults.b",
         "labels": [
@@ -217,8 +235,8 @@ if only:
     FILES = [entry for entry in FILES if entry["source"] == only]
     if not FILES:
         print(f"no source file named {only}; this script knows builder.b, "
-              f"apply.b, serialize.b, stream.b, virtual.b, upload.b and "
-              f"forms.b", file=sys.stderr)
+              f"apply.b, serialize.b, stream.b, virtual.b, upload.b, "
+              f"forms.b and persist.b", file=sys.stderr)
         sys.exit(1)
 
 
@@ -261,6 +279,75 @@ def find_sites(text):
     return out
 
 
+ARM = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^()]*\))?\s*=>\s*$")
+
+
+def enclosing_names(text, offset):
+    """Every name that encloses a site: its `fn`, and each open `match` arm.
+
+    A label's prefix names the thing a reader would go looking for. Usually
+    that is the function — but in `apply.b` it is the arm of the one `match`
+    over edit operations, and `run / insert at N of M` would be a worse name
+    than `insert / insert at N of M`. Both spellings are accepted, so the check
+    below constrains the label without dictating which of the two it uses.
+
+    Braces are counted with string literals skipped, because a Beans message is
+    full of `{...}` interpolation and a naive count closes the function early.
+    """
+    start = 0
+    name = None
+    for match in re.finditer(r"\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*[(<]", text):
+        if match.start() > offset:
+            break
+        start, name = match.end(), match.group(1)
+
+    names = [name] if name else []
+    stack = []
+    i, in_string = start, False
+    while i < offset:
+        ch = text[i]
+        if in_string:
+            if ch == "\\":
+                i += 1
+            elif ch == '"':
+                in_string = False
+        elif ch == '"':
+            in_string = True
+        elif ch == "{":
+            head = ARM.search(text[text.rfind("\n", 0, i) + 1:i].rstrip())
+            stack.append(head.group(1) if head else None)
+        elif ch == "}":
+            if stack:
+                stack.pop()
+        i += 1
+    return names + [arm for arm in stack if arm]
+
+
+def check_order(text, sites, labels):
+    """Every label's prefix must name the `fn` — or the `match` arm — its site
+    is in.
+
+    This is the one drift the count check cannot see. `len(sites) ==
+    len(labels)` still holds when a label is inserted at the wrong index: the
+    labels below it all shift by one, every site is then reported under its
+    neighbour's name, and the run blames the code for a bookkeeping mistake.
+
+    It does not order two sites that share one prefix — four of `mount`'s five
+    refusals do. That residue is small and, once this check passes, it is the
+    ONLY way a label can still be misplaced, which is worth knowing when a run
+    reports a site as unguarded.
+    """
+    wrong = []
+    for index, (start, _) in enumerate(sites):
+        label = labels[index]
+        want = label.split(" / ", 1)[0].split(".")[-1]
+        names = enclosing_names(text, start)
+        if want not in names:
+            line = text.count("\n", 0, start) + 1
+            wrong.append((line, " / ".join(names) or "nothing named", label))
+    return wrong
+
+
 def cases_by_site(golden_text):
     """case name -> site label, read out of the suite's own output."""
     mapping = {}
@@ -285,11 +372,22 @@ plan = []
 for entry in FILES:
     source = root / entry["source"]
     golden = root / (entry["suite"][:-2] + ".out")
-    sites = find_sites(source.read_text())
+    text = source.read_text()
+    sites = find_sites(text)
     if len(sites) != len(entry["labels"]):
         print(f"{entry['source']} has {len(sites)} report sites, this script "
               f"names {len(entry['labels'])}. Add the new one to its LABELS, "
               f"in file order.", file=sys.stderr)
+        sys.exit(1)
+    wrong = check_order(text, sites, entry["labels"])
+    if wrong:
+        print(f"{entry['source']}: LABELS are out of file order — a site is "
+              f"lined up with a label from a different function:", file=sys.stderr)
+        for line, got, label in wrong:
+            print(f"  line {line} is inside {got}, but its label says "
+                  f"\"{label}\"", file=sys.stderr)
+        print("reorder LABELS to match the source; the count check cannot see "
+              "this", file=sys.stderr)
         sys.exit(1)
     by_site = cases_by_site(golden.read_text())
     missing = [label for label in entry["labels"] if label not in by_site]

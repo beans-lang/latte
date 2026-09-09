@@ -1,0 +1,28 @@
+<beans>
+// The layout every page is wrapped in — the chrome, and nothing that belongs
+// to a page.
+//
+// It writes no `<html>`, no `<head>` and no `<script>`: those belong to the
+// shell DOCUMENT, which is not a component. This markup is what a circuit
+// re-renders over a socket, and a circuit that re-rendered `<html>` would be
+// replacing the page the script driving it is running inside.
+package site
+
+import {Layout} from latte
+
+pub partial class Shell extends Layout {
+    pub fn init() { super.init() }
+}
+</beans>
+<div class="min-h-screen bg-stone-50 text-stone-900">
+  <header class="border-b border-stone-200 bg-white">
+    <div class="mx-auto flex max-w-3xl items-center gap-3 px-6 py-4">
+      <span class="grid h-9 w-9 place-items-center rounded-full bg-amber-700 text-sm font-semibold text-white">BB</span>
+      <div>
+        <h1 class="text-lg font-semibold leading-tight tracking-tight">Brew Board</h1>
+        <p class="text-xs text-stone-500">a latte demo — DI, a view-model, signals and a memo</p>
+      </div>
+    </div>
+  </header>
+  <main class="mx-auto max-w-3xl px-6 py-8">$slot</main>
+</div>

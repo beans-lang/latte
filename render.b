@@ -275,7 +275,7 @@ pub class Renderer extends DirtySink {
         // the sink at its own mount, by the Builder, from the Registry.
         self.root.attach_sink(self, component)
         component.on_init()
-        component.on_params_set()
+        component.params_arrived()
         self.begin()
         self.root.render_root(component)
         self.finish()
@@ -354,7 +354,7 @@ pub class Renderer extends DirtySink {
             some(component) => {
                 match self.buffer(id) {
                     some(buffer) => {
-                        component.on_params_set()
+                        component.params_arrived()
                         buffer.render_root(component)
                     }
                     none => { self.faults.push("dirty component {id} has no buffer") }

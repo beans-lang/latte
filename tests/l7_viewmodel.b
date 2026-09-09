@@ -15,8 +15,8 @@ package main
 
 import std.io
 import std.reflect
-import {Builder, Cell, Component, Renderer, Signal, ViewModel,
-        Command} from latte
+import {Builder, Cell, Component, Layout, Renderer, ServiceSource, Signal,
+        ViewModel, Command, inject} from latte
 
 // ---------------------------------------------------------------- subjects
 
@@ -83,6 +83,66 @@ pub class OrderPage extends Component {
     pub override fn render(b: Builder) {
         b.open(0, "p")
         b.live_text(1, fn() -> string { return "{self.model.placed.get()}" })
+        b.close()
+    }
+}
+
+// --------------------------------------------- a page under a layout
+
+/// A service, for the `@inject` half of the case below.
+///
+/// It counts its own constructions and reports the number, so an injected one
+/// reads differently from the default the field holds. Without that, the check
+/// "its @inject field was filled" passes whether or not anything filled it —
+/// which is a check that cannot fail, and one of those is worth less than none.
+pub class Clock {
+    static made: int = 0
+    pub tag: int = 0
+    pub fn init() {
+        Clock.made += 1
+        self.tag = Clock.made
+    }
+    pub fn reading() -> string { return "tick{self.tag}" }
+}
+
+pub class OneService implements ServiceSource {
+    pub fn init() {}
+    pub fn provide(described: reflect.Type) -> Result<reflect.Value, string> {
+        if self.knows(described) { return ok(reflect.value(new Clock())) }
+        return err("nothing provides {described.qualified_name()}")
+    }
+    pub fn knows(described: reflect.Type) -> bool {
+        return described.qualified_name() == type_of(Clock).qualified_name()
+    }
+}
+
+/// The page. It is NOT the root component when a layout wraps it — the layout
+/// is — and it is not mounted by `Builder.mount` either. A `LayoutLink` places
+/// the next link with `component_made`, the FACTORY route.
+pub class Inner extends Component {
+    pub ticks: Signal<int> = new Signal<int>(0)
+    pub model: SmallModel = new SmallModel()
+    @inject pub clock: Clock = new Clock()
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "p")
+        b.live_text(1, fn() -> string { return "{self.ticks.get()}" })
+        b.close()
+    }
+}
+
+pub class SmallModel extends ViewModel {
+    pub attaches: int = 0
+    pub fn init() { super.init() }
+    pub override fn on_attach() { self.attaches += 1 }
+}
+
+/// A layout, wired the way `open_page` wires one.
+pub class Wrapper extends Layout {
+    pub fn init() { super.init() }
+    pub override fn render(b: Builder) {
+        b.open(0, "div")
+        b.fragment(1, self.body)
         b.close()
     }
 }
@@ -156,4 +216,43 @@ fn main() {
     report("it cannot run", "{bare.can_run()}", "false")
     bare.run()
     io.println("ok   and running it did not fail")
+
+    io.println("")
+    io.println("== 6. a page UNDER A LAYOUT is wired the same way ==")
+    // The bug this section exists for. A `@page` with a `@layout` is not the
+    // root component — the layout is — and it is not mounted by
+    // `Builder.mount` either: `LayoutLink.render_body` places the next link
+    // with `component_made`, the FACTORY route, which had no adopt pass. So a
+    // page with a layout got no `@inject` fields, no owned signals and no
+    // attached view-model, while the same page WITHOUT a layout got all three.
+    //
+    // Nothing failed. The page rendered, the fields held their defaults, and a
+    // `Command` whose `on_attach` never ran answered "cannot run" to every
+    // click — the server replying "your message changed nothing" to a click
+    // that looked, in the markup, exactly right. `examples/board` is what
+    // found it, by being clicked in a browser.
+    let inner: Inner = new Inner()
+    let wrapper: Wrapper = new Wrapper()
+    // The wiring `PageInstance.link` does.
+    let link_inner: Inner = inner
+    wrapper.body = fn(b: Builder) {
+        b.component_made<Component>(0,
+            fn() -> Component { return link_inner },
+            fn(mounted: Component) {})
+    }
+    let r6: Renderer = new Renderer()
+    r6.services = some(new OneService())
+    r6.mount(wrapper)
+    report("the page rendered inside its layout", r6.html(), "<div><p>0</p></div>")
+    report("nothing was refused", r6.all_faults().join(" | "), "")
+    report("its signal was owned", "{inner.ticks.cell.attached()}", "true")
+    report("its view-model was attached", "{inner.model.attaches}", "1")
+    // The field's own default was built first (tick1) and the injected one
+    // replaced it (tick2). Reading tick1 would mean nothing filled it.
+    report("and its @inject field was filled — not left at its default",
+           "{inner.clock.reading()}", "tick2")
+    inner.ticks.set(4)
+    let _f7: int = r6.flush()
+    report("so a signal write moves the page through the layout",
+           r6.html(), "<div><p>4</p></div>")
 }

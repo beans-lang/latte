@@ -1,0 +1,31 @@
+== 1. a parent re-render with no parameter change ==
+ok   everything rendered once: 1/1/1
+ok   the parent rendered again: 2
+ok   the memoized child did NOT: 1
+ok   THE CONTROL: the plain child did: 2
+
+== 2. a parameter that actually changed ==
+ok   the memoized child rendered: 2
+ok   and the html is the new value: <ul><li>a/2/false</li><li>a</li></ul>
+
+== 3. every scalar kind moves it, one at a time ==
+ok   a string parameter: 3
+ok   a bool parameter: 4
+ok   and changing it back is a change too: 5
+
+== 4. a fresh Callback every render is not a change ==
+ok   the memoized child still declined: 5
+ok   THE CONTROL: the plain one still rendered: 7
+
+== 5. what the startup scan refuses ==
+ok   three, and no more: 3
+ok   a @memo that is not a component: latte$entry.NotAComponent is annotated @memo but does not extend latte.Component, so nothing would ever consult it
+ok   a parameter it cannot compare: latte$entry.TakesAList.rows is a @param of type List<string> on a @memo component, and latte cannot compare one — only string, int, bool and float. Write should_render yourself, or drop @memo
+ok   a component that takes child content: latte$entry.TakesContent.body is a @param of type fn(latte.Builder) -> unit on a @memo component — a closure the parent rebuilds every render, holding markup that may be completely different. Its parameters can all be equal while its content is not. Drop @memo, or take the content another way
+ok   THE CONTROL: a @memo that works is not named: false
+
+== 6. ParamWatch by hand still works ==
+ok   a fresh watch has recorded nothing: true
+ok   the first record is always a change: true
+ok   the same values are not: false
+ok   a different one is: true

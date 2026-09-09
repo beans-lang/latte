@@ -1,0 +1,9 @@
+{
+  "name": "latte-board-demo",
+  "private": true,
+  "description": "Tooling for the demo's stylesheet only. Nothing in latte needs Node; the built CSS is committed, so a consumer of this example installs nothing.",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+  }
+}

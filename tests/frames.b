@@ -1692,6 +1692,7 @@ const SITE_SPLAT_URL: string = "attrs / attribute N carried a refused scheme"
 const SITE_LIVE_DEAF: string = "live_text / live expression N read no signal"
 const SITE_WRONG_CLASS: string = "fill_slot / slot N holds a X, not a Y"
 const SITE_INJECT: string = "mount / an @inject field could not be filled"
+const SITE_MADE_INJECT: string = "mount_made / an @inject field could not be filled"
 const SITE_NOT_COMPONENT: string = "mount / X is not a Component"
 const SITE_ACTIVATE: string = "mount / cannot activate X"
 const SITE_NO_CTOR: string = "mount / X has no zero-argument initializer"
@@ -2350,6 +2351,25 @@ fn sites() -> List<Site> {
             b.component<Plain>(0, fn(c: Plain) { c.label = "ok" })
         }, "<p>ok/1</p>"))
 
+    // The same fault down the FACTORY route. It needs its own case because the
+    // two mount paths are separate code, and for a while only one of them ran
+    // the adopt pass at all: a `@page` under a `@layout` is placed by
+    // `LayoutLink.render_body` with `component_made`, so a page with a layout
+    // got no `@inject` fields, no owned signals and no attached view-model,
+    // while the same page without one got all three. Nothing failed — it
+    // rendered, with every field at its default.
+    out.push(new Site(SITE_MADE_INJECT, "a-factory-mount-whose-inject-cannot-be-filled",
+        fn(b: Builder) {
+            b.component_made<Needy>(0, fn() -> Needy { return new Needy() },
+                                    fn(c: Needy) {})
+        },
+        "0: latte$entry.Needy.thing is @inject, but this page has no service container to fill it from",
+        "<p>thing</p>",
+        fn(b: Builder) {
+            b.component_made<Plain>(0, fn() -> Plain { return new Plain() },
+                                    fn(c: Plain) { c.label = "ok" })
+        }, "<p>ok/1</p>"))
+
     out.push(new Site(SITE_ACTIVATE, "mount-a-component-whose-init-takes-an-argument",
         fn(b: Builder) {
             b.component<NeedsSeed>(0, fn(c: NeedsSeed) {})
@@ -2749,7 +2769,7 @@ fn fault_sites(r: Report) {
             none => {}
         }
     }
-    r.eqi("every fault site in builder.b has a case", names.len(), 26)
+    r.eqi("every fault site in builder.b has a case", names.len(), 27)
 }
 
 /// Three controls in the table render no html of their own, because a handler,

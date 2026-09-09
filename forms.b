@@ -11,10 +11,14 @@
 // The scan is `pages.b`'s scan one level down: `reflect.types()` once, a
 // `FormPlan` per `@form`, a typed setter per `@field`, and a refusal — by name,
 // at startup — for every rule that could not run and every field that could not
-// bind. It inherits `pages.b`'s B1a refusal for the same reason: a reflective
-// write to a field whose declaring type is generic is `ok` under `beansc run`
-// and `unsupported` as a native binary, so a form bound that way works all
-// through the edit loop and breaks when it ships.
+// bind.
+//
+// It used to inherit `pages.b`'s BLOCKERS.md **B1a** refusal — a reflective
+// write to a field whose declaring type is generic was `ok` under `beansc run`
+// and `unsupported` as a native binary, so a form bound that way worked all
+// through the edit loop and broke when it shipped. beans 0.1.41 closed it
+// (#158, #159) and both refusals went with it; `test.sh` pins that compiler,
+// so the shape cannot come back under a supported one.
 //
 // ## Nothing here computes an HMAC, and that is deliberate
 //

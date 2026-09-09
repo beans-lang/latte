@@ -103,12 +103,12 @@ ok   what was ignored: is_admin
 
 == 6. every refusal forms.b makes, with a control beside it ==
 -- a @field nothing scans
-   site:    scan / a @field on a type that is not a @form
+   site:    scan_forms / a @field on a type that is not a @form
    faults:  latte$entry.LooseField.a is a @field but latte$entry.LooseField is not a @form, so nothing would ever bind it
 ok   a @field nothing scans: the exact fault: latte$entry.LooseField.a is a @field but latte$entry.LooseField is not a @form, so nothing would ever bind it
 ok   a @field nothing scans: the control raises nothing: 
 -- a rule nothing scans
-   site:    scan / a rule on a type that is not a @form
+   site:    scan_forms / a rule on a type that is not a @form
    faults:  latte$entry.LooseRule.a carries @required but not @field, so the rule would never run
 ok   a rule nothing scans: the exact fault: latte$entry.LooseRule.a carries @required but not @field, so the rule would never run
 ok   a rule nothing scans: the control raises nothing: 
@@ -197,8 +197,8 @@ ok   a backwards numeric window: the control raises nothing:
    1x read_rules / a @length no value can satisfy
    1x read_rules / a @length that bounds nothing
    1x read_rules / a negative @length floor
-   1x scan / a @field on a type that is not a @form
-   1x scan / a rule on a type that is not a @form
+   1x scan_forms / a @field on a type that is not a @form
+   1x scan_forms / a rule on a type that is not a @form
 ok   every fault site in forms.b has a case: 16
 
 == 7. a failed post comes back as it was typed ==

@@ -1,0 +1,31 @@
+== the brew board ==
+
+-- 0. the application starts
+ok 0.1 the page scan refused nothing
+ok 0.2 the form scan refused nothing
+
+-- 1. the document
+ok 1.1 status
+ok 1.2 it is a document
+ok 1.3 the stylesheet is served from this origin, not a CDN
+ok 1.4 and nothing is loaded from anywhere else
+ok 1.5 no inline style, which the CSP would drop anyway
+ok 1.6 the stylesheet is served
+ok 1.7 it is real Tailwind output, not a hand-written subset
+ok 1.8 and it carries the classes the markup uses
+
+-- 2. the container built the page
+ok 2.1 the two orders the service starts with are on the page
+ok 2.2 and a child component priced them from an injected service
+
+-- 3. the view-model, with no page mounted at all
+ok 3.1 an empty draft is not ready
+ok 3.2 and neither is whitespace
+ok 3.3 a real one is
+ok 3.4 the board starts with what the service had
+
+-- 4. a price nobody wrote down
+ok 4.1 a known drink
+ok 4.2 and one that is not on the list still has a price
+
+18 checks, 0 bad

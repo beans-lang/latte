@@ -21,6 +21,14 @@ import {Builder, CircuitOptions, CircuitSet, Component, Island, IslandOutcome,
         describe_island, encode_state, pack_state, persist, render_shell,
         restore_models, restore_state, scan_persist} from latte
 
+/// The one refusal that names `needle`, or "" when there is none.
+fn named_for(found: List<string>, needle: string) -> string {
+    for problem: string in found {
+        if problem.contains(needle) { return problem }
+    }
+    return ""
+}
+
 // ---------------------------------------------------------------- the model
 
 pub class OrderModel extends ViewModel {
@@ -41,8 +49,18 @@ pub class BadModel extends ViewModel {
     pub fn init() { super.init() }
 }
 
+/// A model whose `@persist` field is a scalar but is NOT public. Reflection
+/// does not bypass visibility on either backend, so the pack would read
+/// nothing and the field would come back at its default with no message —
+/// which is why this is a startup refusal and not a silent skip.
+pub class ShyModel extends ViewModel {
+    @persist label: string = ""
+    pub fn init() { super.init() }
+}
+
 /// THE CONTROL for the scan: a model with only scalar `@persist` fields, which
-/// must NOT be named.
+/// must NOT be named. It is `ShyModel` with one word changed, so what it
+/// controls for is visibility and nothing else.
 pub class GoodModel extends ViewModel {
     @persist pub label: string = ""
     pub fn init() { super.init() }
@@ -217,23 +235,43 @@ fn main() {
     io.println("== 8. the startup scan ==")
     var found: List<string> = scan_persist()
     found.sort()
-    report("exactly one model is refused", "{found.len()}", "1")
-    report("and it is named, with the reason", found[0],
-           "latte$entry.BadModel.rows is @persist but is a List<string>; only string, int, bool and float cross the seam")
-    var named_good: bool = false
-    for problem: string in found {
-        if problem.contains("GoodModel") { named_good = true }
-        if problem.contains("OrderModel") { named_good = true }
-    }
-    report("THE CONTROL: the scalar-only models are not named", "{named_good}", "false")
+    report("exactly two models are refused", "{found.len()}", "2")
 
-    // The site tally `test.sh`'s refusal-coverage leg reads. `persist.b` has
-    // exactly one report site — the `@persist` field that cannot cross the
-    // seam — and the two cases above reach it: a non-scalar field, and the
-    // scalar-only control that must not.
+    // One case per report site, named the way `probes/delete_faults.sh` reads
+    // it: `-- <case>`, the site it trips, and then checks whose names begin
+    // with that same case. Deleting either `plan.faults.push` in `persist.b`
+    // must turn the case below it — and only that one — red.
+    //
+    // The refusals are found by the model they name and NOT by `found[0]` /
+    // `found[1]`: with a site deleted the list is one shorter, an index read
+    // panics, and a panic is not a failing check. This probe reports it as
+    // "the suite did not run", which does not say which rule went missing.
+    io.println("-- a @persist field that cannot cross the seam")
+    io.println("   site:    persist_plan / a @persist field that is not a scalar")
+    report("a @persist field that cannot cross the seam: the exact fault",
+           named_for(found, "BadModel"),
+           "latte$entry.BadModel.rows is @persist but is a List<string>; only string, int, bool and float cross the seam")
+    report("a @persist field that cannot cross the seam: THE CONTROL, a scalar field raises nothing",
+           named_for(found, "GoodModel"), "")
+
+    io.println("-- a @persist field reflection cannot read")
+    io.println("   site:    persist_plan / a @persist field that is not public")
+    report("a @persist field reflection cannot read: the exact fault",
+           named_for(found, "ShyModel"),
+           "latte$entry.ShyModel.label is @persist but is not public, and reflection does not bypass visibility")
+    report("a @persist field reflection cannot read: THE CONTROL, a public field raises nothing",
+           named_for(found, "GoodModel"), "")
+
+    // The site tally `test.sh`'s refusal-coverage leg reads — one row per
+    // `plan.faults.push` in `persist.b`.
+    //
+    // It said `1x` and one site until 2026-09-09, and matched a count of 1,
+    // because the non-scalar refusal was not a `.faults.push` at all and the
+    // not-public one that was had no case. Two errors, one green leg.
     io.println("")
     io.println("-- the sites in persist.b, and how many shapes reach each")
     io.println("   1x persist_plan / a @persist field that is not a scalar")
+    io.println("   1x persist_plan / a @persist field that is not public")
 
     io.println("")
     io.println("== 9. the whole path: page -> island -> document -> page ==")

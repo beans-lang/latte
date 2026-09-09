@@ -24,3 +24,11 @@ ok   and running it anyway does nothing: <p>1</p>
 == 5. a command with no owner is inert ==
 ok   it cannot run: false
 ok   and running it did not fail
+
+== 6. a page UNDER A LAYOUT is wired the same way ==
+ok   the page rendered inside its layout: <div><p>0</p></div>
+ok   nothing was refused: 
+ok   its signal was owned: true
+ok   its view-model was attached: 1
+ok   and its @inject field was filled — not left at its default: tick2
+ok   so a signal write moves the page through the layout: <div><p>4</p></div>
