@@ -8,7 +8,7 @@
 # each `self.faults.push(...)` site in turn, runs the suite that owns it, and
 # requires that a check naming THAT site turns red.
 #
-#   builder.b     25 sites   tests/frames.b § 13
+#   builder.b     26 sites   tests/frames.b § 13
 #   apply.b       14 sites   tests/w1_faults.b § 1
 #   serialize.b    4 sites   tests/w1_faults.b § 3
 #   stream.b      24 sites   tests/w6_stream.b § 4
@@ -46,8 +46,8 @@ only="${1:-}"
 
 [[ -x "$beansc" ]] || { echo "no beansc at $beansc" >&2; exit 1; }
 case "$("$beansc" --version)" in
-    *"0.1.40"*) ;;
-    *) echo "latte is recorded against beansc 0.1.40" >&2; exit 1 ;;
+    *"0.1.41"*) ;;
+    *) echo "latte is recorded against beansc 0.1.41" >&2; exit 1 ;;
 esac
 
 [[ -z ${BEANS_RUNTIME:-} && -f "$beans/runtime/beans_rt.c" ]] && export BEANS_RUNTIME="$beans/runtime/beans_rt.c"
@@ -99,6 +99,7 @@ FILES = [
             "attrs / attribute N carried a refused scheme",
             "live_text / live expression N read no signal",
             "fill_slot / slot N holds a X, not a Y",
+            "mount / an @inject field could not be filled",
             "mount / X is not a Component",
             "mount / cannot activate X",
             "mount / X has no zero-argument initializer",

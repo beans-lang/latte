@@ -1,8 +1,8 @@
 == a page built by the container ==
-ok   services discovered: 2
+ok   services discovered: 3
 ok   the page scan accepted a page whose init takes services: 
-ok   request 1: espresso #1
-ok   request 2: espresso #2
-ok   request 3: espresso #3
+ok   request 1: espresso #1<em>cafe</em>
+ok   request 2: espresso #2<em>cafe</em>
+ok   request 3: espresso #3<em>cafe</em>
 ok   the singleton was built once for three requests: 1
 ok   the scoped service was built once per request: 3

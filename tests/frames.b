@@ -32,7 +32,7 @@ import std.io
 import std.reflect
 import {Builder, Callback, Component, DirtySink, Frame, FocusEvent, InputEvent,
         KeyboardEvent, MouseEvent, Reference, Renderer, Serializer, Signal,
-        SubmitEvent, describe_frame} from latte
+        SubmitEvent, describe_frame, inject} from latte
 
 // ---------------------------------------------------------------- reporting
 //
@@ -1156,6 +1156,26 @@ pub class Cell<T> extends Component {
 /// nothing and the assertions were about an empty page".
 /// A component with a signal, for § 13's live-expression site. Its value is 7
 /// so the trip and the control can be told apart from an empty render.
+/// A service, for the `@inject` site below. It is a plain class: what makes it
+/// a service is that a component asks for it, not anything it declares.
+pub class Thing {
+    pub fn init() {}
+    pub fn label() -> string { return "thing" }
+}
+
+/// A component with an `@inject` field. Mounted on a page with no service
+/// source — which is every page in this suite — its field keeps the default
+/// and the mount raises a fault naming it.
+pub class Needy extends Component {
+    @inject pub thing: Thing = new Thing()
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "p")
+        b.text(1, "{self.thing.label()}")
+        b.close()
+    }
+}
+
 pub class Ticker extends Component {
     pub ticks: Signal<int> = new Signal<int>(7)
     pub fn init() {}
@@ -1671,6 +1691,7 @@ const SITE_SPLAT_ON: string = "attrs / refused splatted inline handler"
 const SITE_SPLAT_URL: string = "attrs / attribute N carried a refused scheme"
 const SITE_LIVE_DEAF: string = "live_text / live expression N read no signal"
 const SITE_WRONG_CLASS: string = "fill_slot / slot N holds a X, not a Y"
+const SITE_INJECT: string = "mount / an @inject field could not be filled"
 const SITE_NOT_COMPONENT: string = "mount / X is not a Component"
 const SITE_ACTIVATE: string = "mount / cannot activate X"
 const SITE_NO_CTOR: string = "mount / X has no zero-argument initializer"
@@ -2313,6 +2334,22 @@ fn sites() -> List<Site> {
     // BLOCKERS.md B2 — the message names the member now, and native no longer
     // truncates it by a byte). Both backends print it identically; the older
     // text without it was what 0.1.40 produced.
+    // An `@inject` field with nothing to fill it from. Unlike every other site
+    // here the component still MOUNTS and still RENDERS — with the field at its
+    // own default — which is exactly why the fault matters: without it the page
+    // answers 200 and is quietly wrong. `latte_app` refuses this whole shape at
+    // startup (`scan_injections`); this is what the render does if a host has
+    // not.
+    out.push(new Site(SITE_INJECT, "mount-a-component-whose-inject-cannot-be-filled",
+        fn(b: Builder) {
+            b.component<Needy>(0, fn(c: Needy) {})
+        },
+        "0: latte$entry.Needy.thing is @inject, but this page has no service container to fill it from",
+        "<p>thing</p>",
+        fn(b: Builder) {
+            b.component<Plain>(0, fn(c: Plain) { c.label = "ok" })
+        }, "<p>ok/1</p>"))
+
     out.push(new Site(SITE_ACTIVATE, "mount-a-component-whose-init-takes-an-argument",
         fn(b: Builder) {
             b.component<NeedsSeed>(0, fn(c: NeedsSeed) {})
@@ -2712,7 +2749,7 @@ fn fault_sites(r: Report) {
             none => {}
         }
     }
-    r.eqi("every fault site in builder.b has a case", names.len(), 25)
+    r.eqi("every fault site in builder.b has a case", names.len(), 26)
 }
 
 /// Three controls in the table render no html of their own, because a handler,

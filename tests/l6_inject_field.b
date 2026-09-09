@@ -8,6 +8,11 @@
 // between it and the page passed it down as a `@param` — which is a prop chain
 // for something that is not a prop.
 //
+// The names in the expected faults are `latte$entry.X` and not `main.X`: a
+// library's `tests/` entry gets a synthetic package, and the `0:` in front is
+// the id of the buffer that raised the fault. Both are what a reader of a real
+// fault list sees, so they are in the goldens rather than filed off.
+//
 // The source here is a hand-written `ServiceSource` and not a container. That
 // is the point of the interface: latte's core knows what a service source is
 // and nothing about what a service collection is, so this suite needs no
@@ -16,7 +21,8 @@ package main
 
 import std.io
 import std.reflect
-import {Builder, Component, Renderer, ServiceSource} from latte
+import {Builder, Component, Renderer, ServiceSource, inject,
+        scan_injections} from latte
 
 // ---------------------------------------------------------------- services
 
@@ -37,10 +43,12 @@ pub class OneService implements ServiceSource {
     pub fn init() {}
     pub fn provide(described: reflect.Type) -> Result<reflect.Value, string> {
         self.asked += 1
-        if described.qualified_name() == type_of(Clock).qualified_name() {
-            return ok(reflect.value(new Clock()))
-        }
+        if self.knows(described) { return ok(reflect.value(new Clock())) }
         return err("nothing provides {described.qualified_name()}")
+    }
+
+    pub fn knows(described: reflect.Type) -> bool {
+        return described.qualified_name() == type_of(Clock).qualified_name()
     }
 }
 
@@ -134,7 +142,10 @@ fn render(which: string, source: Option<ServiceSource>) -> Run {
     page.which = which
     renderer.mount(page)
     out.html = renderer.html()
-    out.faults = renderer.faults.join(" | ")
+    // `all_faults()` and not `faults`: the Renderer's own list holds only
+    // what the renderer noticed, and a mount fault — which is what a failed
+    // injection is — lives on the Builder that raised it.
+    out.faults = renderer.all_faults().join(" | ")
     return move out
 }
 
@@ -142,8 +153,12 @@ fn main() {
     io.println("== 1. with a source, an @inject field is filled ==")
     let one: OneService = new OneService()
     let filled: Run = render("stamped", some(one))
+    // `clock#2`, not `#1`: the field's own initializer runs when the component
+    // is constructed and the injected value replaces it. That is worth seeing
+    // rather than hiding — a `@inject` field's default is a real object that is
+    // really built, so do not put anything expensive in one.
     report("the child rendered its injected service",
-           filled.html, "<div><span>clock#1</span></div>")
+           filled.html, "<div><span>clock#2</span></div>")
     report("and nothing was refused", filled.faults, "")
     report("the source was asked exactly once", "{one.asked}", "1")
 
@@ -163,7 +178,7 @@ fn main() {
     let orphan: Run = render("stamped", none)
     report("the fault names the field and says why",
            orphan.faults,
-           "main.Stamped.clock is @inject, but this page has no service container to fill it from")
+           "0: latte$entry.Stamped.clock is @inject, but this page has no service container to fill it from")
     // The control for section 3: with no source, the component that asks for
     // nothing is still fine. Without this, "no source refuses" could mean
     // "no source breaks rendering".
@@ -177,12 +192,59 @@ fn main() {
     let hidden: Run = render("hidden", some(new OneService()))
     report("a non-public @inject field is refused",
            hidden.faults,
-           "main.Hidden.clock is @inject but is not public, and reflection does not bypass visibility")
+           "0: latte$entry.Hidden.clock is @inject but is not public, and reflection does not bypass visibility")
 
     io.println("")
     io.println("== 5. a service nothing provides ==")
     let missing: Run = render("missing", some(new OneService()))
     report("the source's own words reach the fault",
            missing.faults,
-           "main.Missing.other: nothing provides main.Plain")
+           "0: latte$entry.Missing.other: nothing provides latte$entry.Plain")
+    io.println("")
+    io.println("== 6. the same three faults, found at STARTUP ==")
+    // Sections 3 to 5 are what a render does with a bad `@inject`: it leaves
+    // the field at its default and buries a fault in a buffer's list, and the
+    // page still answers 200. That is right for rendering — a subtree that
+    // cannot be built leaves the rest of the page standing, which is what a
+    // live circuit needs — and wrong for "the service you asked for does not
+    // exist", which is a configuration fault and decidable before a socket
+    // exists.
+    //
+    // `scan_injections` walks every Component in the executable once. This
+    // file declares four of them, and the assertion is not "it found some
+    // faults" but exactly WHICH: the two that cannot be filled, and neither of
+    // the two that can. A scan that reported all four would pass a weaker test
+    // and be useless.
+    let found: List<string> = scan_injections(some(new OneService()))
+    var sorted: List<string> = found.clone()
+    sorted.sort()
+    report("it found exactly two", "{sorted.len()}", "2")
+    report("the non-public field", sorted[0],
+           "latte$entry.Hidden.clock is @inject but is not public, and reflection does not bypass visibility")
+    report("the unregistered service", sorted[1],
+           "latte$entry.Missing.other is @inject but nothing is registered for latte$entry.Plain")
+
+    // The controls, and they are the point of the section. `Stamped` has an
+    // @inject field the source CAN fill, and `Plain` has none at all; neither
+    // may appear.
+    var named_stamped: bool = false
+    var named_plain: bool = false
+    for problem: string in found {
+        if problem.contains("Stamped") { named_stamped = true }
+        if problem.contains("Plain.") { named_plain = true }
+    }
+    report("THE CONTROL: a fillable @inject is not reported", "{named_stamped}", "false")
+    report("THE CONTROL: a component with no @inject is not reported", "{named_plain}", "false")
+
+    io.println("")
+    io.println("== 7. no container at all ==")
+    let orphaned: List<string> = scan_injections(none)
+    // Three now, not two: with no source, `Stamped` joins them — its field is
+    // public and fillable, and there is nothing to fill it from.
+    report("every @inject field is reported", "{orphaned.len()}", "3")
+    var says_container: int = 0
+    for problem: string in orphaned {
+        if problem.contains("no service container") { says_container += 1 }
+    }
+    report("and two of them say why", "{says_container}", "2")
 }

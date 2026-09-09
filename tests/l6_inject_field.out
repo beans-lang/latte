@@ -1,0 +1,31 @@
+== 1. with a source, an @inject field is filled ==
+ok   the child rendered its injected service: <div><span>clock#2</span></div>
+ok   and nothing was refused: 
+ok   the source was asked exactly once: 1
+
+== 2. THE CONTROL: a component with no @inject ==
+ok   it renders: <div><span>plain</span></div>
+ok   nothing was refused: 
+ok   and the source was never asked: 0
+
+== 3. no source: an @inject field is refused, by name ==
+ok   the fault names the field and says why: 0: latte$entry.Stamped.clock is @inject, but this page has no service container to fill it from
+ok   THE CONTROL: a component with no @inject still renders: <div><span>plain</span></div>
+ok   ...and raises nothing: 
+
+== 4. a field reflection cannot write ==
+ok   a non-public @inject field is refused: 0: latte$entry.Hidden.clock is @inject but is not public, and reflection does not bypass visibility
+
+== 5. a service nothing provides ==
+ok   the source's own words reach the fault: 0: latte$entry.Missing.other: nothing provides latte$entry.Plain
+
+== 6. the same three faults, found at STARTUP ==
+ok   it found exactly two: 2
+ok   the non-public field: latte$entry.Hidden.clock is @inject but is not public, and reflection does not bypass visibility
+ok   the unregistered service: latte$entry.Missing.other is @inject but nothing is registered for latte$entry.Plain
+ok   THE CONTROL: a fillable @inject is not reported: false
+ok   THE CONTROL: a component with no @inject is not reported: false
+
+== 7. no container at all ==
+ok   every @inject field is reported: 3
+ok   and two of them say why: 2

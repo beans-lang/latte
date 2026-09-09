@@ -37,7 +37,8 @@ import {Activator, Anonymous, Antiforgery, CircuitOptions, CircuitSet,
         Component, FormComponent, FormMap, FormState, PageHost, PageInstance,
         PageMap, PageRequest, PageResponse, Principal, ServiceSource,
         ShellOptions, Signer, SeamSigner, NO_POLLER_MESSAGE, is_safe_method,
-        open_page, render_shell, scan_forms, scan_pages_for} from latte
+        open_page, render_shell, scan_forms, scan_injections,
+        scan_pages_for} from latte
 import {run} from latte.boundary
 import {CircuitSeam, ClientOptions, EndpointOptions, HeaderOptions, WebRequest,
         WebReply, SOCKET_PATH, fresh_id, has_fiber_poller, hmac_signer,
@@ -165,6 +166,10 @@ pub class Container implements Activator, ServiceSource {
             ok(value) => { return ok(value) }
             err(problem) => { return err(problem.msg) }
         }
+    }
+
+    pub fn knows(described: reflect.Type) -> bool {
+        return self.provider.provides(described)
     }
 }
 
@@ -538,6 +543,18 @@ pub fn build_with(options: LatteOptions,
     if pages.report() != "" { return err(pages.report()) }
     let forms: FormMap = scan_forms(pages)
     if forms.report() != "" { return err(forms.report()) }
+
+    // Every `@inject` field in the executable, checked before a socket exists.
+    // Left to render time an unfillable field is a component that mounts with
+    // its default, buries a fault in a buffer's list, and answers 200 — a page
+    // that renders and is wrong. It is a configuration fault, not a rendering
+    // one, so it is refused where the rest of them are.
+    var container_source: Option<ServiceSource> = none
+    if provider.has_registrations() {
+        container_source = some(new Container(provider))
+    }
+    let injections: List<string> = scan_injections(container_source)
+    if injections.len() > 0 { return err(injections.join(" | ")) }
 
     // The signing key. A real deployment reads it from its configuration; a
     // constant here would be a key in a public repository, so this one is

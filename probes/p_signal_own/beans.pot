@@ -1,0 +1,3 @@
+module p_signal_own
+kind application
+require path "../.."

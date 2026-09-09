@@ -163,9 +163,19 @@ pub class Renderer extends DirtySink {
 
     /// Render the page for the first time. Everything below it mounts with it,
     /// because `component<T>` activates and renders a child in the same call.
+    /// Where every component in this page gets its `@inject` fields. `none`
+    /// for a page with no container; a component with no `@inject` field never
+    /// reaches it either way.
+    pub services: Option<ServiceSource> = none
+
     pub fn mount(component: Component) {
         self.page = some(component)
         self.root.id = 0
+        // Where every child component's `@inject` fields will come from. It is
+        // handed to the Registry rather than carried by each Builder, the same
+        // way the dirty sink is, so a component mounted anywhere in the tree
+        // reaches it without anything threading it down.
+        self.root.registry.services = self.services
         // Before `on_init` and before the first render. A component may call
         // `notify()` from either — a subscription taken in `on_init` is the
         // ordinary reason — and every child the first render mounts is handed

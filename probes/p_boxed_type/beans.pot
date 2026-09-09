@@ -1,0 +1,3 @@
+module p_boxed_type
+kind application
+require path "../.."
