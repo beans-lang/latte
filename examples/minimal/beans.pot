@@ -1,0 +1,7 @@
+module minimal
+kind application
+
+# The smallest latte application there is. Two rows, because it names types
+# from both latte and latte_app; latte_app brings espresso and barista with it.
+require path "../.."
+require path "../../app"
