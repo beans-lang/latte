@@ -40,7 +40,7 @@ import {Activator, Anonymous, Antiforgery, CircuitOptions, CircuitSet,
         Island, Islands, PersistOptions, PersistState, ViewModel,
         describe_island, open_page,
         pack_state, render_shell, restore_models, scan_forms, scan_injections,
-        scan_pages_for, scan_persist} from latte
+        scan_memo, scan_pages_for, scan_persist} from latte
 import {run} from latte.boundary
 import {CircuitSeam, ClientOptions, EndpointOptions, HeaderOptions, WebRequest,
         WebReply, SOCKET_PATH, fresh_id, has_fiber_poller, hmac_signer,
@@ -621,6 +621,12 @@ pub fn build_with(options: LatteOptions,
     }
     let injections: List<string> = scan_injections(container_source)
     if injections.len() > 0 { return err(injections.join(" | ")) }
+
+    // Every `@memo` that cannot work. A memo that cannot compare a parameter is
+    // a component that stops updating, which is the silence the hand-written
+    // `ParamWatch` list used to produce and the whole reason `@memo` exists.
+    let memos: List<string> = scan_memo()
+    if memos.len() > 0 { return err(memos.join(" | ")) }
 
     // The signing key. A real deployment reads it from its configuration; a
     // constant here would be a key in a public repository, so this one is

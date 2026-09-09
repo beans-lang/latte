@@ -141,6 +141,12 @@ to be: a package under a module may not import its own module root. That is why
 over `int` and `string`. The two halves of latte can only meet somewhere that
 may import both, and before this the only such place was your `main.b`.
 
+**`examples/board/` is the demo for everything above the seam** — a service
+container, `@inject` on a child component, `@memo` instead of a hand-written
+`ParamWatch`, a view-model with a `Signal` and a guarded `Command`, and a real
+Tailwind stylesheet served from this origin rather than a CDN, because latte's
+own `style-src 'self'` would drop one.
+
 **`examples/cafe/main.b` is the worked example** — a served document, a content
 security policy, static assets, a form that works with JavaScript switched off,
 and a circuit, with 500 lines of its own self-test. **`examples/minimal/` is the

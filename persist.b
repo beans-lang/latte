@@ -119,8 +119,20 @@ fn persist_plan(described: reflect.Type) -> PersistPlan {
         let kind: ParamKind = kind_of(field.type())
         var binding: PersistBinding = new PersistBinding(field, kind)
         if kind == ParamKind.other {
-            binding.fault =
+            // One string, reported to two readers. `plan.faults` is what the
+            // startup scan prints, and the list `test.sh`'s refusal-coverage
+            // leg counts; `binding.fault` is what `pack_state` and
+            // `restore_state` read to skip this one field and keep going.
+            //
+            // Until 2026-09-09 only the second existed, so this refusal was
+            // invisible to the site count, while the not-public one above it
+            // was a site with no case anywhere. The two mistakes cancelled:
+            // one counted site, one listed site, a green leg, and the only
+            // refusal actually being counted was the untested one.
+            let why: string =
                 "{shown} is @persist but is a {field.type().qualified_name()}; only string, int, bool and float cross the seam"
+            plan.faults.push(why)
+            binding.fault = why
         }
         plan.bindings.push(binding)
     }
@@ -140,10 +152,10 @@ pub fn scan_persist() -> List<string> {
         if !extends_named(described, model_name) { continue }
         if described.qualified_name() == model_name { continue }
         let plan: PersistPlan = persist_plan(described)
+        // `plan.faults` alone: every refusal `persist_plan` makes lands there,
+        // and a binding's own `fault` is the same string kept for the packer.
+        // Reading both would name a non-scalar field twice.
         for fault: string in plan.faults { problems.push(fault) }
-        for binding: PersistBinding in plan.bindings {
-            if binding.fault != "" { problems.push(binding.fault) }
-        }
     }
     return move problems
 }

@@ -38,12 +38,19 @@ ok   they are escaped on the wire: name=a%26b%3Dc%25d
 ok   and come back as they were: a&b=c%d
 
 == 8. the startup scan ==
-ok   exactly one model is refused: 1
-ok   and it is named, with the reason: latte$entry.BadModel.rows is @persist but is a List<string>; only string, int, bool and float cross the seam
-ok   THE CONTROL: the scalar-only models are not named: false
+ok   exactly two models are refused: 2
+-- a @persist field that cannot cross the seam
+   site:    persist_plan / a @persist field that is not a scalar
+ok   a @persist field that cannot cross the seam: the exact fault: latte$entry.BadModel.rows is @persist but is a List<string>; only string, int, bool and float cross the seam
+ok   a @persist field that cannot cross the seam: THE CONTROL, a scalar field raises nothing: 
+-- a @persist field reflection cannot read
+   site:    persist_plan / a @persist field that is not public
+ok   a @persist field reflection cannot read: the exact fault: latte$entry.ShyModel.label is @persist but is not public, and reflection does not bypass visibility
+ok   a @persist field reflection cannot read: THE CONTROL, a public field raises nothing: 
 
 -- the sites in persist.b, and how many shapes reach each
    1x persist_plan / a @persist field that is not a scalar
+   1x persist_plan / a @persist field that is not public
 
 == 9. the whole path: page -> island -> document -> page ==
 ok   the page rendered what the post produced: <p>Ada/2</p>

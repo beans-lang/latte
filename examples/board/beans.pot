@@ -1,0 +1,10 @@
+module board
+kind application
+
+# The demo needs all four: latte for the component model, latte_app for the
+# composition root, barista because it names ServiceCollection itself, and
+# espresso because `check` drives the app through a TestHost.
+require path "../.."
+require path "../../app"
+require path "../../../../community-libs/barista"
+require path "../../../../community-libs/espresso"

@@ -810,6 +810,16 @@ ok mount-a-component-whose-inject-cannot-be-filled: what the refusal left
 ok mount-a-component-whose-inject-cannot-be-filled: the pass is still balanced
 ok mount-a-component-whose-inject-cannot-be-filled: the control raises nothing
 ok mount-a-component-whose-inject-cannot-be-filled: and the control renders
+-- a-factory-mount-whose-inject-cannot-be-filled
+   site:    mount_made / an @inject field could not be filled
+   faults:  0: latte$entry.Needy.thing is @inject, but this page has no service container to fill it from
+   left:    <p>thing</p>
+   control: <p>ok/1</p>
+ok a-factory-mount-whose-inject-cannot-be-filled: the exact faults
+ok a-factory-mount-whose-inject-cannot-be-filled: what the refusal left
+ok a-factory-mount-whose-inject-cannot-be-filled: the pass is still balanced
+ok a-factory-mount-whose-inject-cannot-be-filled: the control raises nothing
+ok a-factory-mount-whose-inject-cannot-be-filled: and the control renders
 -- mount-a-component-whose-init-takes-an-argument
    site:    mount / cannot activate X
    faults:  0: cannot activate NeedsSeed: wrong reflected argument count (constructing latte$entry.NeedsSeed)
@@ -1072,6 +1082,7 @@ ok a-slot-that-holds-another-class: and the instance survived all three passes
    1x mount / an @inject field could not be filled
    2x mount / cannot activate X
    1x mount_made / X is not a Component
+   1x mount_made / an @inject field could not be filled
    3x name_is_writable / refused attribute name
    3x name_is_writable / refused inline handler attribute
    3x note_sibling / sequence N does not follow M in this scope
@@ -1085,4 +1096,4 @@ ok a-slot-that-holds-another-class: and the instance survived all three passes
    3x unwind_to / an element was left open
 ok every fault site in builder.b has a case
 == summary
-checks: 474, failed: 0
+checks: 479, failed: 0

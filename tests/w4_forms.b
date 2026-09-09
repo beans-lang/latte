@@ -762,12 +762,12 @@ fn sites(forms: FormMap) -> List<Site> {
     let at: string = here()
     var out: List<Site> = []
 
-    out.push(new Site("scan / a @field on a type that is not a @form",
+    out.push(new Site("scan_forms / a @field on a type that is not a @form",
         "a @field nothing scans",
         faults_for(forms, "LooseField"),
         "{at}.LooseField.a is a @field but {at}.LooseField is not a @form, so nothing would ever bind it",
         good))
-    out.push(new Site("scan / a rule on a type that is not a @form",
+    out.push(new Site("scan_forms / a rule on a type that is not a @form",
         "a rule nothing scans",
         faults_for(forms, "LooseRule"),
         "{at}.LooseRule.a carries @required but not @field, so the rule would never run",
