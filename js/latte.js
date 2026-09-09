@@ -1596,7 +1596,14 @@
         if (this.attached) {
             this.sendFenced({ t: 'resume', c: this.id, a: wireInt(this.lastBatch) });
         } else {
-            this.sendFenced({ t: 'attach', c: this.id, u: this.here() });
+            var message = { t: 'attach', c: this.id, u: this.here() };
+            var island = readStateIsland();
+            // Sent only on the FIRST attach. A resume is a socket coming back
+            // to a circuit the server still holds, and that circuit already has
+            // whatever the island carried; sending it again would restore the
+            // page as it was minted rather than as the user has since left it.
+            if (island) { message.s = island; }
+            this.sendFenced(message);
         }
     };
 
@@ -1604,6 +1611,35 @@
         if (typeof location === 'undefined') { return '/'; }
         return location.pathname + location.search;
     };
+
+    // The `@persist` island the server sealed into this document, or ''.
+    //
+    // It is an HTML **comment** and not a `<script type="application/json">`,
+    // because latte ships `script-src 'self'` with no `unsafe-inline` and a
+    // data block in a script element is one policy change away from being a
+    // real inline script. So this walks the body's child nodes for a comment
+    // carrying the marker, rather than querying for an element.
+    //
+    // Only the top level of `<body>` is searched, and only until the root
+    // element: the server writes the island there, first, and a comment
+    // anywhere else is somebody else's.
+    function readStateIsland() {
+        if (typeof document === 'undefined' || !document.body) { return ''; }
+        var marker = 'latte-state:';
+        var node = document.body.firstChild;
+        while (node) {
+            // 8 is Node.COMMENT_NODE. The constant is spelled out because a
+            // document fragment in a test harness may not carry Node.
+            if (node.nodeType === 8) {
+                var text = node.nodeValue || '';
+                if (text.slice(0, marker.length) === marker) {
+                    return text.slice(marker.length);
+                }
+            }
+            node = node.nextSibling;
+        }
+        return '';
+    }
 
     Circuit.prototype.onBatch = function (message) {
         var number = wireInt(message.b);

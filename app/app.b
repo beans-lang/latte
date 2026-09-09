@@ -37,8 +37,10 @@ import {Activator, Anonymous, Antiforgery, CircuitOptions, CircuitSet,
         Component, FormComponent, FormMap, FormState, PageHost, PageInstance,
         PageMap, PageRequest, PageResponse, Principal, ServiceSource,
         ShellOptions, Signer, SeamSigner, NO_POLLER_MESSAGE, is_safe_method,
-        open_page, render_shell, scan_forms, scan_injections,
-        scan_pages_for} from latte
+        Island, Islands, PersistOptions, PersistState, ViewModel,
+        describe_island, open_page,
+        pack_state, render_shell, restore_models, scan_forms, scan_injections,
+        scan_pages_for, scan_persist} from latte
 import {run} from latte.boundary
 import {CircuitSeam, ClientOptions, EndpointOptions, HeaderOptions, WebRequest,
         WebReply, SOCKET_PATH, fresh_id, has_fiber_poller, hmac_signer,
@@ -104,6 +106,16 @@ pub class LatteOptions {
     /// wall clock; any other value is used as-is, which is what a golden-file
     /// test wants so its token is a pure function of inputs it chose.
     pub now: int = 0
+
+    /// What a page may carry across a prerender into the attach that follows.
+    ///
+    /// **Off by default.** An island is bytes in every document, and an
+    /// application whose pages have no `@persist` field would carry the cost
+    /// of a feature it does not use. Turn it on and the POST answer for a page
+    /// whose view-model persists something arrives with its state sealed into
+    /// the markup.
+    pub persist: bool = false
+    pub persist_options: PersistOptions = new PersistOptions()
 
     pub fn init() {}
 
@@ -251,6 +263,27 @@ fn close_scope(scope: Option<barista.ServiceProvider>) {
     }
 }
 
+/// A copy of a shell's options.
+///
+/// Two requests are served by two fibers on one worker; writing a per-request
+/// field into the shared `ShellOptions` would put one request's island in
+/// another's document. There is no derived `clone` here because `ShellOptions`
+/// is a class an application also configures by hand, and a `Clone` on it would
+/// be a promise about every field it ever grows.
+fn copy_shell(from: ShellOptions) -> ShellOptions {
+    var out: ShellOptions = new ShellOptions()
+    out.lang = from.lang
+    out.title = from.title
+    out.root_id = from.root_id
+    out.script = from.script
+    out.socket = from.socket
+    out.circuit = from.circuit
+    out.circuit_id = from.circuit_id
+    out.stylesheets = from.stylesheets.clone()
+    out.state = from.state
+    return move out
+}
+
 fn path_only(url: string) -> string {
     match url.find("?") {
         some(at) => { return url.slice(0, at) }
@@ -273,6 +306,7 @@ pub class LatteApp {
     pub anti: Antiforgery
     pub set: CircuitSet
     pub factory: PageFactory
+    pub islands: Islands
     pub shell: ShellOptions
     /// The shell for a response a circuit could not produce — a POST answer.
     /// Same document, `circuit = false`, so the client script is still served
@@ -289,12 +323,15 @@ pub class LatteApp {
 
     pub pages_served: int = 0
     pub stops: int = 0
+    /// Islands that could not be sealed, in the words a log wants. A page whose
+    /// state grew past `max_bytes` is here and nowhere else.
+    pub persist_faults: List<string> = []
     pub stopper: Option<espresso.ServerControl> = none
 
     fn init(pages: PageMap, forms: FormMap, host: PageHost, anti: Antiforgery,
-            set: CircuitSet, factory: PageFactory, shell: ShellOptions,
-            static_shell: ShellOptions, options: LatteOptions,
-            services: barista.ServiceCollection,
+            set: CircuitSet, factory: PageFactory, islands: Islands,
+            shell: ShellOptions, static_shell: ShellOptions,
+            options: LatteOptions, services: barista.ServiceCollection,
             provider: barista.ServiceProvider) {
         self.pages = pages
         self.forms = forms
@@ -302,6 +339,7 @@ pub class LatteApp {
         self.anti = anti
         self.set = set
         self.factory = factory
+        self.islands = islands
         self.shell = shell
         self.static_shell = static_shell
         self.options = options
@@ -425,6 +463,34 @@ pub class LatteApp {
         // all of that with the pristine form.
         var used: ShellOptions = self.shell
         if !is_safe_method(asked.method) { used = self.static_shell }
+        // The island rides on the answer to an UNSAFE method, and only there.
+        // That is the whole hole this closes: a GET's circuit renders the same
+        // page the GET did, so it needs nothing carried; a POST's answer holds
+        // what the post produced, and a circuit attaching to it would replace
+        // that with the pristine form.
+        //
+        // A copy of the shell, not the shared one: two requests are served by
+        // two fibers on one worker and a field written into the shared options
+        // by one would reach the other's document.
+        if self.options.persist && !is_safe_method(asked.method) &&
+           answer.state.len() > 0 {
+            match self.islands.seal(answer.state, asked.session, asked.path,
+                                    self.now()) {
+                ok(sealed) => {
+                    if sealed != "" {
+                        var carried: ShellOptions = copy_shell(used)
+                        carried.state = sealed
+                        used = carried
+                    }
+                }
+                // A state too large to carry is the application's mistake and
+                // not this request's: the page is served without an island,
+                // which is exactly how it behaved before the feature existed.
+                // `scan_persist` cannot catch it — the size depends on what a
+                // user typed — so it is reported where a host can see it.
+                err(problem) => { self.persist_faults.push(problem) }
+            }
+        }
         match render_shell(used, answer.body) {
             ok(document) => { reply.body = document }
             err(problem) => {
@@ -585,6 +651,14 @@ pub fn build_with(options: LatteOptions,
     for problem: string in static_shell.faults() { faults.push(problem) }
     if faults.len() > 0 { return err(faults.join(" | ")) }
 
+    let islands: Islands = new Islands(signer, options.persist_options)
+
+    // Every `@persist` field in the executable, checked before a socket exists,
+    // for the reason `scan_injections` is: a field that cannot cross the seam
+    // is a page that silently loses state on one navigation.
+    let persist_problems: List<string> = scan_persist()
+    if persist_problems.len() > 0 { return err(persist_problems.join(" | ")) }
+
     let factory: PageFactory = new PageFactory(pages, anti)
     factory.now = options.now
     // A circuit resolves from the ROOT provider, not from a scope, and that is
@@ -613,13 +687,36 @@ pub fn build_with(options: LatteOptions,
             return factory.page_for(session, url)
         })
     if options.contain_panics { set.guard = run }
+    // How a circuit restores a page from the island the client read out of the
+    // document. It runs BEFORE the mount, so the first render is the restored
+    // page rather than the pristine one corrected a frame later.
+    //
+    // Every check that matters is here and not in the core: the core has no
+    // crypto and no clock, and the island's MAC binds the session and the url
+    // this closure is handed. A refused island restores nothing and the page
+    // renders pristine — the failure mode of this feature is the absence of
+    // this feature.
+    if options.persist {
+        set.restore = fn(page: Component, session: string, url: string,
+                         island: string) -> string {
+            if island == "" { return "" }
+            var when: int = options.now
+            if when == 0 { when = time.wall_nanos() / 1000000000 }
+            let opened: Island = islands.open(island, session, url, when)
+            if !opened.ok() {
+                return "a state island was refused: {describe_island(opened.outcome)}"
+            }
+            return restore_models(page, opened.state).join(" | ")
+        }
+    }
+
     // A circuit's components resolve their `@inject` fields from the ROOT
     // provider — see the note beside `factory.activator` for why it is not a
     // scope, and what would change that.
     set.services = some(root_container)
 
-    return ok(new LatteApp(pages, forms, host, anti, set, factory, shell,
-                           static_shell, options, services, provider))
+    return ok(new LatteApp(pages, forms, host, anti, set, factory, islands,
+                           shell, static_shell, options, services, provider))
 }
 
 // ============================================================== main

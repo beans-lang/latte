@@ -61,6 +61,14 @@ pub const ROOT_ID: string = "latte-root"
 /// circuit from opening a socket, and that refusal has to keep working.
 pub const BOOT_ATTRIBUTE: string = "data-latte-boot";
 
+/// What marks the `@persist` island inside its HTML comment.
+///
+/// A marker and not just "the first comment", so a document that carries a
+/// comment of its own — a build stamp, a licence header — is not mistaken for
+/// one, and so a client that finds no marker knows there is no island rather
+/// than guessing.
+pub const STATE_MARKER: string = "latte-state:";
+
 // ---------------------------------------------------------------- options
 
 /// What a served document is made of.
@@ -100,6 +108,19 @@ pub class ShellOptions {
     /// shipped `style-src 'self'`.
     pub stylesheets: List<string> = []
 
+    /// The sealed `@persist` island this document carries, or `""`.
+    ///
+    /// **An HTML comment, not a `<script type="application/json">`.** latte's
+    /// own CSP is `script-src 'self'` with no `'unsafe-inline'`, and
+    /// `examples/cafe` asserts that the document contains no inline script at
+    /// all; a data block in a `<script>` element would pass a browser and fail
+    /// that assertion, and would be one policy change away from being a real
+    /// inline script. Blazor uses a comment for the same reason.
+    ///
+    /// It is signed, so it cannot be changed. It is **not** encrypted, so it
+    /// can be read — see `Islands.seal`. Do not `@persist` a secret.
+    pub state: string = ""
+
     pub fn init() {}
 
     /// Everything wrong with these options, in the words a startup log wants.
@@ -110,6 +131,15 @@ pub class ShellOptions {
     /// document would be found by a browser and not by a log.
     pub fn faults() -> List<string> {
         var out: List<string> = []
+        // `-->` inside an HTML comment ends it, and `--!>` does too in every
+        // parser that matters. An island is base-safe by construction — its MAC
+        // is hex and its body escapes `%`, `&` and `=` — so a hyphen run can
+        // only get here from a value that was never sealed. Refusing beats
+        // emitting a comment that closes early and spills its tail into the
+        // document as text.
+        if self.state.contains("--") {
+            out.push("shell: the state island contains \"--\", which would close the HTML comment it travels in early; it did not come from Islands.seal")
+        }
         if !is_language_tag(self.lang) {
             out.push("shell: lang \"{self.lang}\" is not a language tag; it reaches <html lang> and must be ASCII letters, digits and hyphens")
         }
@@ -186,6 +216,12 @@ pub fn render_shell(options: ShellOptions, body: string) -> Result<string, strin
     out.push(" data-latte-root=\"{escape_attribute(options.root_id)}\"></script>\n")
     out.push("</head>\n")
     out.push("<body>\n")
+    if options.state != "" {
+        // First in the body, so the client can read it before the root element
+        // has been walked, and so a truncated response is a document with no
+        // island rather than one with half of it.
+        out.push("<!--{STATE_MARKER}{options.state}-->\n")
+    }
     out.push("<div id=\"{escape_attribute(options.root_id)}\">")
     out.push(body)
     out.push("</div>\n")

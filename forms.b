@@ -1104,6 +1104,10 @@ pub class PageResponse {
     pub problems: List<string> = []
     /// The methods a 405 allows, sorted. Empty for every other status.
     pub allowed: List<string> = []
+    /// The `@persist` state this render produced, unsealed. A host that wants
+    /// a page's state to survive the circuit attaching seals it into the
+    /// document; a host that does not, ignores it and costs nothing.
+    pub state: PersistState = new PersistState()
     pub fn init() {}
 
     pub fn ok() -> bool { return self.status == 200 }
@@ -1335,6 +1339,10 @@ pub class PageHost {
             return move reply
         }
         reply.body = renderer.html()
+        // What this render would want a circuit to know. It is packed here,
+        // where the mounted page still exists; the host decides whether to seal
+        // it into the document.
+        reply.state = renderer.persist_state()
         return move reply
     }
 }

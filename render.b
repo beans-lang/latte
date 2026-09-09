@@ -168,6 +168,85 @@ pub class Renderer extends DirtySink {
     /// reaches it either way.
     pub services: Option<ServiceSource> = none
 
+    /// This page's `@persist` state, ready to be sealed into the document.
+    ///
+    /// **The ROOT component's view-models, and only those.** A child's model
+    /// could be packed too, and its key would have to be the child's mounted
+    /// slot id — which is assigned by mount order and is stable only while the
+    /// page renders the same shape. An island keyed on that would restore onto
+    /// the wrong component the first time a `$if` went the other way, silently.
+    /// The page's own models are keyed by field name, which is a name the
+    /// author wrote.
+    ///
+    /// **What would remove the limit:** a stable per-component key an author
+    /// controls — the `key=` a `$for` row already carries is the shape of it.
+    pub fn persist_state() -> PersistState {
+        var state: PersistState = new PersistState()
+        match self.page {
+            none => { return move state }
+            some(component) => {
+                let boxed: reflect.Value = reflect.value(component)
+                let plan: MountPlan = self.root.registry.mount_plan(boxed.type())
+                for field: reflect.Field in plan.models {
+                    match field.get(boxed.copy()) {
+                        err(problem) => {}
+                        ok(value) => {
+                            match value as? ViewModel {
+                                none => {}
+                                some(model) => {
+                                    let inner: PersistState = pack_state(model)
+                                    for key: string in inner.values.keys() {
+                                        state.put("{field.name()}.{key}",
+                                                  inner.get(key))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return move state
+            }
+        }
+    }
+
+    /// Write a state back onto the root component's view-models. Answers what
+    /// could not be written; every value in it came from a browser.
+    pub fn restore_persist(state: PersistState) -> List<string> {
+        var problems: List<string> = []
+        match self.page {
+            none => { return move problems }
+            some(component) => {
+                let boxed: reflect.Value = reflect.value(component)
+                let plan: MountPlan = self.root.registry.mount_plan(boxed.type())
+                for field: reflect.Field in plan.models {
+                    match field.get(boxed.copy()) {
+                        err(problem) => {}
+                        ok(value) => {
+                            match value as? ViewModel {
+                                none => {}
+                                some(model) => {
+                                    var mine: PersistState = new PersistState()
+                                    let prefix: string = "{field.name()}."
+                                    for key: string in state.values.keys() {
+                                        if key.starts_with(prefix) {
+                                            mine.put(
+                                                key.slice(prefix.len(), key.len()),
+                                                state.get(key))
+                                        }
+                                    }
+                                    for problem: string in restore_state(model, mine) {
+                                        problems.push("{field.name()}.{problem}")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return move problems
+            }
+        }
+    }
+
     pub fn mount(component: Component) {
         self.page = some(component)
         self.root.id = 0

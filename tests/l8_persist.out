@@ -1,0 +1,71 @@
+== 1. a model packs into flat text ==
+ok   four fields packed: 4
+ok   and the un-annotated one did not: false
+ok   the flat form is sorted and stable: cups=2&decaf=true&name=Ada&tip=1.5
+
+== 2. sealed, and opened again ==
+ok   it is expiry.mac.body: 1300.
+ok   THE CONTROL: an untouched island is valid: the island is valid
+
+== 3. restored onto a fresh model ==
+ok   nothing was refused: 
+ok   string: Ada
+ok   int: 2
+ok   bool: true
+ok   float: 1.5
+ok   and the un-annotated field was NOT written: kept
+
+== 4. six ways of not being believed ==
+ok   a changed body: the state island does not match this session and page
+ok   a changed mac: the state island does not match this session and page
+ok   another session: the state island does not match this session and page
+ok   another page: the state island does not match this session and page
+ok   past its expiry: the state island has expired
+ok   not expiry.mac.body at all: the state island is malformed
+ok   no island at all: the document carried no state island
+
+== 5. bounded ==
+ok   a page that carries too much is refused at seal: this page's @persist state is 34 bytes and the limit is 16 — persist less, or raise PersistOptions.max_bytes deliberately
+ok   nothing to carry is no island: []
+
+== 6. a value that does not parse ==
+ok   the bad one is reported: "many" is not an int for "cups"
+ok   and it keeps its default: 0
+ok   while the good one beside it is written: Ada
+
+== 7. the three bytes that would change what it parses as ==
+ok   they are escaped on the wire: name=a%26b%3Dc%25d
+ok   and come back as they were: a&b=c%d
+
+== 8. the startup scan ==
+ok   exactly one model is refused: 1
+ok   and it is named, with the reason: latte$entry.BadModel.rows is @persist but is a List<string>; only string, int, bool and float cross the seam
+ok   THE CONTROL: the scalar-only models are not named: false
+
+-- the sites in persist.b, and how many shapes reach each
+   1x persist_plan / a @persist field that is not a scalar
+
+== 9. the whole path: page -> island -> document -> page ==
+ok   the page rendered what the post produced: <p>Ada/2</p>
+ok   its model packed, under the field name: order.cups=2&order.decaf=false&order.name=Ada&order.tip=0
+ok   the document carries a marked HTML comment: true
+ok   and it is NOT an inline script: false
+ok   what a client reads back is what was sealed: true
+ok   it opens: the island is valid
+ok   a fresh page starts pristine: <p>/0</p>
+ok   restoring raised nothing: 
+ok   and the attached page is the one the post produced: <p>Ada/2</p>
+
+== 10. an island edited in the document ==
+ok   it is refused: the state island does not match this session and page
+ok   and the page renders pristine, as it did before islands existed: <p>/0</p>
+
+== 11. over a real circuit ==
+ok   the circuit opened: true
+ok   attach answered one batch: 1
+ok   and the page it rendered is the one the post produced: true
+ok   a tampered island still answers a batch: 1
+ok   but the page is pristine: false
+ok   THE CONTROL: no island at all still attaches: 1
+ok   and renders pristine: false
+ok   the set recorded no faults: 0
