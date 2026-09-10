@@ -217,9 +217,8 @@ fn write_bool(out: fmt.StringBuilder, value: bool) {
 
 pub class WireLimits {
     /// The largest client message this end will look at, in bytes. A message
-    /// over it is refused BEFORE it is parsed, which is what makes the
-    /// decompression bound meaningful: `std.websocket` already caps the
-    /// inflated size, and this caps what latte will read of it.
+    /// over it is refused BEFORE it is parsed. `std.websocket` already caps
+    /// the decompressed size; this caps what latte will read of it.
     pub max_message: int = 65536
     /// How deep an object or array may nest. A hostile client's cheapest
     /// attack on a recursive-descent reader is depth.
@@ -767,7 +766,7 @@ pub fn encode_js(call: int, name: string, args: List<string>) -> string {
 
 /// The fence: "I processed your message number `n`, and here is nothing more."
 ///
-/// Wire v1.0 had no frame that meant this (BLOCKERS.md B11). Every other
+/// Wire v1.0 had no frame that meant this. Every other
 /// server frame is a statement about the PAGE — `hello`, `batch`, `err`,
 /// `bye`, `js`, `nav` — and a client that sends a message which legally
 /// changes nothing (a click on a slot the page has already disposed, an `ack`,
@@ -927,8 +926,9 @@ pub fn decode_client(text: string, limits: WireLimits) -> ClientMessage {
             // The sequence is read for EVERY kind, before the kind is looked
             // at, because the fence rule is about messages and not about any
             // one of them. A present `n` that is not an integer is refused
-            // rather than defaulted: defaulting it to "no fence" is exactly
-            // the silence B11 is about, and it would be invisible.
+            // rather than defaulted: defaulting it to "no fence" would
+            // silently recreate the dead-socket silence the fence exists to
+            // prevent.
             var sequence: int = 0
             match root.field("n") {
                 some(value) => {
@@ -1002,12 +1002,10 @@ fn decode_body(root: Json) -> ClientMessage {
         out.handler = root.int_field("h", -1)
         out.start = root.int_field("s", -1)
         // `c` for the count, and NOT `n`. `n` is the message sequence on every
-        // client message, read above before the kind is even looked at, and a
-        // field that means one thing for six kinds and another for the seventh
-        // is the shape RULES.md § "The refusal that never runs" is about: with
-        // the count still on `n`, a range whose count is negative would be
-        // refused by the SEQUENCE check with the sequence's sentence, and
-        // "a range must be two non-negative numbers" would never run again.
+        // client message, read above before the kind is even looked at. If the
+        // count reused `n`, a range whose count is negative would be refused
+        // by the sequence check with the sequence's message first, and
+        // "a range must be two non-negative numbers" would never run.
         out.count = root.int_field("c", -1)
         if out.handler < 0 { return refuse("a range carries no region id") }
         if out.start < 0 || out.count < 0 {
@@ -1062,9 +1060,9 @@ fn decode_event(root: Json) -> ClientMessage {
                 // the READER is where that is enforced: it refuses any object
                 // with more than max_items members, and this function is
                 // handed the same limits `parse_json` just used. A second cap
-                // here would be a refusal no input can reach — RULES.md, "the
-                // refusal that never runs" — so there is one cap and one
-                // message. tests/wire.b § 2.19-2.21 pin it at both sides.
+                // here would be a refusal no input can ever reach, so there is
+                // one cap and one message. tests/wire.b § 2.19-2.21 pin it at
+                // both sides.
                 var index: int = 0
                 for index < fields.keys.len() {
                     let name: string = fields.keys[index]

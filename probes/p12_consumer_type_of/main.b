@@ -1,19 +1,20 @@
-// p12 — B8 measured from inside a CONSUMER's module, and located.
+// p12 — the same bug as p11, measured from inside a CONSUMER's module, and
+// located.
 //
-// BLOCKERS.md **B8** says `type_of(T)` for a type reached through a **named
-// import** answers `<importing module>.<simple name>` — a name that does not
-// exist — so `is_assignable_from` is false for a genuine base and subclass.
-// It was measured once, in `p11_type_of_name`, from a `package main` entry.
-// Nobody had asked it from a real consumer: a different MODULE, importing
-// latte's root package by name, which is what every third-party component
-// library is.
+// `type_of(T)` for a type reached through a **named import** answers
+// `<importing module>.<simple name>` — a name that does not exist — so
+// `is_assignable_from` is false for a genuine base and subclass. It was
+// measured once, in `p11_type_of_name`, from a `package main` entry. Nobody
+// had asked it from a real consumer: a different MODULE, importing latte's
+// root package by name, which is what every third-party component library is.
 //
 // The answer is not the one anybody expected. **The importing package is not
 // what decides it.** The same expression, in the same function, answers
 // correctly or incorrectly depending on whether it is written INSIDE a string
-// interpolation — which makes B8 the same bug as **B9**, not merely the same
-// shape. This probe is the matrix that shows it: four kinds of name, each
-// asked both ways, in an entry file and in a named package.
+// interpolation — which makes this the same bug as `new T()` being refused
+// inside an interpolation, not merely the same shape. This probe is the
+// matrix that shows it: four kinds of name, each asked both ways, in an entry
+// file and in a named package.
 package main
 
 import std.io
@@ -64,7 +65,8 @@ fn main() {
     row("LocalBase (declared here)",
         "{type_of(LocalBase).qualified_name()}", local_out.qualified_name())
 
-    // control: a dot-path package reference, which B9 also found unaffected.
+    // control: a dot-path package reference — never affected by the
+    // interpolation-scope bug this file measures.
     let dot_out: reflect.Type = type_of(fmt.StringBuilder)
     row("fmt.StringBuilder (dot-path)",
         "{type_of(fmt.StringBuilder).qualified_name()}", dot_out.qualified_name())

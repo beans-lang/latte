@@ -1,8 +1,8 @@
 // Probe 2 — a Channel of send closures, invoked on another fiber.
 //
-// This is latte's cross-thread push handle (PLAN.md: "Any other thread reaches
-// the circuit by posting a send closure to the inbox"). The question is
-// whether a closure can be built on one OS thread, crossed to a fiber that
+// This is latte's cross-thread push handle: any other thread reaches the
+// circuit by posting a send closure to the inbox. The question is whether a
+// closure can be built on one OS thread, crossed to a fiber that
 // owns the component state, and invoked there against state the sender never
 // had a reference to.
 //
@@ -55,9 +55,9 @@ fn circuit(inbox: Channel<send fn(Ctx)>, ctx: Ctx, count: int) -> int {
 //
 // `try_send` is not offered for a move-only element type (see
 // probes/p2_channel_bad/), so a full inbox parks the posting thread rather
-// than refusing. PLAN.md's "inbox depth per circuit ... crossing one ends the
-// circuit with a bye, never a panic" therefore needs the depth kept beside the
-// channel. An AtomicInt claimed before the send is enough, and it is what this
+// than refusing. Latte needs an inbox depth per circuit — crossing it ends
+// the circuit with a bye, never a panic — so the depth has to be kept beside
+// the channel. An AtomicInt claimed before the send is enough, and it is what this
 // phase proves: the receiver is not started at all, the channel fills, and the
 // posts past the cap are refused without anyone parking.
 fn bounded(inbox: Channel<send fn(Ctx)>, depth: AtomicInt, cap: int,

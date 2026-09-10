@@ -7,9 +7,9 @@
 // worth anything beside an input that must be ACCEPTED, and here the controls
 // and the refusals go through one code path in one pass.
 //
-// RULES.md, "the refusal that never runs": every refusal below has a positive
-// control declared next to it, and the control is named in the output so a
-// reader can see the pair. The one that matters most is BLOCKERS.md B1a — a
+// Every refusal below has a positive control declared next to it, and the
+// control is named in the output so a reader can see the pair. The one that
+// matters most is a
 // `@param` whose declaring type is generic — because the obvious way to detect
 // it reads FALSE for exactly the fields that fail. Section 2 asserts that
 // false directly, so a future "simplification" back to the obvious spelling
@@ -122,13 +122,13 @@ pub class ShowOrder extends Component {
     pub override fn render(b: Builder) { b.text(0, "order {self.id}") }
 }
 
-// ================================================================ B1a and B7
+// ========================================== a generic ancestor's @param field
 //
-// The hazard, with its controls in the same hierarchy:
+// The shape, with its controls in the same hierarchy:
 //
-//   Node        non-generic base, declares `label`   -> must be ACCEPTED
-//   Grid<T>     generic, declares `title`            -> must be REFUSED
-//   OrderGrid   extends Grid<int>, carries @page     -> must be REFUSED (B7)
+//   Node        non-generic base, declares `label`   -> ordinary @param
+//   Grid<T>     generic, declares `title`            -> @param on a generic-declared field
+//   OrderGrid   extends Grid<int>, carries @page     -> both fields bind, page is usable
 
 pub class Node extends Component {
     @param pub label: string = ""
@@ -147,9 +147,8 @@ pub class OrderGrid extends Grid<int> {
     pub override fn render(b: Builder) { b.text(0, "grid {self.label}/{self.title}") }
 }
 
-/// The positive control for B7: the same shape with a NON-generic base. If
-/// this were refused too, the refusal would be "any base class" and the
-/// message would be a lie.
+/// The control: the same shape with a NON-generic base. Both OrderGrid and
+/// PlainGrid are usable — a generic ancestor is not special-cased.
 pub class PlainBase extends Component {
     @param pub label: string = ""
     pub fn init() {}
@@ -427,7 +426,7 @@ fn main() {
     }
 
     io.println("")
-    io.println("== 2. B1a is CLOSED — the divergence, and the trap that hid it ==")
+    io.println("== 2. a field declared by a generic ancestor ==")
     // This section used to assert a refusal. It asserts the repair now, and it
     // keeps the trap as a row because the trap is the interesting part: the
     // obvious guard, `field.declaring_type().type_arguments().len() > 0`, read
@@ -465,7 +464,7 @@ fn main() {
     }
 
     io.println("")
-    io.println("== 2b. B7 is CLOSED — a page whose chain holds a closed generic ==")
+    io.println("== 2b. a page whose chain holds a closed generic ==")
     // 0.1.40 constructed OrderGrid under `beansc run` and answered
     // `unsupported` natively, so latte refused the whole chain at startup. Both
     // backends construct it now, and this suite runs on both, so the row below
@@ -559,9 +558,9 @@ fn main() {
     report.check_false("BadLayoutAmbiguous", is_usable(map, "BadLayoutAmbiguous"))
     report.check_false("BadLayoutLoop", is_usable(map, "BadLayoutLoop"))
     report.check_false("BadNoMethods", is_usable(map, "BadNoMethods"))
-    // OrderGrid is NOT in this list any more. It was refused for its generic
-    // ancestor while B7 was open; 0.1.41 constructs it on both backends, and
-    // § 2b asserts it is usable rather than this section asserting it is not.
+    // OrderGrid is NOT in this list any more. It used to be refused for its
+    // generic ancestor; 0.1.41 constructs it on both backends, and § 2b
+    // asserts it is usable rather than this section asserting it is not.
     report.check_false("the map as a whole is ok", map.ok())
 
     io.println("")
@@ -763,11 +762,11 @@ fn main() {
     report.check_false("ParamWatch has been fed", new ParamWatch().empty() == false)
 
     io.println("")
-    io.println("== 10. B10 is CLOSED — a type name inside a string interpolation ==")
+    io.println("== 10. a type name inside a string interpolation ==")
     //
     // This section used to assert a COMPILER BUG, deliberately, and said so:
-    // "the day it is fixed, THIS GOLDEN GOES RED". BLOCKERS.md **B10** was
-    // that a type name written inside `"{ }"` resolved without the file's
+    // "the day it is fixed, THIS GOLDEN GOES RED". The bug was that a type
+    // name written inside `"{ }"` resolved without the file's
     // named-import bindings and fell back to composing the asking package's
     // own name with the simple name, so a consumer's `type_of(Component)`
     // read `<their package>.Component` — a name that exists nowhere.
@@ -800,13 +799,13 @@ fn main() {
     // mean something. `latte$entry.Component` is the name the bug used to
     // compose. It must name NOTHING — otherwise "find_type round-trips" would
     // pass on a compiler that resolved every spelling to something.
-    report.check_false("the name B10 used to compose still names nothing",
+    report.check_false("the name the bug used to compose still names nothing",
                        reflect.find_type("latte$entry.Component").is_some())
 
     // The controls that were here before the fix, kept: a type declared in
     // THIS file needs no import binding and could never be lost by one, and a
-    // dot-path reference was unaffected too — which is what said B10 was about
-    // named imports and not about interpolation in general. They are the
+    // dot-path reference was unaffected too — which is what showed the bug was
+    // about named imports and not about interpolation in general. They are the
     // reason the two assertions above can tell "imports are honoured" from
     // "interpolation mangles nothing at all".
     let local_outside: reflect.Type = type_of(Home)
@@ -816,8 +815,8 @@ fn main() {
     report.check_text("control: a dot-path type reads the same inside",
                       "{type_of(reflect.Type).qualified_name()}", dotted.qualified_name())
 
-    // What B10 cost, now recovered: the two spellings agree about a real
-    // subclass, inside an interpolation and out.
+    // What the bug used to cost, now recovered: the two spellings agree about
+    // a real subclass, inside an interpolation and out.
     report.check_true("is_assignable_from is right outside an interpolation",
                       outside.is_assignable_from(type_of(Home)))
     report.check_true("...and right inside one too, for the same real subclass",

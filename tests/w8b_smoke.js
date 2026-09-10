@@ -1,4 +1,4 @@
-// tests/w8b_smoke.js — PLAN.md gate 11's Playwright smoke.
+// tests/w8b_smoke.js — a Playwright smoke test over a real browser.
 //
 // Driven by `w8b_smoke.sh`, which starts `tests/_w8b_smoke_server.b` on a port
 // the kernel chose and passes it in `W8B_SMOKE_URL`.
@@ -208,7 +208,7 @@ async function main() {
     // browser, which is this leg and nothing else in the repo.
     //
     // What it cost, exactly, while it stood: `armFence` and `retry` are the
-    // two callers. The B11 fence never armed — `outstanding` grew and a
+    // two callers. The seen fence never armed — `outstanding` grew and a
     // stalled server was never noticed — and `retry` never ran, so a dropped
     // socket was never reconnected. Both threw out of an event handler, so
     // 8.2 counted seven uncaught pageerrors in one run. It is fixed on main
@@ -228,8 +228,8 @@ async function main() {
 
     // ---- 9. a dropped socket comes back ---------------------------------
     //
-    // PLAN.md gate 7 ends "...disconnect and replay", and `circuit_live.b` § 8
-    // proves it for a Beans client. A browser is the case that ships. The drop
+    // `circuit_live.b` § 8 proves reconnect-and-replay for a Beans client.
+    // A browser is the case that ships. The drop
     // is done the way a real one happens — the socket goes, nothing else — and
     // then the page must reconnect on its own and still be live.
     const before = sockets.length;

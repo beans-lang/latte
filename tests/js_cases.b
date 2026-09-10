@@ -574,7 +574,7 @@ fn malformed_cases(cases: List<Case>) {
         b.updates[0].edits.push(Edit.step_in(0))
     }))
     // Two positive controls, so "refused" can be told from "refused earlier,
-    // for a different reason" (RULES.md, "the refusal that never runs").
+    // for a different reason".
     cases.push(probe("control-good-edits", fn(b: Batch) {
         b.updates[0].edits.push(Edit.step_in(0))
         b.updates[0].edits.push(Edit.set_attr(5, "class", "on"))

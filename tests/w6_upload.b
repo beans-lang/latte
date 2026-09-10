@@ -2,9 +2,9 @@
 // refused, and every part released when the handler does not finish.
 //
 // The third clause of the gate sentence says "a temp file released after a
-// panic". There is no temp file, and there cannot be one: `std.fs` in 0.1.40
-// has no way to delete a file (BLOCKERS.md B13), and a store that creates
-// files it can never remove turns every refused upload into permanent disk.
+// panic". There is no temp file: this store is in-memory, not file-backed,
+// so there is nothing on disk for a refused or abandoned upload to leave
+// behind.
 // What is proved here is everything else that sentence needs — that the
 // release runs on the unwind, once per part, for every part opened — over a
 // handle whose release is a drop rather than an unlink. The line that would

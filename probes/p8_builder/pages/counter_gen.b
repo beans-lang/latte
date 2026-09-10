@@ -1,9 +1,9 @@
 // Generated from pages/counter.bx by latte-bx. Do not edit.
 //
-// PLAN.md's worked example, verbatim in shape, plus the calls its snippet does
-// not reach — `flag`, `attrs`, `constant`, `raw`, `fragment`, `reference`,
-// `preserve` and the rest of the event table — so every method on the Builder
-// is exercised by generated code rather than only by a test.
+// The worked example, plus the calls a plain rendering does not reach —
+// `flag`, `attrs`, `constant`, `raw`, `fragment`, `reference`, `preserve` and
+// the rest of the event table — so every method on the Builder is exercised
+// by generated code rather than only by a test.
 package pages
 
 import {Builder, FocusEvent, InputEvent, KeyboardEvent, MouseEvent, SubmitEvent} from p8_builder.core

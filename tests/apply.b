@@ -1,10 +1,11 @@
-// PLAN.md gate 3, the Beans half: "a reference applier in Beans over thousands
-// of random trees and mutations … required to land on the serializer's HTML of
-// the new tree."
+// A reference applier in Beans, over thousands of random trees and mutations,
+// is required to land on the serializer's HTML of the new tree — the Beans
+// half of a cross-check with the browser applier.
 //
-// The real `latte.js` half — the same edit stream against a real DOM — is W5's,
-// and neither half stands in for the other. A text test proves the encoder
-// consistent with itself; only a browser proves it means the same thing there.
+// The real `latte.js` half — the same edit stream against a real DOM — is in
+// tests/js_apply.js, and neither half stands in for the other. A text test
+// proves the encoder consistent with itself; only a browser proves it means
+// the same thing there.
 //
 // Two things about this suite are the whole point:
 //

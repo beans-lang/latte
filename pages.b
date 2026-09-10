@@ -11,7 +11,7 @@
 //
 // Everything a startup refusal protects is a thing that would otherwise fail
 // at request time, in a message about the framework rather than the program.
-// The one that used to matter most was BLOCKERS.md **B1a**: a reflective write
+// The most important one: a reflective write
 // to a field whose *declaring type* is generic was `ok` under `beansc run` and
 // `unsupported` as a native binary, so a page bound that way worked all through
 // the edit loop and broke when it shipped. beans 0.1.41 closed it (#158, #159)
@@ -550,10 +550,12 @@ pub class ParamBinding {
     /// Write one value onto an instance. `""` is success; anything else is the
     /// message a 400 carries.
     ///
-    /// This is the ONE place latte writes a field reflectively, which is why
-    /// the scan refuses B1a's shape rather than discovering it here: at this
-    /// point a refusal is a request that failed, and under `beansc run` it
-    /// would not even fail.
+    /// This is the ONE place latte writes a field reflectively. A field
+    /// declared by a generic ancestor used to write fine under `beansc run`
+    /// and fail natively — silently, since a failure here is just a 400 —
+    /// which is why the scan used to refuse that shape outright rather than
+    /// let it reach this point. Both backends agree now, so `apply` just
+    /// writes the field like any other.
     pub fn apply(receiver: reflect.Value, text: string) -> string {
         match self.field {
             none => { return "parameter \"{self.wire_name}\" has no field" }
@@ -1129,7 +1131,7 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation,
         return plan
     }
 
-    // BLOCKERS.md B1, and what is left of it in 0.1.41. A page is activated
+    // A page is activated
     // reflectively — that is what "no registry" costs — and a receiver-less
     // operation on a generic declaration names no instantiation, so a closed
     // generic has no reflective initializer. That is now a stated compiler
@@ -1138,7 +1140,7 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation,
     //
     // What this used to refuse and no longer does is the SUBCLASS: 0.1.40
     // constructed `OrderGrid extends Grid<int>` under `beansc run` and answered
-    // `unsupported` natively (B7), which is why the whole chain was refused
+    // `unsupported` natively, which is why the whole chain was refused
     // here. 0.1.41 constructs it on both backends, so a page with a generic
     // ANCESTOR is ordinary now, and only a page that IS one is refused.
     // The check is "can this be activated", not "is this generic". A refusal
@@ -1152,7 +1154,7 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation,
     match described.initializer() {
         none => {
             plan.faults.push(
-                "{plan.type_name} is a @page with no reflective zero-argument initializer, so latte cannot activate it. A closed generic is one way to get here — a receiver-less reflective operation names no instantiation, so it has none on either backend (BLOCKERS.md B1, beans #159); give it a non-generic subclass and put @page on that. A class with no zero-argument `init` is the other.")
+                "{plan.type_name} is a @page with no reflective zero-argument initializer, so latte cannot activate it. A closed generic is one way to get here — a receiver-less reflective operation names no instantiation, so it has none on either backend; give it a non-generic subclass and put @page on that. A class with no zero-argument `init` is the other.")
         }
         // A page whose `init` takes arguments has an initializer descriptor,
         // so the check above says nothing about it — and `PagePlan.activate`
@@ -1217,8 +1219,8 @@ fn plan_for(described: reflect.Type, use: reflect.Annotation,
     // nothing is a page that can never see half its own URL.
     //
     // `declared` holds every `@param` wire name the scan SAW, including the
-    // ones it refused, so a field refused for B1a does not also produce "no
-    // @param binds it" — one cause, one message. Without that, the specific
+    // ones it refused, so a refused field does not also produce "no @param
+    // binds it" — one cause, one message. Without that, the specific
     // refusal reads like a missing declaration and the reader fixes the wrong
     // thing.
     for name: string in plan.route.names() {
@@ -1289,7 +1291,7 @@ fn bind_params(plan: PagePlan, described: reflect.Type, declared: List<string>) 
 }
 
 // `generic_declaration` and `generic_ancestor` lived here until 0.1.41. They
-// were the base-chain reconstruction BLOCKERS.md B1a forced on latte: a
+// were the base-chain reconstruction one divergence forced on latte: a
 // reflective write to a field declared by a generic type was `ok` under
 // `beansc run` and `unsupported` natively, and the obvious guard for it --
 // `field.declaring_type().type_arguments().len() > 0` -- read FALSE for exactly
@@ -1315,12 +1317,12 @@ pub fn strip_type_arguments(name: string) -> string {
 /// they come from the runtime's own inheritance links and no name resolution
 /// happens on the way. `wanted` is the half a caller can get wrong.
 ///
-/// **BLOCKERS.md B10 is CLOSED** (beans #164, 0.1.41), and the hazard this
-/// function was written around is gone with it. It is recorded here because
-/// the shape of the API — a string argument rather than a `reflect.Type` — is
-/// what B10 left behind, and a reader who finds that odd deserves the reason.
+/// beans 0.1.41 (#164) closed the hazard this function was written around.
+/// It is recorded here because the shape of the API — a string argument
+/// rather than a `reflect.Type` — is what that bug left behind, and a reader
+/// who finds that odd deserves the reason.
 ///
-/// What B10 was: a type name written **inside a string interpolation** was
+/// The bug: a type name written **inside a string interpolation** was
 /// resolved without the file's named-import bindings, and fell back to
 /// composing the asking package's own name with the simple name. So
 ///
@@ -1338,7 +1340,8 @@ pub fn strip_type_arguments(name: string) -> string {
 /// where latte's own file cannot. On 0.1.41 both spellings answer the same
 /// name, and § 10 asserts that they do.
 ///
-/// **The function stays, for the reason that always outlived B10:** it is a
+/// **The function stays, for a reason that was never about the interpolation
+/// bug:** it is a
 /// chain walk and not an `is_assignable_from`, so `strip_type_arguments` lets
 /// `Grid<Order>` match a `wanted` of `Grid` — what a framework asking "is this
 /// one of mine?" needs of a generic component. beans #169 taught
@@ -1461,9 +1464,8 @@ fn latte_annotation(simple: string) -> string {
 /// `@repeatable` to `@layout` one day would make the third one live again, and
 /// the scan would be silently taking the first of two layouts without it. They
 /// are marked here so a reader auditing `pages.b` does not spend the afternoon
-/// trying to build an input that reaches one. RULES.md, "the refusal that never
-/// runs": say so beside the code with the evidence, rather than leaving a
-/// reader to assume it is covered.
+/// trying to build an input that reaches one — said here, with the evidence,
+/// rather than left for a reader to assume it is covered.
 pub fn annotations_named(uses: List<reflect.Annotation>, simple: string) -> List<reflect.Annotation> {
     let wanted: string = latte_annotation(simple)
     var out: List<reflect.Annotation> = []

@@ -94,16 +94,15 @@ pub class PartHandle {
         if self.released { return }
         self.released = true
         // A file-backed store would remove the file here (`fs.remove(self.path)`);
-        // `std.fs` has no delete yet (BLOCKERS.md B13), so this drops the
-        // in-memory payload instead. Everything else a file-backed release
-        // needs is already true: it runs on the unwind, it runs once, and it
-        // is keyed by the id this package generated, never by anything the
-        // client sent.
+        // this store is in-memory, so there is no file and it drops the
+        // payload instead. Everything else a file-backed release needs is
+        // already true: it runs on the unwind, it runs once, and it is keyed
+        // by the id this package generated, never by anything the client sent.
         self.payload = new Bytes(0)
         self.log.release(self.storage_id)
     }
 
-    /// `deinit` may not park (see RULES.md), so this only frees memory, never
+    /// `deinit` may not park, so this only frees memory, never
     /// a file or network wait. It still has to be the release point: a panic
     /// halfway through a handler unwinds the fiber and runs drops
     /// newest-first, which is exactly the moment an explicit `release()`

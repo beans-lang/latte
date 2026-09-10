@@ -1,5 +1,4 @@
-// tests/circuit_live.b — PLAN.md gate 7's second half: a REAL SERVER on a REAL
-// SOCKET.
+// tests/circuit_live.b — the circuit, over a REAL SERVER on a REAL SOCKET.
 //
 // Everything else in this repo is Beans talking to Beans, or a browser talking
 // to a fixture file. This is the one suite where bytes cross a TCP connection:
@@ -14,10 +13,10 @@
 //
 //   * **Port 0, never a fixed port.** A fixed port is a false green when
 //     something else is listening and a false red on a busy machine.
-//   * **Never assert a read boundary.** W3 found that the 101 head and the
-//     frame behind it arrive in ONE TCP segment natively and TWO under the
-//     interpreter. Nothing here counts bytes or reads a fixed number of them:
-//     every read is one WebSocket message through the framer.
+//   * **Never assert a read boundary.** The 101 head and the frame behind it
+//     arrive in ONE TCP segment natively and TWO under the interpreter.
+//     Nothing here counts bytes or reads a fixed number of them: every read
+//     is one WebSocket message through the framer.
 //   * **The client is an OS thread, not a fiber.** Windows has no fiber
 //     network poller, so a fiber peer deadlocks there and the leg times out
 //     with nothing printed.

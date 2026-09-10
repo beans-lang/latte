@@ -2,9 +2,9 @@
 # probes/delete_faults.sh — delete every refusal in latte's core, one at a
 # time, and watch the case that names it FAIL.
 #
-# RULES.md, "The refusal that never runs": a refusal test that still passes
-# when the refusal is gone is worthless, and a refusal that cannot be made to
-# fail is unreachable. Neither is visible from a green run. So this deletes
+# A refusal test that still passes when the refusal is gone is worthless, and
+# a refusal that cannot be made to fail is unreachable. Neither is visible
+# from a green run. So this deletes
 # each `self.faults.push(...)` site in turn, runs the suite that owns it, and
 # requires that a check naming THAT site turns red.
 #

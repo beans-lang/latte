@@ -1,9 +1,8 @@
 // Probe 7 — a chunked response through `encode_response_head_append`.
 //
-// PLAN.md's espresso row says `context.begin_stream()` "writes the head
-// through `encode_response_head_append` and returns a writer that frames each
-// chunk", and W3's streaming rendering and W6's streamed components both sit
-// on that. This probe asks the function what it actually does, then writes a
+// The design for espresso's `context.begin_stream()` was to write the head
+// through `encode_response_head_append` and return a writer that frames each
+// chunk. This probe asks the function what it actually does, then writes a
 // real chunked response on a real socket and reads it back with a real HTTP
 // response parser.
 //
@@ -52,8 +51,8 @@ fn phase_a() -> bool {
     io.println("   {head_of(204, "No Content", plain, 0, true)}")
 
     // The recorded answer is that it REFUSES a chunked head. A run where A2
-    // succeeded would mean std.http grew a chunked encoder and BLOCKERS.md B4
-    // is stale — which must fail here, not go unnoticed.
+    // succeeded would mean std.http grew a chunked encoder of its own — which
+    // must fail here, not go unnoticed.
     return head_of(200, "OK", chunked, 0, true).starts_with("err(invalid)") &&
         head_of(200, "OK", plain, 42, true).contains("Content-Length: 42") &&
         head_of(204, "No Content", plain, 0, true).starts_with("ok(body_forbidden=true)")

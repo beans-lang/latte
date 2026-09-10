@@ -1,4 +1,4 @@
-// tests/components.b — PLAN.md gate 5, the half `tests/pages.b` does not cover.
+// tests/components.b — the half of component behavior `tests/pages.b` does not cover.
 //
 // pages.b owns parameters and required parameters, because both are decided by
 // the startup scan. Everything else in gate 5's row happens at a **mount**:
@@ -10,8 +10,7 @@
 // cannot pass because of something another section left behind. Every claim
 // that is a refusal or a suppression has a **positive control** beside it — an
 // input that must do the thing — because "nothing happened" is what a broken
-// mechanism and a working one both look like from the outside. RULES.md, "the
-// refusal that never runs".
+// mechanism and a working one both look like from the outside.
 //
 // The numbers are exact on purpose. A framework that quietly re-renders the
 // world serializes the same HTML, so HTML alone cannot tell you it is working;

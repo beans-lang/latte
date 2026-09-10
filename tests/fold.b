@@ -1,22 +1,22 @@
-// PLAN.md gate 2, the mechanism half.
+// Folding: whether `b.fold` collapses a constant subtree into one frame.
 //
-// The corpus-wide half of gate 2 — "the folded string equals what the unfolded
-// walk would have produced, over every case in the html suite" — runs in
+// The corpus-wide check — that the folded string equals what the unfolded
+// walk would have produced, over every case in the html suite — runs in
 // `tests/html.b`, because a package under a module root cannot import that
 // root and a shared fixture package therefore has no spelling. This file holds
 // what that comparison cannot see: that `b.fold` is honoured at all, that a
 // folded subtree is ONE frame where the walk is many, that an unchanged
-// constant costs zero edits and stages nothing, that a changed one costs
-// exactly one `set_markup` — and the case D5 exists for.
+// constant costs zero edits and stages nothing, and that a changed one costs
+// exactly one `set_markup`.
 //
-// D5 is the one that bites. `probes/BUILDER.md` argues a `constant` can be
-// diffed by its sequence number alone, because a number never means two things
-// in one render. That is true IF the markup compiler is correct. A compiler bug
-// that reuses one number across two constant subtrees produces valid HTML that
-// is simply never updated — no fault, no crash, no wrong markup, just a page
-// that stops changing. So the differ compares the html too. One string compare
-// against a subtree walk is nothing, and the real content of the O(1) claim —
-// that the differ does not walk the subtree — is kept.
+// A `constant` could in principle be diffed by its sequence number alone,
+// since a number never means two things in one render — but only if the
+// markup compiler is correct. A compiler bug that reused one number across two
+// constant subtrees would produce valid HTML that is simply never updated: no
+// fault, no crash, no wrong markup, just a page that stops changing. So the
+// differ compares the html too. One string compare against a subtree walk is
+// nothing, and the real content of the O(1) claim — that the differ does not
+// walk the subtree — is kept.
 package main
 
 import std.io

@@ -2,8 +2,8 @@ module shelf
 kind library
 
 # A component library somebody else published. It depends on latte and on
-# nothing else — no C, no I/O, no markup compiler — which is PLAN.md's
-# "shipping a library" contract from the other side of the boundary.
+# nothing else — no C, no I/O, no markup compiler. That is what a published
+# component library is expected to look like from a consumer's side.
 #
 # `require path` resolves against THIS manifest's directory, so `../..` is the
 # latte checkout whether this tree is `community-libs/latte` or a worktree. A

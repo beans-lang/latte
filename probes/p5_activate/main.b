@@ -1,6 +1,6 @@
 // Probe 5 — what it costs to activate 1,000 components through espresso's DI.
 //
-// PLAN.md mounts every component out of the circuit's DI scope, and this
+// Latte mounts every component out of the circuit's DI scope, and this
 // workspace's standing figure for reflective dispatch is 32-80 us per call. If
 // mounting cost that, a 200-component page would spend 6-16 ms in reflection
 // before rendering a byte, and mount-time DI would be the wrong design.

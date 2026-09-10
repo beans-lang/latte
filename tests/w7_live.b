@@ -1,5 +1,5 @@
-// tests/w7_live.b — permessage-deflate ASSERTED, and B11's fence over a real
-// socket.
+// tests/w7_live.b — permessage-deflate ASSERTED, and the `seen` fence over a
+// real socket.
 //
 // Two things this suite exists for, and neither can be checked without bytes
 // crossing a TCP connection:
@@ -12,10 +12,11 @@
 //      that tell "agreed" from "agreed for another reason": a client that does
 //      not offer, and an endpoint that does not compress.
 //
-//   2. **BLOCKERS.md B11.** `tests/circuit.b` § 15 proves the fence at the
-//      state machine. This proves it where the bug actually lived: a client
-//      sitting in `receive()` after sending a message that changed nothing.
-//      § 2.1 is the exact message B11 names.
+//   2. **The `seen` fence, over a real socket.** `tests/circuit.b` § 15 proves
+//      the fence at the state machine. This proves it where it matters: a
+//      client sitting in `receive()` after sending a message that changed
+//      nothing, with no server frame ever telling it so. § 2.1 is that
+//      message.
 //
 // The three rules `tests/circuit_live.b` was written under hold here too, and
 // for the same reasons: **port 0**, never a fixed port; **never assert a read
@@ -158,9 +159,8 @@ fn client(port: int, control: espresso.ServerControl) -> string {
             // 32 KiB windows and context takeover in both directions is what
             // `negotiate_deflate` answers a browser's usual offer with. It is
             // recorded because it is the memory bill: a DEFLATE context at 15
-            // bits is about a third of a megabyte per direction, and latte
-            // cannot ask for less through `websocket.Connection.accept`
-            // (BLOCKERS.md B12).
+            // bits is about a third of a megabyte per direction, and
+            // `websocket.Connection.accept` has no way to ask for less.
             r.eq("1.2 the agreed parameters", peer.agreement(),
                  "server_takeover=true client_takeover=true server_bits=15 client_bits=15")
             // The extension is not just agreed, it is USED: this page batch
@@ -205,7 +205,7 @@ fn client(port: int, control: espresso.ServerControl) -> string {
 
     // ---- 2. the seen fence, over the socket --------------------------------
     io.println("")
-    io.println("-- 2. B11: a message that changed nothing is answered")
+    io.println("-- 2. a message that changed nothing is answered")
 
     match dial(port, "/_latte/ws", true) {
         none => { r.eq("2.0 the handshake completed", "no", "yes") }
@@ -216,10 +216,10 @@ fn client(port: int, control: espresso.ServerControl) -> string {
                   peer.send("\{\"t\":\"attach\",\"c\":\"{id}\",\"u\":\"/counter\"\}"))
             r.eq("2.2 batch 1 is the page", peer.next(), PAGE_BATCH)
 
-            // THE MESSAGE B11 NAMES. Slot 999 is bound to nothing, so nothing
-            // is marked and no batch is published. Before the fence this read
-            // blocked until the socket's read deadline and then answered
-            // `<err timeout>`.
+            // THE MESSAGE THE SEEN FENCE ANSWERS. Slot 999 is bound to nothing,
+            // so nothing is marked and no batch is published. Before the fence
+            // this read blocked until the socket's read deadline and then
+            // answered `<err timeout>`.
             r.yes("2.3 an event on a slot the page does not have goes out",
                   peer.send("\{\"t\":\"ev\",\"h\":999,\"k\":\"click\",\"p\":\{\"b\":0,\"x\":4,\"y\":9\},\"n\":7\}"))
             r.eq("2.4 and it is ANSWERED rather than met with silence",

@@ -11,7 +11,7 @@ ok   Todo's layout chain is two deep: 2
 ok   Todo's authorization requirements: 2
 ok   Todo is usable
 
-== 2. B1a is CLOSED — the divergence, and the trap that hid it ==
+== 2. a field declared by a generic ancestor ==
 ok   the trap is gone: title's declaring type reports its arguments: 1
 ok   ...and names the closed form: latte$entry.Grid<int>
 ok   the CONTROL: label is declared by a non-generic base: 0
@@ -19,7 +19,7 @@ ok   the scan no longer refuses title
 ok   ...and never refused label
 ok   BOTH @params bind now, the generic-declared one included: label,title
 
-== 2b. B7 is CLOSED — a page whose chain holds a closed generic ==
+== 2b. a page whose chain holds a closed generic ==
 ok   OrderGrid is usable — a generic ancestor is ordinary now
 ok   the scan does not refuse it for its chain
 ok   ...and reflection actually constructs one
@@ -156,14 +156,14 @@ ok   the hand-written version DID — that is the trap: 2
 ok   a parameter that changed re-renders Watched: 2
 ok   ParamWatch has been fed
 
-== 10. B10 is CLOSED — a type name inside a string interpolation ==
+== 10. a type name inside a string interpolation ==
    bound to a let, then interpolated: latte.Component
    written inside the interpolation:  latte.Component
 ok   outside an interpolation, type_of(Component) is right: latte.Component
 ok   and inside one it is the SAME name, from an entry package: latte.Component
 ok   the name from outside names a type
 ok   and so does the one from inside — find_type round-trips now
-ok   the name B10 used to compose still names nothing
+ok   the name the bug used to compose still names nothing
 ok   control: a type declared here reads the same inside: latte$entry.Home
 ok   control: a dot-path type reads the same inside: std.reflect.Type
 ok   is_assignable_from is right outside an interpolation

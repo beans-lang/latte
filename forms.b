@@ -13,12 +13,12 @@
 // at startup — for every rule that could not run and every field that could not
 // bind.
 //
-// It used to inherit `pages.b`'s BLOCKERS.md **B1a** refusal — a reflective
-// write to a field whose declaring type is generic was `ok` under `beansc run`
-// and `unsupported` as a native binary, so a form bound that way worked all
-// through the edit loop and broke when it shipped. beans 0.1.41 closed it
-// (#158, #159) and both refusals went with it; `test.sh` pins that compiler,
-// so the shape cannot come back under a supported one.
+// A reflective write to a field whose declaring type is generic used to be
+// `ok` under `beansc run` and `unsupported` as a native binary, so a form
+// bound that way worked all through the edit loop and broke when it shipped.
+// beans 0.1.41 closed it (#158, #159), so `pages.b` no longer needs a refusal
+// for it and neither does this file; `test.sh` pins that compiler, so the
+// shape cannot come back under a supported one.
 //
 // ## Nothing here computes an HMAC, and that is deliberate
 //
@@ -635,8 +635,8 @@ fn plan_for_form(described: reflect.Type) -> FormPlan {
 /// decision rather than an omission: `@field` is not `@repeatable`, and 0.1.40
 /// answers `error: annotation '@field' is not repeatable` at the author's own
 /// declaration (`probes/p16_repeat`). A refusal here would stand behind a
-/// compile error and could never fire — the exact shape RULES.md calls "the
-/// refusal that never runs". The same holds for `@required`, `@length` and
+/// compile error and could never fire — a refusal that never runs proves
+/// nothing about itself. The same holds for `@required`, `@length` and
 /// `@range`.
 fn bind_fields(plan: FormPlan, described: reflect.Type) {
     var seen: Map<string, string> = {}

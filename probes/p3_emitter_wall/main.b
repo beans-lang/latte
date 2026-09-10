@@ -1,21 +1,24 @@
-// The wall found beside probe 3. See BLOCKERS.md, B3.
+// The wall found while building probe 3: the checker used to accept a
+// generic call the native emitter refused. Fixed in beans 0.1.41 (#161) —
+// every shape below now builds natively too. Kept as the probe that caught
+// it and still exercises every shape.
 //
 // `beansc check` says ok. `beansc run` prints every line. `beansc build`
-// refuses three of the six calls with a message about the LLVM emitter.
+// used to refuse three of the six calls with a message about the LLVM
+// emitter; it now builds all six.
 //
 //   cd beans
 //   ./build/beansc check ../<worktree>/probes/p3_emitter_wall/main.b   # ok
-//   ./build/beansc run   ../<worktree>/probes/p3_emitter_wall/main.b   # six lines
-//   ./build/beansc build ../<worktree>/probes/p3_emitter_wall/main.b -o /tmp/x
-//   # error: LLVM emitter cannot infer this generic call's types   (x3)
+//   ./build/beansc run   ../<worktree>/probes/p3_emitter_wall/main.b   # eight lines
+//   ./build/beansc build ../<worktree>/probes/p3_emitter_wall/main.b -o /tmp/x  # ok
 //
-// The split is exact: a generic INSTANCE METHOD whose type parameter appears
-// inside a function-typed parameter emits. The same shape as a FREE FUNCTION
-// or as a STATIC METHOD does not — with or without an explicit type argument,
-// with or without `T` also appearing as a value parameter or as the result.
-// A generic static whose `T` appears only as a plain value parameter emits
-// fine, so it is the function-typed parameter that is the trigger and the
-// receiver that decides whether it survives.
+// The split WAS exact: a generic INSTANCE METHOD whose type parameter appears
+// inside a function-typed parameter always emitted. The same shape as a FREE
+// FUNCTION or as a STATIC METHOD did not — with or without an explicit type
+// argument, with or without `T` also appearing as a value parameter or as the
+// result. A generic static whose `T` appears only as a plain value parameter
+// always emitted fine, so the function-typed parameter was the trigger and
+// the receiver decided whether it survived.
 package main
 
 import std.io

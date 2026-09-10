@@ -2,9 +2,9 @@
 //
 // Generic bounds in Beans are interfaces only, so `T` in
 // `b.component<Hint>(18, setter)` cannot be bounded to `Component` and latte
-// cannot write `new T()`. PLAN.md's answer is reflection: reach `type_of(T)`
-// from inside the generic, activate an instance, downcast the reflect.Value
-// to `T` for the setter and to `Component` for the render call.
+// cannot write `new T()`. The answer is reflection: reach `type_of(T)` from
+// inside the generic, activate an instance, downcast the reflect.Value to `T`
+// for the setter and to `Component` for the render call.
 //
 // The three things that have to be true, none of which are obvious:
 //   1. `type_of(T)` is legal for an *unbounded* generic parameter.
@@ -57,9 +57,9 @@ pub class NotAComponent {
     pub fn init() {}
 }
 
-// A generic component. `pub partial class Grid<T> extends Component` is what
-// PLAN.md says a generic component is, so `component<Grid<int>>` is the shape
-// the markup compiler emits for `<Grid ...>` with a type argument.
+// A generic component: `pub partial class Grid<T> extends Component`.
+// `component<Grid<int>>` is the shape the markup compiler emits for
+// `<Grid ...>` with a type argument.
 pub class Grid<T> extends Component {
     pub rows: List<T> = []
     pub title: string = ""
@@ -159,9 +159,8 @@ fn distinct(r: Renderer, b: Builder) -> bool {
 //
 // against the same two through a factory closure the markup compiler could
 // emit instead, since it knows the concrete type at the call site.
-// These live on a class rather than at package scope on purpose: a FREE
-// generic function with a `fn(T)` parameter type-checks and runs but cannot be
-// built natively (BLOCKERS.md, B3). The same signature as a method emits.
+// These live on a class purely for grouping; nothing about a generic
+// `fn(T)` parameter requires a method here.
 class Bench {
     pub fn init() {}
 
@@ -191,9 +190,8 @@ class Bench {
     }
 
     // The real per-render cost of `component<T>`: the mounted child is kept as
-    // the reflect.Value its activation produced (BLOCKERS.md B6 says a
-    // re-boxed Component loses its type), so every render downcasts it twice —
-    // once to T for the setter, once to Component for the render call.
+    // the reflect.Value its activation produced, so every render downcasts it
+    // twice: once to T for the setter, once to Component for the render call.
     pub fn reflect_reuse<T>(rounds: int, setup: fn(T)) -> int {
         match type_of(T).initializer() {
             some(ctor) => {
@@ -333,8 +331,9 @@ fn main() {
     io.println("200 children: {reflect_mount * 200 / 1000} us to mount reflectively, {factory_mount * 200 / 1000} us with new; {(reflect_identify + reflect_reuse) * 200 / 1000} us to reach and reuse them on a later render")
 
     // The recorded answer includes the three refusals, so a run where the
-    // generic component suddenly activated fails here — which is what must
-    // happen, because BLOCKERS.md B1 and probes/BUILDER.md would be stale.
+    // generic component suddenly activated fails here — that would mean
+    // reflection can now construct a closed generic, and this probe's own
+    // measurements would be stale.
     let all_ok: bool =
         first == "ok" && second == "ok" && third == "ok" &&
         distinct(r, b) &&

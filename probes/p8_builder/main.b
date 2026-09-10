@@ -1,10 +1,10 @@
-// The Builder signature in `probes/BUILDER.md`, compiled and run.
+// The Builder signature, compiled and run.
 //
 // `core/builder.b` is the stub; `pages/counter.b` is a hand-written `<beans>`
 // block and `pages/counter_gen.b` is the half latte-bx would write beside it,
-// translated from PLAN.md's worked example and extended until every method on
-// the Builder is called by generated code. If this file runs, the signature
-// can express the example. If it did not, the signature would be a guess.
+// extended until every method on the Builder is called by generated code. If
+// this file runs, the signature can express the worked example. If it did
+// not, the signature would be a guess.
 package main
 
 import std.io

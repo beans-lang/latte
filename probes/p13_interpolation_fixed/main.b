@@ -2,11 +2,9 @@
 //
 // This was `p13_interpolation_bad/`: type names inside a string interpolation
 // that the checker rejected, each with the wrong package composed into the
-// message, recorded in an `expected.txt` that `check_refusals.sh` re-checked.
-// Its own comment said "the day this starts compiling somebody has to read
-// why". That day was 2026-09-09 and the why is **beans #164** (BLOCKERS.md
-// B8/B9/B10): a type named inside `"{ }"` is now resolved with the file's
-// imports, so every line below compiles and answers correctly.
+// message. beans #164 fixed it: a type named inside `"{ }"` is now resolved
+// with the file's imports, so every line below compiles and answers
+// correctly.
 //
 // It is kept, and not deleted, because it is the coverage for that fix: seven
 // positions in one program. On 0.1.41 both backends print, identically:
@@ -40,10 +38,10 @@ fn main() {
     io.println("as inside:       {(w as Widget).button}")
 }
 
-// Three more positions, added after the first four were recorded, because
-// B10 asks which OTHER contexts re-resolve a name late. Two of them are
-// ACCEPTED and stay here as the boundary: a name used as a value namespace is
-// fine, and only a name used as a TYPE is lost.
+// Three more positions, added after the first four were recorded, to cover
+// other contexts that might re-resolve a name late. Two of them are ACCEPTED
+// and stay here as the boundary: a name used as a value namespace is fine,
+// and only a name used as a TYPE is lost.
 fn more() {
     // ACCEPTED — an enum variant path through a named import.
     io.println("enum variant inside: {Tone.loud}")

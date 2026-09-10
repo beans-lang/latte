@@ -1,9 +1,12 @@
-// The wall found by probe 3, at its smallest. See BLOCKERS.md, B1.
+// The wall found by probe 3, at its smallest: reflection cannot construct a
+// closed generic.
 //
 // A CLOSED generic type — `Grid<int>`, every argument bound — has a working
-// reflect.Type descriptor, and reflective field access on it works, but
-// reflection cannot construct one and cannot call a method on one. A
-// non-generic class of the identical shape is the control and does all three.
+// reflect.Type descriptor, and reflective field access and method calls on an
+// existing instance both work, on both backends. Only construction does not:
+// `initializer()` is `none` for a closed generic either way, so reflection can
+// describe one and act on one but never build one from nothing. A non-generic
+// class of the identical shape is the control and can do all three.
 //
 //   probes/run.sh p3_generic_wall
 package main

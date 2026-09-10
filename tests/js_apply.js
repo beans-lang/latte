@@ -1,10 +1,9 @@
 // tests/js_apply.js — gate 3's browser half, and the only place latte.js runs.
 //
-// PLAN.md gate 3: "a reference applier in Beans over thousands of random trees
-// and mutations, **and** the real `latte.js` applier over a small DOM, both
-// required to land on the serializer's HTML of the new tree. A text test proves
-// the encoder consistent with itself; this proves it means the same thing in a
-// browser."
+// A reference applier in Beans, over thousands of random trees and mutations,
+// and the real `latte.js` applier, over a small DOM, are both required to land
+// on the serializer's HTML of the new tree. A text test proves the encoder is
+// consistent with itself; this proves it means the same thing in a browser.
 //
 // It runs under headless Chrome, loaded as a `<script src>` beside
 // `js/latte.js` and the fixtures `tests/js_cases.b` printed — no inline script,
@@ -176,10 +175,10 @@
 
     // =================================================== § 2 the contract
     //
-    // lanes/W5.md § "THE APPLIER CONTRACT". The base tree holds one child of
-    // every kind — 0 element, 1 text, 2 markup, 3 region, 4 fragment,
-    // 5 boundary, 6 mount — and it is taken from the fixtures rather than
-    // written here, so the two halves cannot drift on the shape either.
+    // The base tree holds one child of every kind — 0 element, 1 text,
+    // 2 markup, 3 region, 4 fragment, 5 boundary, 6 mount — and it is taken
+    // from the fixtures rather than written here, so the two halves cannot
+    // drift on the shape either.
 
     var BASE_CASE = caseNamed('control-good-edits');
     var BASE_BATCH = BASE_CASE.steps[0].b;
@@ -319,7 +318,7 @@
 
     // The positive controls: the same five opcodes, aimed at the right kind,
     // must be ACCEPTED and must do something. Without these, "refused" cannot
-    // be told from "refused earlier, for a different reason" (RULES.md).
+    // be told from "refused earlier, for a different reason".
     say('');
     say('=== 2c. the positive controls: the same opcodes aimed at the right kind');
     var chost = freshHost();
@@ -702,7 +701,7 @@
 
     // =================================================== § 5 the fence
     //
-    // BLOCKERS.md B11, the client half. Before this, `latte.js` sent an event
+    // The client half of the fence. Before it existed, `latte.js` sent an event
     // and waited in `onmessage` with no timer between "sent" and "an answer
     // arrived", so a click on a slot the server no longer had bound produced a
     // page that never acknowledged the click on a socket that looked alive.
@@ -720,7 +719,7 @@
     feed(fencerig, { t: 'seen', n: 1 });
     eq('a seen retires it', fencerig.circuit.outstanding.length, 0);
     eq('and disarms the deadline', fencerig.timers.length, 0);
-    // THE ROW B11 IS ABOUT: a message that produced no batch, answered.
+    // THE ROW THE SEEN FENCE IS ABOUT: a message that produced no batch, answered.
     fencerig.advance(9000);
     eq('nine seconds past a five-second deadline is not a stall',
        fencerig.stalls.length, 0);
@@ -1387,10 +1386,11 @@
 
     // =================================================== § 8 uploads
     //
-    // W6 row 3, the browser half. The POST is real; the progress REPORT stops
+    // The browser half of uploads. The POST is real; the progress REPORT stops
     // at a sink, because wire v1 has no client message for progress and a
     // client that invented one would be answered with `bye protocol`. See the
-    // note above `Progress` in latte.js and lanes/W6.md.
+    // note above `Progress` in latte.js for what wire.b and circuit.b still
+    // need before the sink could be the circuit itself.
 
     say('');
     say('=== 8. uploads: the POST, and progress clamped as UploadProgress clamps it');
@@ -1623,7 +1623,7 @@
     //
     // Every browser answers that with `TypeError: Illegal invocation`. The two
     // lines that make the call are `armFence` and `retry`, so in a real
-    // browser the B11 fence never armed and a dropped socket never came back —
+    // browser the seen fence never armed and a dropped socket never came back —
     // seven uncaught pageerrors in the W8b Playwright smoke, one per fenced
     // message, and not one check anywhere able to see it.
     //

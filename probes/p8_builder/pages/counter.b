@@ -1,6 +1,5 @@
 // The HAND-WRITTEN half: the `<beans>` block of pages/counter.bx, copied
-// through byte for byte. PLAN.md's example, with `Clock` inlined so the probe
-// stays one module.
+// through byte for byte, with `Clock` inlined so the probe stays one module.
 package pages
 
 import {Builder, Callback, Component, Reference} from p8_builder.core

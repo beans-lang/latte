@@ -121,7 +121,7 @@ fn main() {
     let their_host: espresso.TestHost = new espresso.TestHost(their_app)
     let theirs: espresso.TestResponse = their_host.get("/page").expect("theirs")
     let their_policy: string = header_of(theirs, "Content-Security-Policy")
-    r.eq("2.1 espresso still sends what PLAN.md found", their_policy, ESPRESSO_POLICY)
+    r.eq("2.1 espresso still sends the policy we measured", their_policy, ESPRESSO_POLICY)
     r.no("2.2 it names no script source at all", their_policy.contains("script-src"))
     r.no("2.3 and no connect source", their_policy.contains("connect-src"))
     // `default-src 'none'` with no `script-src` is what blocks `js/latte.js`:
@@ -182,8 +182,8 @@ fn main() {
     io.println("-- 4. js/latte.js needs no 'unsafe-inline' and no 'unsafe-eval'")
     match fs.read("js/latte.js") {
         err(problem) => {
-            // A FAILURE and never a skip: the subject of § 4 disappearing is
-            // exactly the shape RULES.md 5 is about.
+            // A FAILURE and never a skip: a check that silently skips when its
+            // input goes missing is green forever and catches nothing.
             r.eq("4.0 js/latte.js is readable", "{problem.kind}", "readable")
         }
         ok(source) => {

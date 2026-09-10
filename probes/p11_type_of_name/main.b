@@ -2,7 +2,7 @@
 // package, and `is_assignable_from` is wrong as a consequence.
 //
 // The question a framework asks to decide "is this annotated type one of
-// mine". Latte asks it of every `@page`. BLOCKERS.md B8.
+// mine". Latte asks it of every `@page`.
 package main
 
 import std.io

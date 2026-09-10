@@ -517,7 +517,7 @@ fn family_types(c: Corpus, limits: WireLimits) -> Family {
     // A POSITIVE one as well as a zero and a negative, because `n` is the
     // message sequence and zero means "no fence": with only 0 and -1 in this
     // list, no shape in the whole corpus ever asked for a `seen` and the
-    // fence — B11, the thing that stops the client sitting in `onmessage`
+    // fence — the thing that stops the client sitting in `onmessage`
     // forever — was never reached by the fuzz at all.
     wrong.push("1")
     wrong.push("9223372036854775807")

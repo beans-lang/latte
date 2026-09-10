@@ -1,11 +1,12 @@
 // p13 — a string interpolation resolves type names without the file's
 // named-import bindings.
 //
-// BLOCKERS.md B9 found one spelling (`new T()`, refused). B8 found a second
-// (`type_of(T)`, accepted and silently wrong), and `p12_consumer_type_of`
-// showed they are the same bug rather than the same shape. This probe is the
-// rest of the question RULES.md 2 demands: every expression form that names a
-// type inside `"{ }"`.
+// `new T()` inside a string interpolation found one spelling of this bug,
+// refused with the wrong package named. `type_of(T)` found a second: accepted,
+// and silently wrong. `p12_consumer_type_of` showed they are the same bug
+// rather than the same shape. This probe covers every remaining expression
+// form that names a type inside `"{ }"`, rather than stopping at the shape
+// that was found first.
 //
 // The accepted-and-wrong half is here. The half that used to be REFUSED is
 // `p13_interpolation_fixed/` — it was `p13_interpolation_bad/`, and

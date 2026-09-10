@@ -495,8 +495,8 @@ partial class Generic {
 ======== the drift gate ========
 ok tests/w2_equiv.b is what tests/w2cases/equiv.bx generates
 ======== gate 4, the text half ========
-probes/p8_builder/pages/counter_gen.b was hand-written by W0 from
-PLAN.md's worked example, before the emitter existed.
+probes/p8_builder/pages/counter_gen.b is the reference copy of the worked
+example. latte-bx's fresh output from the matching .bx source must agree with it.
 counter: 43 of the hand-written file's numbered calls mean the same thing in latte-bx's output
   every sequence number agrees
   numbers latte-bx uses that the hand-written file does not: 41: attr class, 42: open small, 43: text fixed

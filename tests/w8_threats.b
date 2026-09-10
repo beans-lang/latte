@@ -5,18 +5,17 @@
 // `tests/w8_hostile.b` is the second.
 //
 // **Every refusal here has a positive control beside it, and the control
-// differs from the refusal in exactly one thing.** RULES.md § "The refusal
-// that never runs" is about four bugs found in refusals that had been
-// written and never exercised — three live refusals with a wrong edge, and
-// one live refusal that no input could reach because a coarser rule
-// upstream swallowed it. Without a control you cannot tell "refused for the
-// right reason" from "refused earlier, for a different one".
+// differs from the refusal in exactly one thing.** A refusal that has never
+// been exercised can be wrong in two ways: refused for the wrong reason, or
+// never reached at all because a coarser rule upstream swallows the input
+// first. Without a control you cannot tell "refused for the right reason"
+// from "refused earlier, for a different one".
 //
 // **The roll-call at the end is derived, not written.** `Report.row` marks the
 // row a check belongs to and every check records it, so the summary is a
 // function of the checks that actually ran. Delete a section and the summary
-// changes. A hand-written list would print the same thing either way, which is
-// the shape RULES.md § "A green count can mean two different things" is about.
+// changes — a hand-written list would print the same count either way, and a
+// reader comparing two identical-looking counts would learn nothing.
 //
 // **A row that lands on a control latte does not have FAILS.** It is not
 // silently marked "not covered" and it is not asserted against what the code
@@ -438,8 +437,9 @@ fn row2_attribute(r: Report) {
 fn row3_url(r: Report) {
     r.row(3, "XSS through a URL attribute")
 
-    // The refusal, on every attribute named above plus `xlink:href`, which
-    // is the SVG one and the one RULES.md tells the story about.
+    // The refusal, on every attribute named above plus `xlink:href` — the SVG
+    // one, and the one that first showed a broader rule can swallow a
+    // narrower one so completely that the narrower one's own check never runs.
     let named: List<string> = ["href", "src", "action", "formaction",
                                "poster", "data", "xlink:href"]
     var refused: List<string> = []
@@ -1025,7 +1025,7 @@ fn row7_origin(r: Report) {
 
 fn row8_circuit_id(r: Report) {
     r.uncovered(8, "circuit id theft or fixation",
-        "PLAN.md says the id is rotated when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here")
+        "the id should rotate when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here")
 
     // 256 bits, as 64 hex characters, and two ids differ. A generator that
     // answered a constant would pass a length check on its own.
@@ -1193,7 +1193,7 @@ fn row9_authorization(r: Report) {
 
     // And at every in-circuit navigation. The circuit's page factory is called
     // again on a `nav`, so a principal that lost its role between the attach
-    // and the navigation is refused — which is the pitfall PLAN.md names.
+    // and the navigation is refused — the pitfall a stale principal would open.
     var ledger: Ledger = new Ledger()
     ledger.role = "staff"
     let pages2: PageMap = pages
@@ -1613,7 +1613,7 @@ fn row11_virtual_range(r: Report) {
 
 fn row12_upload(r: Report) {
     r.uncovered(12, "upload abuse",
-        "PLAN.md names a disk quota; latte's store keeps no total and std.fs cannot delete a file (BLOCKERS.md B13), so there is no quota to cross")
+        "a disk quota needs a running total and a real file to delete; latte's store keeps no total and is in-memory, so there is no quota to cross")
 
     var limits: espresso.MultipartLimits = new espresso.MultipartLimits()
     limits.max_parts = 2
@@ -1833,7 +1833,7 @@ fn parse_fault(text: string, limits: WireLimits) -> string {
 
 fn row14_dos(r: Report) {
     r.uncovered(14, "DoS: flooding, render loops, retention",
-        "PLAN.md names a per-circuit rate limit; CircuitOptions has no rate and Circuit.accept counts no messages per unit time, so that clause has no case here")
+        "a per-circuit rate limit needs a message counter; CircuitOptions has no rate and Circuit.accept counts no messages per unit time, so that clause has no case here")
 
     // The un-acked window. A client that never acks is cut off after
     // `max_unacked` batches rather than being replayed forever.
@@ -1872,11 +1872,11 @@ fn row14_dos(r: Report) {
     // Render loops. A component that dirties itself from its own render would
     // spin forever on the circuit's fiber. The cap is charged in `settle()`,
     // which runs on an EVENT — `on_attach` publishes and does not settle — so
-    // a spinning page mounts once and only loops when something is clicked.
-    // That is PLAN.md's reading, "a cap on render passes per event".
+    // a spinning page mounts once and only loops when something is clicked:
+    // it is a cap on render passes per event, not per mount.
     //
-    // With a boundary above it the failure SURFACES THERE and the circuit
-    // lives, which is the clause PLAN.md actually states.
+    // With a boundary above it, the failure surfaces there and the circuit
+    // keeps running.
     var loop_options: CircuitOptions = new CircuitOptions()
     loop_options.max_renders = 4
     let c3: Circuit = new Circuit("aaaaaaaaaaaaaaaaaaaa", loop_options,
@@ -2006,8 +2006,8 @@ pub class Ticker extends Component {
     }
 }
 
-/// The same spinner behind an error boundary, which is where PLAN.md says the
-/// failure must surface.
+/// The same spinner, behind an error boundary this time — where a render-loop
+/// failure should surface instead of taking the circuit down with it.
 pub class SpinShell extends ErrorBoundary {
     pub inner: Spinner = new Spinner()
     pub fn init() {
@@ -2368,11 +2368,11 @@ pub class Unguarded extends Component {
 fn row18_headers(r: Report) {
     r.row(18, "clickjacking and script injection")
 
-    // PLAN.md names four things, so four checks. A single `eq` against the
-    // whole policy string would say "the policy changed" and not WHICH clause
-    // of the plan stopped holding, and it would have to be re-recorded every
-    // time a directive is added — which is how an assertion becomes a
-    // photograph of a run.
+    // Four separate checks, one per header directive. A single `eq` against
+    // the whole policy string would only say "the policy changed", not which
+    // directive stopped holding, and it would need re-recording every time a
+    // directive is added — which is how an assertion becomes a photograph of
+    // a run instead of a check of one property.
     let options: HeaderOptions = new HeaderOptions()
     let policy: string = options.policy()
     r.yes("row18.the-policy-denies-framing",
@@ -2383,12 +2383,12 @@ fn row18_headers(r: Report) {
           policy.contains("connect-src 'self'"))
     r.eq("row18.the-referrer-policy-is-set", options.referrer, "no-referrer")
 
-    // PLAN.md's concrete finding is that espresso's own middleware sends
-    // `default-src 'none'` and names no script or connect source, so it blocks
-    // `latte.js` and the socket. latte's `default-src` is `'none'` TOO — the
-    // difference is only that latte names what it needs, so the refusal falls
-    // on what is not named instead of on everything. Asserting `default-src
-    // 'none'` here is what stops that clause being read as "latte loosened it".
+    // espresso's own middleware sends `default-src 'none'` and names no script
+    // or connect source, so it blocks `latte.js` and the socket too. latte's
+    // `default-src` is `'none'` TOO — the difference is only that latte names
+    // what it needs, so the refusal falls on what is not named instead of on
+    // everything. Asserting `default-src 'none'` here is what stops this
+    // reading as "latte loosened it".
     r.yes("row18.default-src-is-still-none", policy.contains("default-src 'none'"))
     r.no("row18.and-nothing-was-loosened-with-unsafe-inline",
          policy.contains("unsafe-inline"))

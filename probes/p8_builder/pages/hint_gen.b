@@ -4,9 +4,9 @@
 // an emitter existed. `b.constant(1, …)` is followed by `b.text(2, …)`, but
 // the unfolded arm of that constant subtree needs 1 through 5 — so under
 // `fold = false` the number 2 would mean both the `class` attribute and the
-// text. The folded arm must RESERVE the whole unfolded range; see
-// probes/BUILDER.md, "Builder.fold". W2's emitter does, and disagreeing with
-// this file is how it was found. Do not copy this numbering.
+// text. The folded arm must RESERVE the whole unfolded range. The real
+// emitter does this; disagreeing with this file is how that rule was found.
+// Do not copy this numbering.
 package pages
 
 import {Builder, MouseEvent} from p8_builder.core

@@ -1,5 +1,6 @@
-// A second, independent fault found beside B1: the native backend hands back
-// a reflect error message one byte short. See BLOCKERS.md, B2.
+// The native backend used to hand back a reflect error message one byte
+// short. Fixed in beans 0.1.41 (#160) — the message also names the member
+// it was asked about now, so the recorded text is longer, not shorter.
 //
 // Nothing generic here — this is an ordinary receiver-type mismatch, the kind
 // any reflective call can produce.

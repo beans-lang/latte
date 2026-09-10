@@ -5,10 +5,10 @@
 //     b.on_click(9, fn(e: MouseEvent) { self.count += 1 })
 //
 // The closure captures the component; the frame that holds it is owned by the
-// renderer; the renderer owns the component. A cycle either way. PLAN.md
-// answers it with "component back-edges, Callback owners and signal
-// subscribers are weak — the leaks gate is what proves it, not the argument",
-// so this probe runs the argument and then runs `leaks`.
+// renderer; the renderer owns the component. A cycle either way. The design
+// keeps component back-edges, Callback owners and signal subscribers weak —
+// the leaks gate is what proves that, not the argument — so this probe runs
+// the argument and then runs `leaks`.
 //
 // Five shapes, each 5,000 components made and dropped. What is counted is how
 // many `deinit` bodies ran BEFORE the program ended, because the runtime forces
@@ -45,8 +45,8 @@ class Comp {
     pub fn arm() { self.handler = fn(x: int) { self.count += x } }
 }
 
-// PLAN.md's Callback: the closure plus a WEAK reference to the component that
-// supplied it, so invoking it can mark that component dirty.
+// Callback: the closure plus a WEAK reference to the component that supplied
+// it, so invoking it can mark that component dirty.
 class Callback {
     pub weak owner: Option<Comp> = none
     pub call: fn(int) = fn(x: int) {}
@@ -97,7 +97,7 @@ fn shape_frames(ledger: Ledger, frames: List<fn(int)>) {
     }
 }
 
-// 4. PLAN.md's Callback: weak owner, and a closure that still captures self.
+// 4. Callback: weak owner, and a closure that still captures self.
 fn shape_weak_owner_strong_closure(ledger: Ledger) {
     for round: int in 0..MANY {
         let c: Comp = new Comp(ledger)

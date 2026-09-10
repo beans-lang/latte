@@ -584,13 +584,10 @@ pub fn assemble_chunks(events: List<ChunkEvent>, faults: List<string>) -> string
 
 /// Whether a type is annotated `@stream`.
 ///
-/// It takes a `reflect.Type` and not a `Component` on purpose. `reflect.value`
-/// boxes the STATIC type of what it is handed (BLOCKERS.md B6), so a
-/// `Component` binding would report `latte.Component` — which carries no
-/// `@stream` — and every page would quietly answer "no". The host already
-/// holds the type: `PagePlan.type_name` names it, and a program that mounts a
-/// page directly writes `type_of(MyPage)` on a line of its own (B10: a type
-/// name inside a string interpolation resolves without the file's imports).
+/// It takes a `reflect.Type` and not a `Component`: the caller already has
+/// the type on hand — `PagePlan.type_name` names it, and a program that
+/// mounts a page directly already has `type_of(MyPage)` — so there is no
+/// reason to reconstruct it from a live component.
 pub fn type_streams(described: reflect.Type) -> bool {
     return annotations_named(described.annotations(), "stream").len() > 0
 }

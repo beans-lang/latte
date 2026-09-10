@@ -7,13 +7,13 @@
 // origin that served nothing.
 //
 // **Every refusal in § 4 has an accepted case beside it, in the same
-// subsection, differing in ONE character where that is possible.** RULES.md,
-// "the refusal that never runs": without the accepted case you cannot tell
-// "refused for the right reason" from "refused earlier, for a different one",
-// and `ShellOptions.faults()` collects EVERY fault rather than stopping at the
-// first, so a coarse rule standing in front of a specific one would show up
-// here as a message with the wrong text rather than as a silent pass. The
-// message is asserted, not just the count.
+// subsection, differing in ONE character where that is possible.** Without
+// the accepted case you cannot tell "refused for the right reason" from
+// "refused earlier, for a different one", and `ShellOptions.faults()`
+// collects EVERY fault rather than stopping at the first, so a coarse rule
+// standing in front of a specific one would show up here as a message with
+// the wrong text rather than as a silent pass. The message is asserted, not
+// just the count.
 //
 // § 6 is the asset route's own refusals, which happen at REGISTRATION and not
 // at request time. A `map_client` whose file is missing must answer `err`
@@ -185,8 +185,10 @@ fn section_knobs(r: Report) {
     r.no("3.6 and names no socket", without.contains("data-latte-ws"))
 
     // The other door: a host that decides ids itself. latte's own shell never
-    // writes this, and `lanes/W9.md` says why — but the attribute is what
-    // `latte.js` has always read, and a host with a reason to use it keeps it.
+    // writes this — the id is normally a server-minted reconnect credential,
+    // and printing one into cacheable HTML would leak it — but the attribute
+    // is what `latte.js` reads regardless, so a host with its own reason to
+    // assign one still can.
     var named: ShellOptions = plain()
     named.circuit_id = "0123456789abcdef0123456789abcdef"
     r.yes("3.7 a host-decided id reaches the script tag",

@@ -1,8 +1,8 @@
 <beans>
 package main
 
-// PLAN.md gate 4, second half: **a hand-written builder and a generated
-// builder must produce identical frames.**
+// A hand-written builder and a generated builder must produce identical
+// frames.
 //
 // This file is the input AND the suite. `tests/w2_equiv.b` is generated from
 // it by latte-bx and checked in, `tests/markup.b` regenerates it and fails on
@@ -12,10 +12,10 @@ package main
 // fold switch say the same thing, and that the generated file on disk is not
 // stale.
 //
-// `EquivHand` below is the twin. It was written from `probes/BUILDER.md`'s
-// rules — source order from 0, disjoint ranges for branch arms, a region and a
-// fragment restarting at 0 — BEFORE the generator was run against it, which is
-// the only way the comparison means anything.
+// `EquivHand` below is the twin. It was written by the same rules the
+// generator follows — source order from 0, disjoint ranges for branch arms, a
+// region and a fragment restarting at 0 — BEFORE the generator was run
+// against it, which is the only way the comparison means anything.
 
 import std.io
 import {Serializer} from latte
@@ -91,9 +91,8 @@ pub class EquivHand extends Component {
         b.open(0, "section")
         b.attr(1, "class", "counter")
 
-        // Literal text and the expression beside it are ONE frame: PLAN.md's
-        // wire example is `["ut",3,"Count: 4"]`, one text edit for the whole
-        // string.
+        // Literal text and the expression beside it are ONE frame: the wire
+        // carries `["ut",3,"Count: 4"]`, one text edit for the whole string.
         b.open(2, "h2")
         b.text(3, "Count: {self.state.count}")
         b.close()
@@ -290,7 +289,7 @@ fn main() {
 
     // ---- ref={ } on a component tag --------------------------------------
     //
-    // `probes/BUILDER.md`, "ref on a component tag is an assignment": there is
+    // `ref` on a component tag is an assignment, not a builder call: there is
     // no `b.reference(...)` here, because every attribute-position call needs
     // `in_attributes` and a component tag opens no element. The setup closure
     // assigns instead. Three things are asserted, and only the first is the

@@ -259,8 +259,8 @@ pub class Applier {
                         // `relocate` container refusals would be dead code and
                         // a `set_attr` inside a mis-stepped scope would succeed
                         // SILENTLY against a throwaway — accepted, discarded,
-                        // nothing raised. RULES.md, "the refusal that never
-                        // runs", built by hand.
+                        // nothing raised. A refusal that can never fire is not
+                        // coverage.
                         //
                         // Descending into the leaf costs nothing: every edit
                         // that could mutate it is refused by the same rule —

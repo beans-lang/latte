@@ -1,11 +1,11 @@
 // The slot-id gate, and the Builder's refusals.
 //
 // This suite exists because everything it asserts was WORKING and UNGATED. A
-// regression to keying the mount table by the bare sequence number — which is
-// what `probes/BUILDER.md` said before the W1 correction — would have gone
-// green in this repo, because the one probe that exercised `component<T>` put
-// it OUTSIDE the keyed region. One row is the shape RULES.md rule 4 says
-// proves nothing, and it is exactly the shape that hid this.
+// regression to keying the mount table by the bare sequence number would have
+// gone green in this repo, because the one probe that exercised `component<T>`
+// put it OUTSIDE the keyed region. A single keyed row proves nothing — this
+// workspace has shipped bugs behind tests that passed only because n=1 — and
+// that is exactly the shape that hid this.
 //
 // So: FIVE rows everywhere. Five is enough that a reorder is a real
 // permutation rather than a swap, and enough that "all N rows share one child"
@@ -25,7 +25,7 @@
 //  11  the factory mount    — component_made<T> over a closed generic
 //  12  the dirty sink       — MountHandle, Component.id(), Callback.call
 //  13  every fault site     — all 24, each with a trip, a control and a count
-//  14  an imported base     — why BLOCKERS.md B8 does not reach the mount path
+//  14  an imported base     — why the imported-type bug does not reach the mount path
 package main
 
 import std.io
@@ -153,7 +153,7 @@ pub class Sheet extends Component {
     pub override fn render(b: Builder) { self.body(b) }
 }
 
-/// The child a component-tag `ref` hands back. `reload()` is PLAN.md's own
+/// The child a component-tag `ref` hands back. `reload()` is the worked
 /// example of what an author does with one, and it is callable WITHOUT a
 /// downcast only because the setup closure is typed `fn(Grid)`.
 pub class Grid extends Component {
@@ -169,7 +169,7 @@ pub class Grid extends Component {
     }
 }
 
-/// `<Grid ref={self.grid} rows={self.rows} />`. W2 emits exactly this: a plain
+/// `<Grid ref={self.grid} rows={self.rows} />`. latte-bx emits exactly this: a plain
 /// assignment inside the setup closure the emitter already writes. There is no
 /// attribute-position call, because a component tag opens no element and
 /// `in_attributes` is therefore never set.
@@ -292,7 +292,7 @@ fn overlap(a: List<int>, b: List<int>) -> int {
 }
 
 /// The mounted `Row` behind a slot, or `none`. The mount table holds the
-/// `reflect.Value` the activation produced (BLOCKERS.md B6), and the test
+/// `reflect.Value` the activation produced, and the test
 /// reads it back the same way the Builder does.
 fn row_at(b: Builder, slot: int) -> Option<Row> {
     match b.children.get(slot) {
@@ -642,8 +642,7 @@ fn refusals() -> List<Refusal> {
     }))
 
     cases.push(new Refusal("url-scheme-xlink", fn(b: Builder) {
-        // W1's addition to BUILDER.md's six names: SVG's xlink:href runs
-        // script in every browser that renders SVG.
+        // SVG's xlink:href runs script in every browser that renders SVG.
         b.open(0, "a")
         b.attr(1, "xlink:href", "javascript:alert(1)")
         b.close()
@@ -784,8 +783,8 @@ fn refusals() -> List<Refusal> {
 
     cases.push(new Refusal("mount-a-non-component", fn(b: Builder) {
         // Bounds in Beans are interfaces only, so `component<T>` cannot demand
-        // `T extends Component`. W2 refuses this at markup-compile time; the
-        // Builder refuses it too, because a hand-written call never saw W2.
+        // `T extends Component`. latte-bx refuses this at markup-compile time; the
+        // Builder refuses it too, because a hand-written call never goes through latte-bx.
         b.component<NotAComponent>(0, fn(x: NotAComponent) { x.value = 1 })
     }))
 
@@ -1134,7 +1133,7 @@ fn component_ref(r: Report) {
 // ------------------------------------------------- the factory mount
 
 /// A GENERIC component. Reflection cannot build one: `type_of(Cell<int>)`
-/// answers `none` for `initializer()` on both backends (BLOCKERS.md B1), so
+/// answers `none` for `initializer()` on both backends, so
 /// `component<Cell<int>>` faults and `component_made<Cell<int>>` is the whole
 /// reason that call exists.
 pub class Cell<T> extends Component {
@@ -1260,8 +1259,9 @@ fn factory_mount(r: Report) {
 
     // The reflective route on the SAME generic type: this is the fault that
     // makes `component_made` necessary, and it reads the same on both backends
-    // (B1 -- a closed generic has no initializer DESCRIPTOR, which is a
-    // different thing from B7's descriptor that only fails when called).
+    // — a closed generic has no initializer DESCRIPTOR at all. A non-generic
+    // SUBCLASS of one is different: it has a descriptor, and calling it used
+    // to fail only on native (fixed in beans 0.1.41).
     let reflective: Mounts = new Mounts()
     reflective.route = 4
     let rb: Builder = new Builder()
@@ -1325,15 +1325,17 @@ fn factory_mount(r: Report) {
     r.eq("and the original instance is still there", html_of(fb), "<p>f/3</p>")
 }
 
-// ------------------------------------------------- B8 and the mount path
+// ------------------------------------------- an imported base and the mount path
 
-/// **Is the mount path affected by BLOCKERS.md B8?** No, and this is the case
-/// that says so rather than a paragraph claiming it.
+/// **Is the mount path affected by the imported-type bug?** No, and this is
+/// the case that says so rather than a paragraph claiming it.
 ///
-/// B8: `type_of(T)` for an IMPORTED `T` reports the importing package's name
-/// joined to the simple name — a type that does not exist — while the
-/// inheritance chain reports the real one, so `is_assignable_from` answers
-/// **false** for a genuine base and subclass, on both backends.
+/// The bug: `type_of(T)` for an IMPORTED `T` reported the importing package's
+/// name joined to the simple name — a type that does not exist — while the
+/// inheritance chain reported the real one, so `is_assignable_from` answered
+/// **false** for a genuine base and subclass, on both backends. Fixed in
+/// beans 0.1.41 (#164); this section is the proof the mount path was never
+/// exposed to it.
 ///
 /// Every component in this repo is declared in `package main` and mounted
 /// through `latte`'s `Builder.component<T>` / `component_made<T>`, which is
@@ -1342,16 +1344,19 @@ fn factory_mount(r: Report) {
 /// downcast, which goes through the inheritance chain, and `type_of(T)` is used
 /// only for `initializer()` and for the simple `name()` in a fault message.
 ///
-/// It also measures the question, and the measurement is a finding: B8's
-/// failure **does not reproduce here**. `type_of(Component).qualified_name()`
-/// asked from `package main` answers `latte.Component`, the real name, and
-/// `is_assignable_from` answers **true** for `Plain extends Component`. B8's
-/// repro imports its base from a SUBPACKAGE (`p11_type_of_name.core`) into the
-/// module root; latte's base comes from the module root itself. So whatever B8
-/// is, it is narrower than "any imported type", and these two assertions are
-/// what will say so the day it widens.
+/// It also measures the question, and the measurement is a finding: this file
+/// never hit the bug, but not for the reason it might look like. It is the
+/// same imported-base shape the bug reproduced under — a subclass in `package
+/// main` extending a base imported from elsewhere. What actually protects it
+/// is that the test binds `type_of(Component)` to a `let` and interpolates
+/// the variable: `base.qualified_name()` answers `latte.Component`, the real
+/// name, and `is_assignable_from` answers **true** for `Plain extends
+/// Component`. Written inline instead — the qualified name built directly
+/// inside a string — the same file would have answered `latte$entry.Component`,
+/// a type that does not exist. These two assertions are what would have
+/// caught it either way.
 fn imported_base_downcast(r: Report) {
-    io.println("== 14 an imported base, and B8")
+    io.println("== 14 an imported base, and the mount path ==")
 
     let base: reflect.Type = type_of(Component)
     let leaf: reflect.Type = type_of(Plain)
@@ -1621,18 +1626,18 @@ fn dirty_sink(r: Report) {
 //      right reason" from "refused earlier, for a coarser one", and the
 //      message in the golden is the only thing that would have told you.
 //
-// RULES.md, "The refusal that never runs": W2 found four bugs by exercising
-// refusals that had been written and never run, and the worst of them was a
-// live refusal no input could reach, because a broader rule upstream swallowed
-// it first — `xlink:href`'s scheme check, listed as covered in two files and
-// never once executed. The same shape was live in THIS file: `attrs`' copy of
-// the URL-scheme check had never run, because § 6's splat case carried no URL
-// name. It does now: `attrs-refused-scheme` below.
+// A refusal nobody has tried to break proves nothing. The worst bug this
+// project found this way was a live refusal no input could reach, because a
+// broader rule upstream swallowed it first — `xlink:href`'s scheme check,
+// listed as covered in two files and never once executed. The same shape was
+// live in THIS file: `attrs`' copy of the URL-scheme check had never run,
+// because § 6's splat case carried no URL name. It does now:
+// `attrs-refused-scheme` below.
 //
 // The other half of the audit does not live in a suite and cannot: each of the
 // 24 report sites was deleted, one at a time, and the case below that names it
 // was watched to FAIL. A refusal whose deletion changes nothing is either
-// untested or unreachable, and this file says which in the lane notes.
+// untested or unreachable, and this file says which.
 // `probes/delete_faults.sh` re-runs the whole pass.
 
 /// One fault site, one trip, one control.
@@ -2007,9 +2012,9 @@ fn sites() -> List<Site> {
             b.close()
         }, "<a href=\"/local/path:with-colon\"></a>"))
 
-    // The name W2 found dead in their own lane: an SVG `<a xlink:href>` runs
-    // script in every browser that renders SVG, and the check on it had never
-    // executed once while two files documented it as covered. Its control is
+    // An SVG `<a xlink:href>` runs script in every browser that renders SVG,
+    // and the check on it had never executed once while two files
+    // documented it as covered. Its control is
     // an xlink:href that must be KEPT, so "refused because xlink:href is
     // rejected outright" cannot pass for "refused because of the scheme".
     out.push(new Site(SITE_ATTR_URL, "url-scheme-xlink",
@@ -2331,10 +2336,10 @@ fn sites() -> List<Site> {
     // Reflection CAN find an initializer here and cannot call it. Two shapes
     // reach it and they are different reflect failures, so both are named.
     //
-    // The trailing "(constructing <type>)" arrived with beans 0.1.41 (#160,
-    // BLOCKERS.md B2 — the message names the member now, and native no longer
-    // truncates it by a byte). Both backends print it identically; the older
-    // text without it was what 0.1.40 produced.
+    // The trailing "(constructing <type>)" arrived with beans 0.1.41 (#160):
+    // the message names the member now, and native no longer truncates it by
+    // a byte. Both backends print it identically; the older text without it
+    // was what 0.1.40 produced.
     // An `@inject` field with nothing to fill it from. Unlike every other site
     // here the component still MOUNTS and still RENDERS — with the field at its
     // own default — which is exactly why the fault matters: without it the page
@@ -2388,8 +2393,8 @@ fn sites() -> List<Site> {
             b.component<Plain>(0, fn(c: Plain) { c.label = "ok" })
         }, "<p>ok/1</p>"))
 
-    // A closed generic has no initializer DESCRIPTOR at all (BLOCKERS.md B1),
-    // which is the whole reason `component_made` exists — and that is its
+    // A closed generic has no initializer DESCRIPTOR at all, which is the
+    // whole reason `component_made` exists — and that is its
     // control: the same type, mounted by the route that works.
     out.push(new Site(SITE_NO_CTOR, "mount-a-closed-generic-reflectively",
         fn(b: Builder) {

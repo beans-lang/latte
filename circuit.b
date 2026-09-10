@@ -352,8 +352,9 @@ pub class Circuit {
     /// **Every accepted message that carries a sequence is answered.** The
     /// dispatch below may produce a batch, an `err`, a `js`, a `nav` or
     /// nothing at all; whatever it produced, a `seen` carrying the client's
-    /// own `n` goes out LAST. That is the fence, and it is what closes B11:
-    /// before it, a message that legally changed nothing — a click on a slot
+    /// own `n` goes out LAST. That is the fence, and it is what stops an inert
+    /// click from stalling the client: before it, a message that legally
+    /// changed nothing — a click on a slot
     /// the page had already disposed, an `ack`, a `range` that clamps to what
     /// the client already holds — produced silence indistinguishable from a
     /// dead socket, and `js/latte.js` sat in `onmessage` forever.

@@ -1,14 +1,15 @@
-// A stub `latte.Builder` carrying the exact signature written down in
-// probes/BUILDER.md, plus just enough behaviour to dump frames.
+// A stub `latte.Builder`, carrying the exact signature the real Builder
+// exposes, plus just enough behaviour to dump frames.
 //
 // It exists to be COMPILED. A signature that has never been through the
-// checker is a guess, and W1, W2 and W4 all build against this one. The frame
-// list and the dump are here so `main.b` can run it on both backends — a stub
-// that only type-checks would not catch a method that cannot actually be
-// called the way the generated code calls it.
+// checker is a guess, and everything generated against the real Builder
+// builds against this one too. The frame list and the dump are here so
+// `main.b` can run it on both backends — a stub that only type-checks would
+// not catch a method that cannot actually be called the way the generated
+// code calls it.
 //
 // Nothing here imports std.fs, std.net or std.io: the core has to keep
-// building for wasm32-unknown-unknown (PLAN.md, D4).
+// building for wasm32-unknown-unknown.
 package latte
 
 import std.reflect
@@ -99,13 +100,10 @@ pub class Builder {
     // activation at 2.4 us, so re-activating 200 children every render would
     // be half a millisecond of churn per event.
     //
-    // They are kept as the `reflect.Value` the activation produced, NOT as
-    // `Component`. `reflect.value(x)` boxes the STATIC type of `x`
-    // (BLOCKERS.md B6), so a child stored as a `Component` and re-boxed comes
-    // back as a Value of type `Component` and `as? T` answers `none` — the
-    // reuse path silently loses the child's type. The activation's own Value
-    // carries the concrete type and downcasts to both `T` and `Component`
-    // every time.
+    // They are kept as the `reflect.Value` the activation produced, not as
+    // `Component`: it is already the exact value a caller needs, so reuse
+    // costs no downcast and no re-boxing to get back to it. It downcasts to
+    // both `T` and `Component` every time it is used.
     pub children: Map<int, reflect.Value> = {}
 
     // Balance checking. The generated code is machine-written, so an
@@ -151,7 +149,7 @@ pub class Builder {
     }
 
     /// Pass-through attributes — `attrs={self.extra}`. Reserved: spelled now
-    /// so the interface does not change under W4.
+    /// so adding it later does not change this interface.
     pub fn attrs(seq: int, extra: Map<string, string>) {
         self.frames.push(Frame.splat(seq, extra.len()))
     }
@@ -176,7 +174,7 @@ pub class Builder {
     //
     // `component<T>` MUST be a method. A free generic function with a `fn(T)`
     // parameter type-checks, runs under `beansc run`, and cannot be built
-    // natively — BLOCKERS.md B3.
+    // natively — an instance method is the only shape the emitter accepts.
     pub fn component<T>(seq: int, setup: fn(T)) {
         let described: reflect.Type = type_of(T)
         if !self.children.contains_key(seq) { self.mount<T>(seq, described) }
@@ -258,8 +256,9 @@ pub class Builder {
     // ---- events ----
     //
     // One named method per event in the markup compiler's table, typed to its
-    // family. Six of them here; the full table is W2's. The handler is stored
-    // under `seq`, which is the id the wire carries — no name ever crosses.
+    // family. This stub declares six; the compiler's table has more. The
+    // handler is stored under `seq`, which is the id the wire carries — no
+    // name ever crosses.
     pub fn on_click(seq: int, handler: fn(MouseEvent)) {
         self.mouse[seq] = handler
         self.frames.push(Frame.handler(seq, "click"))
@@ -315,8 +314,8 @@ pub class Builder {
 
     /// Starts a new render pass. Frames and faults are **per render**; the
     /// mounted children and the handler tables are not — a child mounted at a
-    /// sequence number outlives the frames that named it, which is what makes
-    /// re-rendering a component cheap (probes/ANSWERS.md §3).
+    /// sequence number outlives the frames that named it, so re-rendering a
+    /// component reuses its children instead of re-activating them.
     pub fn reset() {
         self.frames.clear()
         self.faults.clear()
@@ -387,10 +386,10 @@ pub class Callback<T> {
     /// `new Callback<int>(self, fn(id: int) { self.select(id) })`.
     ///
     /// NOT a static factory. A `static fn` on a generic class can never bind
-    /// the class's type parameter (BLOCKERS.md B5), and a static taking a
-    /// `fn(T)` cannot be emitted natively either (B3), so PLAN.md's
-    /// `Callback.of(self, …)` has no spelling. The constructor does, and it
-    /// infers `T` from the declared type of the binding.
+    /// the class's own type parameter, and a static taking a `fn(T)` cannot be
+    /// emitted natively either, so a `Callback.of(self, …)` factory has no
+    /// spelling. The constructor does, and it infers `T` from the declared
+    /// type of the binding.
     pub fn init(owner: Component, handler: fn(T)) {
         self.owner = some(owner)
         self.handler = handler

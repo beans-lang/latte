@@ -9,9 +9,9 @@
 // test for an instantiation"). The way through, if there is one, is that `Cell`
 // is NOT generic: read the signal's `cell` field reflectively and downcast that.
 //
-// BLOCKERS.md B1a says reading a field whose DECLARING type is generic answered
-// `unsupported` natively in 0.1.40 and was fixed in 0.1.41 (#158/#159). This is
-// exactly that shape, so it is measured rather than assumed, on both backends.
+// Reading a field whose DECLARING type is generic answered `unsupported`
+// natively in 0.1.40, and was fixed in 0.1.41 (#158/#159). This is exactly
+// that shape, so it is measured rather than assumed, on both backends.
 package main
 
 import std.io

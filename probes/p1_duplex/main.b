@@ -1,8 +1,8 @@
 // Probe 1 — full duplex on ONE websocket.Connection from two fibers, under a
 // slow reader.
 //
-// The latte circuit design (PLAN.md, "Interactive server rendering") has the
-// espresso connection fiber writing edit batches while a brewed reader fiber
+// The latte circuit design has the espresso connection fiber writing edit
+// batches while a brewed reader fiber
 // calls receive() on the same Connection. Both drive wslay and both may park
 // inside flush(). This probe answers whether that is safe, or whether a
 // client that stops reading wedges the pair.

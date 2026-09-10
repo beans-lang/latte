@@ -1,8 +1,7 @@
 // Every report site in `apply.b` and `serialize.b`: a trip, a control, a count.
 //
 // The companion to § 13 of `tests/frames.b`, which does the same for
-// `builder.b`'s 24 sites. Three files, three tallies, one rule — RULES.md,
-// "The refusal that never runs":
+// `builder.b`'s 24 sites. Three files, three tallies, one rule:
 //
 //   * a refusal test that still passes when the refusal is deleted is
 //     worthless, and
@@ -947,8 +946,8 @@ fn apply_sites() -> List<ASite> {
     // edit stream, and they exist because a refused `step_in` descends into
     // the leaf rather than a placeholder. A fresh node is a container, so
     // substituting one would make the cursor a container on every reachable
-    // path and these three refusals would be dead code — the shape RULES.md
-    // calls "the refusal that never runs", built by hand.
+    // path and these three refusals would be dead code, with nothing here to
+    // catch it — so these cases are built by hand.
     //
     // TWO faults each: the descent, and the edit that had no business below
     // it. Each control is the same pair of edits with a CONTAINER at the index
@@ -1103,11 +1102,10 @@ fn root_shape(a: Applier, id: int) -> string {
 /// Three of the seven now answer with the `step_in` refusal rather than the
 /// attribute one, and that is the rule working rather than a gap. The cursor
 /// can only BE a text node if a `step_in` descended into one, and that descent
-/// is the earlier refusal — RULES.md's "a coarser refusal standing in front of
-/// a finer one", seen from the side where the coarser one is the correct
-/// answer. The element rule is reached instead through the four container
-/// kinds that are not elements, and § 1 carries a shape for each: a mount, a
-/// region, a fragment and a boundary.
+/// is a coarser refusal standing in front of a finer one, seen from the side
+/// where the coarser one is the correct answer. The element rule is reached
+/// instead through the four container kinds that are not elements, and § 1
+/// carries a shape for each: a mount, a region, a fragment and a boundary.
 fn the_kind_rule(r: Report) {
     io.println("== 2 the kind rule, shape by shape")
     let start: string = applier_state(seeded())
@@ -1389,8 +1387,8 @@ fn serializer_sites() -> List<SSite> {
 
     // -- an attribute-run frame in a child position -----------------------
     //
-    // SWALLOWED UPSTREAM by an ordinary render, and this is the shape RULES.md
-    // is about. Every one of the six frames below is written by a Builder
+    // SWALLOWED UPSTREAM by an ordinary render before the refusal below ever
+    // runs. Every one of the six frames below is written by a Builder
     // method that first calls `take_attribute_slot`, which refuses with "is
     // outside an element's attribute run" and DROPS the frame — so no render
     // can put one here, and `Applier.emit` writes them only immediately after
