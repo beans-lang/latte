@@ -317,9 +317,8 @@ fn joined(faults: List<string>) -> string {
 /// `trip` answers the faults the bad input raised; `control` answers the
 /// faults of the NEAREST LEGAL input, which must be none; and `made` answers
 /// what the control produced, which must be exactly `produced` and must not be
-/// empty. Without the last one a control that was quietly dropped on the floor
-/// reads identically to a control that worked (RULES.md, "The refusal that
-/// never runs").
+/// empty. Without the last one, a control that was quietly dropped on the
+/// floor reads identically to a control that worked.
 pub class SSite {
     pub site: string = ""
     pub name: string = ""

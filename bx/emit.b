@@ -361,7 +361,7 @@ pub class Emitter {
     fn check_code(code: string, at: Span, what: string) {
         for name: string in self.type_params {
             if !uses_identifier(code, name) { continue }
-            self.report(at, "{what} spells {name}, and the generated half of a generic component may not — `partial class` may carry its type parameters on exactly one part, so latte-bx writes `partial class` with none and {name} is not a name it can use (probes/ANSWERS.md §4). Drop the annotation and let it be inferred, or move the code that needs {name} into the <beans> block")
+            self.report(at, "{what} spells {name}, and the generated half of a generic component may not — `partial class` may carry its type parameters on exactly one part, so latte-bx writes `partial class` with none and {name} is not a name it can use. Drop the annotation and let it be inferred, or move the code that needs {name} into the <beans> block")
         }
         if uses_identifier(code, "b") {
             self.report(at, "{what} uses `b`, which is the name the generated render gives its Builder — a binding or a value called `b` in markup would capture it, and `b.open(...)` would silently become a call on whatever you named. Rename it; `self.b` is fine, only a bare `b` is not")

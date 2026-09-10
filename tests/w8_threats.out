@@ -125,7 +125,7 @@ ok row7.control-anonymous-circuits-is-an-option
 ok row7.control-and-a-fresh-one-is-unchanged
 
 -- row 8: circuit id theft or fixation
-   NO CONTROL IN LATTE: PLAN.md says the id is rotated when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here
+   NO CONTROL IN LATTE: the id should rotate when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here
 ok row8.id-is-64-hex-characters
 ok row8.two-ids-differ
 ok row8.id-is-hex
@@ -210,7 +210,7 @@ ok row11.control-a-range-at-the-cap-is-accepted
 ok row11.a-negative-range-is-refused-at-the-decoder
 
 -- row 12: upload abuse
-   NO CONTROL IN LATTE: PLAN.md names a disk quota; latte's store keeps no total and std.fs cannot delete a file (BLOCKERS.md B13), so there is no quota to cross
+   NO CONTROL IN LATTE: a disk quota needs a running total and a real file to delete; latte's store keeps no total and is in-memory, so there is no quota to cross
 ok row12.control-a-body-inside-every-cap
 ok row12.a-part-over-the-part-cap
 ok row12.control-a-part-at-the-part-cap
@@ -248,7 +248,7 @@ ok row13.a-string-over-the-text-cap
 ok row13.control-a-string-at-the-text-cap
 
 -- row 14: DoS: flooding, render loops, retention
-   NO CONTROL IN LATTE: PLAN.md names a per-circuit rate limit; CircuitOptions has no rate and Circuit.accept counts no messages per unit time, so that clause has no case here
+   NO CONTROL IN LATTE: a per-circuit rate limit needs a message counter; CircuitOptions has no rate and Circuit.accept counts no messages per unit time, so that clause has no case here
 ok row14.control-the-clicks-landed-on-a-handler
 ok row14.a-client-that-never-acks-is-ended
 ok row14.and-the-reason-names-the-window
@@ -343,13 +343,13 @@ row 4 XSS through a raw-text element: covered (14 checks)
 row 5 XSS through an inline handler: covered (14 checks)
 row 6 CSRF on a form post: covered (29 checks)
 row 7 cross-site WebSocket hijacking: partial — the Origin and session comparisons are inside CircuitEndpoint.upgrade, which takes `move stream: net.TcpStream`; the socket half of this row is tests/w4_upgrade.b (7 checks)
-row 8 circuit id theft or fixation: partial — PLAN.md says the id is rotated when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here (15 checks)
+row 8 circuit id theft or fixation: partial — the id should rotate when privileges change; latte has no rotation and no spelling for a privilege change, so that clause has no case here (15 checks)
 row 9 authorization outliving its token: covered (29 checks)
 row 10 mass assignment: covered (16 checks)
 row 11 virtual range abuse: covered (16 checks)
-row 12 upload abuse: partial — PLAN.md names a disk quota; latte's store keeps no total and std.fs cannot delete a file (BLOCKERS.md B13), so there is no quota to cross (17 checks)
+row 12 upload abuse: partial — a disk quota needs a running total and a real file to delete; latte's store keeps no total and is in-memory, so there is no quota to cross (17 checks)
 row 13 compression amplification: covered (16 checks)
-row 14 DoS: flooding, render loops, retention: partial — PLAN.md names a per-circuit rate limit; CircuitOptions has no rate and Circuit.accept counts no messages per unit time, so that clause has no case here (27 checks)
+row 14 DoS: flooding, render loops, retention: partial — a per-circuit rate limit needs a message counter; CircuitOptions has no rate and Circuit.accept counts no messages per unit time, so that clause has no case here (27 checks)
 row 15 prototype pollution in the applier: covered (16 checks)
 row 16 open redirect and SSRF through navigation: covered (9 checks)
 row 17 information disclosure: covered (12 checks)

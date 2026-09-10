@@ -5,17 +5,11 @@
 // navigation, and reconnect with replay.
 //
 // **This file is NOT embedded into the Beans package, and there is no drift
-// check for a copy of it.** This comment used to say it was — embedded as a
-// constant by `examples/latte_js.b`, regenerated and diffed by a `js-embed`
-// leg in `test.sh` — and PLAN.md line 563 still says so. Neither the file nor
-// the leg has ever existed: `git log --all` finds no `latte_js` file on any
-// branch, and no `.b` file in this repo holds a copy of this one. A host
-// serves it from disk instead (`tests/_w8b_smoke_server.b` reads
-// `js/latte.js` and answers `/latte.js` with it). Nothing is stale, because
-// there is no second copy to go stale; what is missing is the packaging, and
-// closing it means a generator that writes this file into a Beans constant
-// plus a `test.sh` leg that regenerates and diffs it, the way the
-// `examples/markup` leg already does for `counter.bx`.
+// check for a copy of it.** A host serves it straight from disk instead
+// (`tests/_w8b_smoke_server.b` reads `js/latte.js` and answers `/latte.js`
+// with it). There is no second copy to go stale. Packaging this into a
+// generated Beans constant, with a `test.sh` leg that regenerates and diffs
+// it the way the `examples/markup` leg does for `counter.bx`, is still open.
 //
 // Three rules shape everything below, and none of them is a preference.
 //
@@ -34,9 +28,9 @@
 //      component id is built again — an element whose tag changed with a
 //      mount inside it, or an error boundary that failed and recovered around
 //      one — `build` returns the node already held for that id and `attach`
-//      MOVES its DOM. W1's reference applier rebuilt one instead and produced
-//      an empty node: the child's whole subtree gone, permanently, with
-//      nothing reported (LANES.md, "What W1 leaves for W5").
+//      MOVES its DOM. An applier that rebuilds one instead produces an empty
+//      node: the child's whole subtree gone, permanently, with nothing
+//      reported.
 //
 //   3. NO HANDLER ID IS EVER CACHED. Dispatch reads `node.binds` at the moment
 //      the event fires. Slot ids are never reused — after a boundary recovers,
@@ -44,8 +38,8 @@
 //      built at batch time and read at click time delivers a click to a
 //      component that has left the page.
 //
-// See lanes/W5.md § "THE APPLIER CONTRACT" for the kind rules and the exact
-// fault sentences, which are shared byte for byte with the Beans applier.
+// The kind rules and the exact fault sentences (see "the kind rules" below)
+// are shared byte for byte with the Beans reference applier in apply.b.
 (function (root, factory) {
     'use strict';
     var api = factory();
@@ -139,12 +133,12 @@
     //
     // Every map keyed by a string that came off the wire is null-prototype, so
     // a name like `__proto__` is an ordinary own property and can reach
-    // nothing. PLAN.md, "prototype pollution in the applier".
+    // nothing — this is what closes off prototype pollution through the applier.
     function bareMap() { return Object.create(null); }
 
     // Two names are refused as attribute names outright. Neither can do
     // anything through `setAttribute` — an attribute is not a property — but
-    // the plan names them and the cost of holding the line is two comparisons.
+    // the cost of holding the line anyway is two comparisons.
     function attributeNameIsRefused(name) {
         return name === '__proto__' || name === 'constructor';
     }
@@ -438,7 +432,7 @@
         // Where component 0's children live. Everything below it is latte's.
         this.host = options.host || null;
         // Whether the host has been taken over from whatever was in it. See
-        // `claim`, which is the whole of PLAN.md D5 on this side.
+        // `claim` below.
         this.claimed = false;
         this.roots = new Map();
         this.faults = [];
@@ -457,10 +451,11 @@
 
     // Take the host over, once, before the first batch is applied.
     //
-    // PLAN.md D5 is "replace on attach for v1", and this is the whole of it on
-    // this side. `shell.b` SERVER-RENDERS the page into the root element, so a
-    // browser paints it and a reader with no JavaScript still has a page; the
-    // first batch then carries that same page again as frames. Every node in
+    // This applier REPLACES what the server rendered rather than adopting it,
+    // and this is the whole of that on this side. `shell.b` SERVER-RENDERS the
+    // page into the root element, so a browser paints it and a reader with no
+    // JavaScript still has a page; the first batch then carries that same
+    // page again as frames. Every node in
     // this batch is a node this applier builds itself and inserts into the
     // host, and `anchorFor` answers null at the root, so without this the
     // client's copy is APPENDED and the document ends up holding both.
@@ -479,11 +474,10 @@
     //     `getElementById` and every `#id` selector on the page answer the
     //     dead copy.
     //
-    // Adopting the prerendered DOM instead of rebuilding it is the other
-    // answer to the same question, and PLAN.md D5 weighs the two and takes
-    // this one: hydration by adoption is listed under "Not in v1". Replacing
-    // is what the batch already supports, with no second code path that has to
-    // agree with the first about what the server rendered.
+    // Adopting the prerendered DOM instead of replacing it is the other
+    // answer to the same question — hydration by adoption is not implemented.
+    // Replacing is what the batch already supports, with no second code path
+    // that has to agree with the first about what the server rendered.
     //
     // NOT in `shell.b`. A shell that served an empty root would make this
     // impossible to get wrong, and would also throw away first paint, the
@@ -784,8 +778,8 @@
 
     // ---- the kind rules ----------------------------------------------------
     //
-    // lanes/W5.md § "THE APPLIER CONTRACT". Both appliers refuse a
-    // kind-mismatched edit and refuse it identically: the edit is DROPPED, one
+    // This applier and the Beans reference applier in apply.b refuse a
+    // kind-mismatched edit identically: the edit is DROPPED, one
     // fault is recorded, the rest of the stream applies, and the circuit does
     // NOT end.
     //
@@ -1415,7 +1409,7 @@
 
     // ------------------------------------------------------------ the fence
     //
-    // BLOCKERS.md B11. Every server frame v1 had was a statement about the
+    // Every server frame wire v1 had was a statement about the
     // PAGE — `hello`, `batch`, `err`, `bye`, `js`, `nav` — and none of them
     // said "I received your message and it changed nothing". So a click on a
     // button whose row had already left the page produced no frame at all, and
@@ -1915,10 +1909,10 @@
     // that the chunk before it is whole. Nothing here ever looks at a chunk
     // that has no seal.
     //
-    // The observer is a MutationObserver and NOT an inline script for the
-    // reason PLAN.md gives: the shell ships `script-src 'self'` with no
-    // `unsafe-inline`, and a streaming mechanism that needed a weaker rule than
-    // the product would not be the product.
+    // The observer is a MutationObserver and NOT an inline script because the
+    // shell ships `script-src 'self'` with no `unsafe-inline`, and a streaming
+    // mechanism that needed a weaker rule than the product would not be the
+    // product.
 
     var SLOT_TAG = 'latte-slot';
     var CHUNK_TAG = 'latte-chunk';
@@ -2249,9 +2243,9 @@
 
     // -------------------------------------------------------------- uploads
     //
-    // upload.b's browser half. PLAN.md: "Inside a circuit an upload is still an
-    // HTTP POST, not a socket message. `latte.js` posts the file and reports
-    // progress over the circuit."
+    // upload.b's browser half: inside a circuit, an upload is still an HTTP
+    // POST, not a socket message. `latte.js` posts the file and reports
+    // progress over the circuit.
     //
     // The POST is here and it is real. THE REPORT IS NOT SENT, and that is a
     // boundary and not an oversight: wire v1 has seven client message kinds —
@@ -2261,8 +2255,10 @@
     // that invented a `progress` message would end its own circuit on the
     // first byte of the first upload. So progress goes to a sink the page
     // supplies, the numbers are clamped exactly as `UploadProgress` clamps
-    // them, and `lanes/W6.md` carries what wire.b and circuit.b would have to
-    // grow for the sink to be the circuit.
+    // them. Making the sink the circuit itself needs two things upstream that
+    // do not exist yet: a `progress` kind in `wire.b`'s `decode_body` (reading
+    // a component id, bytes sent, bytes total) and a dispatch arm in
+    // `circuit.b` that looks the component up and calls `apply_progress`.
 
     /// `UploadProgress`, on this side. Same clamps, same percentage.
     function Progress() {

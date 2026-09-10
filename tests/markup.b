@@ -677,8 +677,8 @@ fn main() {
     suite.drift("tests/w2cases/equiv.bx", "tests/w2_equiv.b", "latte")
 
     io.println("======== gate 4, the text half ========")
-    io.println("probes/p8_builder/pages/counter_gen.b was hand-written by W0 from")
-    io.println("PLAN.md's worked example, before the emitter existed.")
+    io.println("probes/p8_builder/pages/counter_gen.b is the reference copy of the worked")
+    io.println("example. latte-bx's fresh output from the matching .bx source must agree with it.")
     suite.compare_meanings("counter", "probes/p8_builder/pages/counter_gen.b",
                      "probes/p8_builder/pages/counter.bx", "p8_builder.core")
     suite.compare_meanings("hint", "probes/p8_builder/pages/hint_gen.b",

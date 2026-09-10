@@ -321,8 +321,8 @@ fn walk(r: Renderer) {
     io.println("")
     io.println("== clicking the third item ==")
     let third: int = item_handler(r, 2)
-    // The `new` is on its own line because `new <a named import>()` inside a
-    // string interpolation does not compile — BLOCKERS.md B9.
+    // The `new` is on its own line, and the interpolation below just reads
+    // the variable — clearer than constructing an object inside `"{ }"`.
     let click: MouseEvent = new MouseEvent()
     io.println("the click found its handler: {r.fire_mouse(third, click)}")
     // The page, the card and the one item whose `done` changed. The other

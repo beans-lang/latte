@@ -288,7 +288,7 @@ pub class Parser {
         // substring of it: `tag` itself can never contain a `<`, so a check
         // like `tag.contains("<")` would never fire here.
         if component && self.peek() == 60 {
-            self.report(at, "a closed generic component tag is not supported — reflection cannot construct {tag}<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends {tag}<Order>")
+            self.report(at, "a closed generic component tag is not supported — reflection has no zero-argument initializer for a closed generic, on either backend, so latte cannot activate {tag}<...> through markup. Wrap it in a non-generic component, as in a Rows class that extends {tag}<Order>")
             self.skip_past(62)
             return none
         }

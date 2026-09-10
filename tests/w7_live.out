@@ -12,7 +12,7 @@ ok 1.7 and no agreement
 ok 1.8 an endpoint with compress off declines the offer
 ok 1.9 and no agreement
 
--- 2. B11: a message that changed nothing is answered
+-- 2. a message that changed nothing is answered
 ok 2.1 attached
 ok 2.2 batch 1 is the page
 ok 2.3 an event on a slot the page does not have goes out

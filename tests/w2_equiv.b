@@ -13,8 +13,8 @@ import {Builder, Callback, Component, FocusEvent, InputEvent, KeyboardEvent, Mou
 
 //          
 
-// PLAN.md gate 4, second half: **a hand-written builder and a generated
-// builder must produce identical frames.**
+// A hand-written builder and a generated builder must produce identical
+// frames.
 //
 // This file is the input AND the suite. `tests/w2_equiv.b` is generated from
 // it by latte-bx and checked in, `tests/markup.b` regenerates it and fails on
@@ -24,10 +24,10 @@ import {Builder, Callback, Component, FocusEvent, InputEvent, KeyboardEvent, Mou
 // fold switch say the same thing, and that the generated file on disk is not
 // stale.
 //
-// `EquivHand` below is the twin. It was written from `probes/BUILDER.md`'s
-// rules — source order from 0, disjoint ranges for branch arms, a region and a
-// fragment restarting at 0 — BEFORE the generator was run against it, which is
-// the only way the comparison means anything.
+// `EquivHand` below is the twin. It was written by the same rules the
+// generator follows — source order from 0, disjoint ranges for branch arms, a
+// region and a fragment restarting at 0 — BEFORE the generator was run
+// against it, which is the only way the comparison means anything.
 
 import std.io
 import {Serializer} from latte
@@ -103,9 +103,8 @@ pub class EquivHand extends Component {
         b.open(0, "section")
         b.attr(1, "class", "counter")
 
-        // Literal text and the expression beside it are ONE frame: PLAN.md's
-        // wire example is `["ut",3,"Count: 4"]`, one text edit for the whole
-        // string.
+        // Literal text and the expression beside it are ONE frame: the wire
+        // carries `["ut",3,"Count: 4"]`, one text edit for the whole string.
         b.open(2, "h2")
         b.text(3, "Count: {self.state.count}")
         b.close()
@@ -302,7 +301,7 @@ fn main() {
 
     // ---- ref={ } on a component tag --------------------------------------
     //
-    // `probes/BUILDER.md`, "ref on a component tag is an assignment": there is
+    // `ref` on a component tag is an assignment, not a builder call: there is
     // no `b.reference(...)` here, because every attribute-position call needs
     // `in_attributes` and a component tag opens no element. The setup closure
     // assigns instead. Three things are asserted, and only the first is the
@@ -357,77 +356,77 @@ fn _latte_component_equiv_Hint(value: Hint) -> Component { return value }
 
 partial class Equiv {
     pub override fn render(b: Builder) {
-        b.open(0, "section")  // equiv.bx:340
+        b.open(0, "section")  // equiv.bx:339
         b.attr(1, "class", "counter")
-        b.open(2, "h2")  // equiv.bx:341
+        b.open(2, "h2")  // equiv.bx:340
         b.text(3, "Count: {self.state.count}")
         b.close()
-        if b.fold { b.constant(4, "<p class=\"muted\">a fixed line</p>") }  // equiv.bx:342
+        if b.fold { b.constant(4, "<p class=\"muted\">a fixed line</p>") }  // equiv.bx:341
         else {
-            b.open(4, "p")  // equiv.bx:342
+            b.open(4, "p")  // equiv.bx:341
             b.attr(5, "class", "muted")
             b.text(6, "a fixed line")
             b.close()
         }
-        b.open(7, "button")  // equiv.bx:343
+        b.open(7, "button")  // equiv.bx:342
         b.on_click(8, fn(e: MouseEvent) { self.state.count += 1 })
         b.text(9, "Add one")
         b.close()
-        b.open(10, "input")  // equiv.bx:344
+        b.open(10, "input")  // equiv.bx:343
         b.attr(11, "value", "{self.state.note}")
         b.on_input(12, fn(e: InputEvent) { self.state.note = e.value })
         b.attr(13, "placeholder", "A note")
         b.close()
-        if self.state.count > 2 {  // equiv.bx:345
-            b.open(14, "p")  // equiv.bx:346
+        if self.state.count > 2 {  // equiv.bx:344
+            b.open(14, "p")  // equiv.bx:345
             b.attr(15, "class", "warn")
             b.text(16, "That is a lot, {self.state.note}")
             b.close()
-        } else {  // equiv.bx:347
-            b.component<Hint>(17, fn(_latte_c: Hint) {  // equiv.bx:348
+        } else {  // equiv.bx:346
+            b.component<Hint>(17, fn(_latte_c: Hint) {  // equiv.bx:347
                 _latte_c.label = "Keep going"
                 _latte_c.body = fn(_latte_inner: Builder) {
-                    if _latte_inner.fold { _latte_inner.constant(0, "<em>child content</em>") }  // equiv.bx:349
+                    if _latte_inner.fold { _latte_inner.constant(0, "<em>child content</em>") }  // equiv.bx:348
                     else {
-                        _latte_inner.open(0, "em")  // equiv.bx:349
+                        _latte_inner.open(0, "em")  // equiv.bx:348
                         _latte_inner.text(1, "child content")
                         _latte_inner.close()
                     }
                 }
                 _latte_c.extra = fn(_latte_inner: Builder, n: int) {
-                    _latte_inner.open(0, "b")  // equiv.bx:350
+                    _latte_inner.open(0, "b")  // equiv.bx:349
                     _latte_inner.text(1, "extra {n}")
                     _latte_inner.close()
                 }
                 self.hint = some(_latte_c)
             })
         }
-        b.open(18, "ul")  // equiv.bx:353
-        for row: Row in self.state.rows {  // equiv.bx:354
+        b.open(18, "ul")  // equiv.bx:352
+        for row: Row in self.state.rows {  // equiv.bx:353
             b.region(19, "{row.id}")
-            b.open(0, "li")  // equiv.bx:355
+            b.open(0, "li")  // equiv.bx:354
             b.text(1, "{row.title}")
             b.close()
             b.end_region()
         }
         b.close()
-        b.open(20, "ol")  // equiv.bx:358
+        b.open(20, "ol")  // equiv.bx:357
         var _latte_row_0: int = 0
-        for tag: string in self.state.tags {  // equiv.bx:359
+        for tag: string in self.state.tags {  // equiv.bx:358
             b.region(21, "{_latte_row_0}")
-            b.open(0, "li")  // equiv.bx:360
+            b.open(0, "li")  // equiv.bx:359
             b.text(1, "{tag}")
             b.close()
             b.end_region()
             _latte_row_0 += 1
         }
         b.close()
-        b.open(22, "div")  // equiv.bx:363
+        b.open(22, "div")  // equiv.bx:362
         b.attrs(23, self.state.extra)
         b.attr(24, "class", "base")
         b.text(25, "splat")
         b.close()
-        b.open(26, "div")  // equiv.bx:364
+        b.open(26, "div")  // equiv.bx:363
         b.preserve(27)
         if b.fold { b.constant(28, "<span>owned</span>") }
         else {
@@ -436,12 +435,12 @@ partial class Equiv {
             b.close()
         }
         b.close()
-        b.open(30, "div")  // equiv.bx:365
+        b.open(30, "div")  // equiv.bx:364
         b.raw(31, self.state.rendered)
         b.close()
-        if b.fold { b.constant(32, "<footer class=\"c\"><small>fixed</small></footer>") }  // equiv.bx:366
+        if b.fold { b.constant(32, "<footer class=\"c\"><small>fixed</small></footer>") }  // equiv.bx:365
         else {
-            b.open(32, "footer")  // equiv.bx:366
+            b.open(32, "footer")  // equiv.bx:365
             b.attr(33, "class", "c")
             b.open(34, "small")
             b.text(35, "fixed")

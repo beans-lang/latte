@@ -157,7 +157,8 @@ pub class HiddenField {
     pub fn init() {}
 }
 
-// § 6.9 — what BLOCKERS.md B1a used to cost, kept as a POSITIVE case:
+// § 6.9 — the reflective-write divergence this used to cost, kept as a
+// POSITIVE case:
 //
 //   Base        non-generic, declares `plain`     -> binds
 //   Rows<T>     generic, declares `caption`       -> binds, since beans 0.1.41

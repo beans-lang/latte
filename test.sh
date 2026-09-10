@@ -138,14 +138,14 @@ run_wasm_leg() {
         echo "ok wasm-core/check — the core needs no OS capability"
     else
         echo "--- wasm-core FAILED: the core no longer checks without an OS ---" >&2
-        echo "    something under the module root grew an OS-bound import. See PLAN.md, D4." >&2
+        echo "    something under the module root grew an OS-bound import." >&2
         cat "$tmp/wasm.log" >&2
         failed=1
         return 0
     fi
 
     # The negative control. Without it this leg goes green the day the refusal
-    # stops working, and then it is green forever (RULES.md 5).
+    # stops working, and then it is green forever.
     if [[ ! -f "$negative" ]]; then
         echo "--- wasm-core FAILED: tests/_wasm_negative.b is missing ---" >&2
         echo "    the leg cannot tell a working refusal from a broken one without it." >&2
@@ -233,11 +233,10 @@ run_wasm_leg() {
 # The good one must check CLEAN; the bad one must fail with the upcast error and
 # with no other error. A leg holding only the bad half goes green the day
 # `latte-bx build` breaks for an unrelated reason — a generator that refuses
-# everything makes "it did not check" read as success. RULES.md, "The refusal
-# that never runs".
+# everything makes "it did not check" read as success.
 #
 # Nothing here SKIPs. A missing fixture is a failure, not a shrug: a leg that
-# skips on a missing input dies silently the day the layout moves (RULES.md 5).
+# skips on a missing input dies silently the day the layout moves.
 run_component_type_leg() {
     local missing=0
     local half
@@ -247,8 +246,7 @@ run_component_type_leg() {
         missing=1
     done
     if [[ $missing -ne 0 ]]; then
-        echo "    the leg needs both halves; with one it proves nothing. See RULES.md," >&2
-        echo "    \"The refusal that never runs\"." >&2
+        echo "    the leg needs both halves; with one it proves nothing." >&2
         failed=1
         return 0
     fi
@@ -256,7 +254,8 @@ run_component_type_leg() {
     # The tree interpreter always generates. The native binary generates too
     # unless --interp, and then the two outputs must be byte-identical: without
     # that, the check below is reading whichever backend this run happened to
-    # use, and RULES.md 3 is the rule most bugs in this workspace have broken.
+    # use — and most real bugs in this workspace turn out to be one backend
+    # disagreeing with the other.
     local how="the tree interpreter"
     if [[ $native -eq 1 ]]; then
         # The real binary, built and run. The `examples` block above only
@@ -301,7 +300,7 @@ run_component_type_leg() {
             fi
             if ! cmp -s "$tmp/component_$half.interp.b" "$tmp/component_$half.native.b"; then
                 echo "--- component-type FAILED: the backends generate different Beans for component_$half.bx ---" >&2
-                echo "    that is a compiler fault until proven otherwise. See RULES.md 3." >&2
+                echo "    that is a compiler fault until proven otherwise." >&2
                 diff -u "$tmp/component_$half.interp.b" "$tmp/component_$half.native.b" >&2 || true
                 failed=1
                 rm -f "${W2_COMPONENT_STAGED[@]}"
@@ -407,7 +406,7 @@ run_component_type_leg() {
 #
 #   * A missing `.out` is a FAILURE, not a skip. A gate that skips on a
 #     missing input dies silently the day the layout moves and is green for
-#     ever after (RULES.md 5) — and "just don't write the golden" is the
+#     ever after — and "just don't write the golden" is the
 #     cheapest way to get there.
 #   * Goldens that are EMPTY on both streams are a FAILURE. That is the other
 #     cheap way — `touch examples/foo.out` — and an example that prints
@@ -415,7 +414,7 @@ run_component_type_leg() {
 #
 # **The summary names every entry and its golden's size**, so "3 examples ran"
 # can never be read the same as "3 examples ran and one of them asserted
-# nothing". RULES.md, "A green count can mean two different things".
+# nothing".
 #
 # Both legs are diffed against the GOLDEN, never against each other. Two
 # backends agreeing on the wrong answer is the failure a golden exists for,
@@ -698,7 +697,7 @@ run_examples_leg() {
             echo "--- examples FAILED: $rel has no golden ($(basename "$want_out")) ---" >&2
             echo "    Every example is RUN, on both backends, and diffed against its" >&2
             echo "    golden. A missing golden is a failure and not a skip: a gate that" >&2
-            echo "    skips on a missing input is green for ever after (RULES.md 5), and" >&2
+            echo "    skips on a missing input is green for ever after, and" >&2
             echo "    not writing the golden is the cheapest way to get there." >&2
             echo "    Write it:   (cd \"$ROOT\" && beansc run $rel [args]) > ${want_out#"$ROOT"/}" >&2
             echo "    and READ it before committing — a golden nobody read is a" >&2
@@ -778,7 +777,7 @@ run_examples_leg() {
                 if ! cmp -s "$tmp/ex_$slug.interp.out" "$tmp/ex_$slug.native.out" || \
                    ! cmp -s "$tmp/ex_$slug.interp.err" "$tmp/ex_$slug.native.err"; then
                     echo "--- examples FAILED: $rel prints different bytes on the two backends ---" >&2
-                    echo "    That is a compiler fault until proven otherwise. See RULES.md 3." >&2
+                    echo "    That is a compiler fault until proven otherwise." >&2
                     diff -u "$tmp/ex_$slug.interp.out" "$tmp/ex_$slug.native.out" >&2 || true
                     diff -u "$tmp/ex_$slug.interp.err" "$tmp/ex_$slug.native.err" >&2 || true
                     entry_bad=1
@@ -866,9 +865,9 @@ run_examples_leg
 # none of them can see is its source file growing one MORE, because a refusal
 # nothing feeds raises nothing and is counted by nobody. So this compares the
 # two numbers, per file, and it is the whole reason a new refusal cannot be
-# added and quietly go untested — the failure mode RULES.md calls "the refusal
-# that never runs", which in this repo has already produced one control that
-# could not fire and one that never ran.
+# added and quietly go untested — this repo has already shipped one control
+# that could not fire and one refusal that never ran, and neither was visible
+# until someone went looking.
 #
 # Nothing here SKIPs. Every input is a file in this repo; if one is missing or
 # shaped differently, the audit has moved and that is a failure, not a shrug.
@@ -1069,15 +1068,15 @@ run_refusal_coverage_leg() {
     refusal_coverage_pending circuit.b 4
     refusal_coverage_sweep
     # One line, and only when every file passed. A partial "ok … all 42" printed
-    # beside a FAILED line for a seventh file is exactly the shape RULES.md
-    # calls out under "a green count can mean two different things": a reader
-    # grepping for `ok refusal-coverage` would find one either way.
+    # beside a FAILED line for a seventh file would let a reader grepping for
+    # `ok refusal-coverage` find one either way — the count alone cannot tell a
+    # real pass from a partial one.
     #
     # It says all FOUR states for the same reason. "ok refusal-coverage" on its
     # own reads identically whether a file is audited, deliberately empty,
     # recorded but unaudited, or merely swept.
     if [[ $uncovered -eq 0 ]]; then
-        echo "ok refusal-coverage — $covered report sites in$audited have a case and a control;$empties deliberately have none;$pendings hold $pending that are recorded and NOT audited (lanes/W1.md); $swept other .b file(s) swept and confirmed empty"
+        echo "ok refusal-coverage — $covered report sites in$audited have a case and a control;$empties deliberately have none;$pendings hold $pending that are recorded and NOT audited; $swept other .b file(s) swept and confirmed empty"
     else
         echo "--- refusal-coverage FAILED: $uncovered source file(s) are not covered ---" >&2
     fi
@@ -1094,12 +1093,11 @@ run_refusal_coverage_leg
 
 # Every recorded refusal in probes/*_bad/, re-checked against today's compiler.
 #
-# This existed as a hand-run script for three lanes and `test.sh` never called
-# it, which is the exact shape RULES.md refuses: a guard that only runs when
-# someone remembers is a guard that reports nothing the day it matters. A
-# probe's answer is half "this works" and half "this is refused, and here is
-# the message" — the second half rots silently when a compiler starts accepting
-# a shape the design was built around.
+# A guard that only runs when someone remembers to run it by hand reports
+# nothing the day it matters, so this gate calls it every run. A probe's
+# answer is half "this works" and half "this is refused, and here is the
+# message" — the second half rots silently when a compiler starts accepting a
+# shape the design was built around.
 #
 # The count is pinned here on purpose. check_refusals.sh finds probes by shape,
 # so it stays green after a `*_bad/` directory is deleted — it would simply
@@ -1107,7 +1105,7 @@ run_refusal_coverage_leg
 # someone has to write down here, not something a `rm -rf` does quietly.
 #
 # 3 -> 2 on 2026-09-09: `p13_interpolation_bad` was retired. Every refusal it
-# recorded now COMPILES, because beans #164 (BLOCKERS.md B8/B9/B10) taught a
+# recorded now COMPILES, because beans #164 taught a
 # string interpolation to resolve a type name with the file's imports. The
 # probe is not deleted — it is `probes/p13_interpolation_fixed/` and both
 # backends print the same four correct lines — it just has no refusal left to
@@ -1156,10 +1154,9 @@ run_recorded_refusals_leg
 #
 # Chrome absent is a SKIP and it says so on its own line, because a machine
 # without Chrome is a real thing. Chrome PRESENT and anything else wrong is a
-# FAILURE — an empty extraction, a fixture that will not generate, a diff. The
-# distinction is the one RULES.md draws under "a green count can mean two
-# different things", and it is why the verdict is diffed whole rather than
-# grepped for a count: the golden's last line is "338 checks, 0 bad", so a
+# FAILURE — an empty extraction, a fixture that will not generate, a diff.
+# That distinction is why the verdict is diffed whole rather than grepped for
+# a count: the golden's last line is "338 checks, 0 bad", so a
 # harness that silently ran nine of them fails on the body long before the
 # count line.
 find_chrome() {
@@ -1405,7 +1402,7 @@ for case in "$ROOT"/tests/*.b; do
     else
         echo "--- $name: NATIVE output differs from the golden ---" >&2
         echo "    the two backends disagree; that is a compiler fault until" >&2
-        echo "    proven otherwise. See RULES.md." >&2
+        echo "    proven otherwise." >&2
         failed=1
     fi
 done
@@ -1423,15 +1420,14 @@ if [[ $failed -ne 0 ]]; then
 fi
 
 # Say what was skipped. A gate that skips on a missing input dies silently
-# when the layout moves, and then everything is green forever (RULES.md 5).
+# when the layout moves, and then everything is green forever.
 note=""
 [[ $skipped -gt 0 ]] && note=" — $skipped leg(s) SKIPPED, read the SKIP lines above"
 if [[ $suites -eq 0 && $examples_ran -gt 0 ]]; then
     # `--examples`, or a name that matched an example and no suite. This used to
     # fall into the line below and answer "the tree is scaffolding" — a message
     # written when latte had no suites at all, which now reads like a pass over
-    # a gate that ran none of it. Say what actually ran (RULES.md, "a green
-    # count can mean two different things").
+    # a gate that ran none of it. Say what actually ran.
     echo "ok latte — $examples_ran example(s) on both backends; no suite was selected${note}"
 elif [[ $suites -eq 0 ]]; then
     echo "latte: no suites yet — the tree is scaffolding${note}"

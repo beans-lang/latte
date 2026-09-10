@@ -141,7 +141,7 @@ pub class Renderer extends DirtySink {
 
     /// The component itself, recovered from the `reflect.Value` its activation
     /// produced — never re-boxed from a `Component` binding, which would lose
-    /// the concrete type (BLOCKERS.md B6).
+    /// the concrete type.
     pub fn component(id: int) -> Option<Component> {
         match self.mounts.get(id) {
             some(mount) => {
@@ -260,8 +260,7 @@ pub class Renderer extends DirtySink {
         // attaches view-models and fills `@inject` fields has to happen here
         // too, or a page's own signals would be the only ones nobody owned.
         //
-        // `reflect.value` boxes the RUNTIME type, not the binding's static one
-        // — that was BLOCKERS.md B6 and beans #163 fixed it, and
+        // `reflect.value` boxes the RUNTIME type, not the binding's static one;
         // `probes/p_boxed_type` re-checks it on both backends. Without that
         // this would see `Component` and find none of the page's own fields.
         let boxed: reflect.Value = reflect.value(component)

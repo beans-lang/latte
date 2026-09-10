@@ -13,8 +13,8 @@
 // is metadata, never a path.
 //
 // `apply_progress` exists so a circuit could report client-side send
-// progress, but wire v1 has no message kind that carries it yet
-// (BLOCKERS.md B14): nothing calls `apply_progress` outside a test today.
+// progress, but wire v1 has no message kind that carries it yet: nothing
+// calls `apply_progress` outside a test today.
 //
 // This file stays free of I/O so the module root keeps building for wasm;
 // the two halves meet in `latte.uploads`, which may import espresso but,

@@ -7,7 +7,7 @@ ok 1.5 no 'unsafe-eval'
 ok 1.6 and framing is refused outright
 
 -- 2. espresso's security_headers, run and read
-ok 2.1 espresso still sends what PLAN.md found
+ok 2.1 espresso still sends the policy we measured
 ok 2.2 it names no script source at all
 ok 2.3 and no connect source
 ok 2.4 so every fetch falls back to a default that refuses everything

@@ -418,7 +418,7 @@ ok with the dead component's own id
 ok the row came back
 ok with an id that is not the dead one
 ok no faults
-== 14 an imported base, and B8
+== 14 an imported base, and the mount path ==
    type_of(Component).qualified_name() = latte.Component
    type_of(Plain).qualified_name()     = latte$entry.Plain
    is_assignable_from                  = true

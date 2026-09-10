@@ -221,9 +221,9 @@ pub class Callback<T> {
 
     /// `new Callback<int>(self, fn(id: int) { self.select(id) })`.
     ///
-    /// NOT a static factory. A `static fn` on a generic class can never bind
-    /// the class's type parameter (BLOCKERS.md B5), and a static taking a
-    /// `fn(T)` cannot be emitted natively either (B3).
+    /// A constructor rather than a static factory: `new Callback<T>(owner,
+    /// handler)` infers `T` from the declared type at the call site, so a
+    /// caller never has to spell it out.
     pub fn init(owner: Component, handler: fn(T)) {
         self.owner = some(owner)
         self.handler = handler
@@ -466,8 +466,9 @@ pub class Registry {
     /// `Signal<T>` is generic and cannot be downcast to, but `Cell` — the half
     /// that holds the subscribers and the owner link — is not. So the signal is
     /// read reflectively, its `cell` is read out of it, and THAT downcasts.
-    /// `probes/p_signal_own` runs this shape on both backends; it is
-    /// BLOCKERS.md B1a's exact case, and it only works on 0.1.41 or newer.
+    /// `probes/p_signal_own` runs this shape on both backends; a reflective
+    /// write to a field declared on a generic type only agrees between the
+    /// two backends on beans 0.1.41 or newer.
     fn own_signal(field: reflect.Field, receiver: reflect.Value,
                   owner: Component) -> string {
         match field.get(receiver.copy()) {
@@ -729,9 +730,8 @@ pub class Builder {
 
     /// Mounted children, keyed by SLOT id, held as the `reflect.Value` the
     /// activation produced and never as `Component`: `reflect.value(x)` boxes
-    /// the STATIC type of `x` (BLOCKERS.md B6), so a child stored as a
-    /// `Component` and re-boxed comes back as a `Component` Value and `as? T`
-    /// answers `none`.
+    /// the STATIC type of `x`, so a child stored as a `Component` and re-boxed
+    /// comes back as a `Component` Value and `as? T` answers `none`.
     pub children: Map<int, reflect.Value> = {}
 
     /// One frame buffer per mounted child, same slot key. A child is a LEAF in
@@ -1037,9 +1037,8 @@ pub class Builder {
     /// A live expression that recorded no signal is a fault, and it is the
     /// only new refusal this tier needs. Without it, `live` on a subtree with
     /// no signal in it — or a signal whose `own(self)` was forgotten — renders
-    /// once, correctly, and then never moves again, and nothing anywhere says
-    /// so. That is the exact failure RULES.md calls the fallback happy path,
-    /// and it would be invisible in a green run.
+    /// once, correctly, and then never moves again, silently: a green run
+    /// would look identical to one that actually stays live.
     pub fn live_text(seq: int, body: fn() -> string) {
         self.note_sibling(seq, false)
         let binding: LiveBinding = new LiveBinding(
@@ -1149,10 +1148,6 @@ pub class Builder {
     }
 
     // ---- children ---------------------------------------------------------
-    //
-    // `component<T>` MUST be a method. A free generic function or a static with
-    // a `fn(T)` parameter type-checks, runs under `beansc run`, and cannot be
-    // built natively — BLOCKERS.md B3.
 
     pub fn component<T>(seq: int, setup: fn(T)) {
         let slot: int = self.open_slot(seq)
@@ -1163,21 +1158,17 @@ pub class Builder {
     /// The same mount, from a factory closure the markup compiler emits
     /// instead of a reflective activation.
     ///
-    /// It exists because reflection cannot construct every component and the
-    /// way it fails is silent. A **closed generic** has no initializer
-    /// descriptor at all (B1); a **non-generic subclass of a closed generic**
-    /// has one that constructs under `beansc run` and answers `unsupported`
-    /// natively (B7) — a page that works all through the edit loop and breaks
-    /// when someone ships it. `make` is `fn() -> Grid<Order> { return new
-    /// Grid<Order>() }` in the generated file, where the type is written out
-    /// and no reflection is involved in building it.
+    /// It exists because reflection cannot construct every component: a
+    /// **closed generic** has no initializer descriptor at all, on either
+    /// backend, so `type_of(Grid<int>).initializer()` is always `none`.
+    /// `make` is `fn() -> Grid<Order> { return new Grid<Order>() }` in the
+    /// generated file, where the type is written out and no reflection is
+    /// involved in building it.
     ///
-    /// An INSTANCE method, like `component<T>`: a free generic function or a
-    /// `static fn` taking a `fn(T)` type-checks, runs under `beansc run`, and
-    /// cannot be built natively (B3). `probes/p10_factory_mount` runs this
-    /// whole shape — including `as? T` back to a closed generic — on both
-    /// backends, with a control that reproduces B7's split so a green run
-    /// cannot be one that never reached the hazard.
+    /// `component_made` is an instance method for the same reason
+    /// `component` is: it reads and writes `self`. `probes/p10_factory_mount`
+    /// runs this whole shape — including `as? T` back to a closed generic —
+    /// on both backends.
     pub fn component_made<T>(seq: int, make: fn() -> T, setup: fn(T)) {
         let slot: int = self.open_slot(seq)
         if !self.children.contains_key(slot) { self.mount_made<T>(slot, make) }
@@ -1281,8 +1272,9 @@ pub class Builder {
     }
 
     // First render at this slot, from a factory. Nothing reflective builds the
-    // object; `reflect.value` still boxes it, and it boxes the STATIC type `T`
-    // (B6) — which here IS the concrete one, because the caller wrote it out.
+    // object; `reflect.value` still boxes it, and it boxes the type `T` the
+    // factory returns — which here IS the concrete one, because the caller
+    // wrote it out.
     fn mount_made<T>(slot: int, make: fn() -> T) {
         let fresh: T = make()
         let boxed: reflect.Value = reflect.value(fresh)

@@ -10,10 +10,9 @@
 // posting the same body.** That is not decoration: a token check that never ran
 // would pass every "refused" case in this file by refusing for some other
 // reason, and the only thing that can tell those two apart is a request that
-// must be *accepted* going through the same code. RULES.md, "the refusal
-// that never runs" — a live refusal can stand behind a coarser rule that
-// swallows every input before it, so it looks correct and never actually
-// runs.
+// must be *accepted* going through the same code. A live refusal can stand
+// behind a coarser rule that swallows every input before it, so it looks
+// correct and never actually runs.
 //
 // **What makes this byte-deterministic.** The session id is 256 random bits, so
 // it is never printed: what is printed is its shape and the answers to

@@ -34,11 +34,11 @@
 //     The numbers are printed, so a framework that re-rendered the world would
 //     fail this file instead of passing it.
 //
-// **The one trap a consumer has to know**, and the reason this file never
-// writes `type_of(Component)` inside a string: a type name written inside a
-// `"{ }"` interpolation is resolved without this file's named imports, and
-// answers a package name that does not exist — BLOCKERS.md **B10**. Bind it to
-// a `let` first, as `identity()` below does, and it is right.
+// The reason this file never writes `type_of(Component)` inside a string: a
+// type name written inside a `"{ }"` interpolation used to resolve without
+// the file's named imports and answer a package name that did not exist.
+// Fixed in beans 0.1.41 (#164) — `identity()` below still binds it to a
+// `let` first, which reads clearly either way.
 package main
 
 import std.io
@@ -158,9 +158,9 @@ pub class Storefront extends Component {
 /// is correct.
 ///
 /// `type_of(Component)` bound to a `let` and interpolated afterwards answers
-/// `latte.Component`. Written inline inside the quotes it answers
-/// `shop.Component`, a type that does not exist, and every check built on it
-/// reads false. BLOCKERS.md **B10**; `tests/pages.b` § 10 gates the split.
+/// `latte.Component`. Beans 0.1.41 fixed the bug that used to make the
+/// inline spelling answer `shop.Component` instead — a type that does not
+/// exist; `tests/pages.b` § 10 gates it.
 fn identity() {
     let base: reflect.Type = type_of(Component)
     let name: string = base.qualified_name()
@@ -202,10 +202,7 @@ fn limb(r: Renderer, id: int, depth: int) {
 
 /// A component's own name, by downcast.
 ///
-/// `reflect.value(component).type().name()` cannot do this: `reflect.value`
-/// boxes the STATIC type of its argument (BLOCKERS.md **B6**), and the static
-/// type here is `Component`, so every row would read "Component". An `as?`
-/// goes through the inheritance chain instead, and three of the four types it
+/// `as?` goes through the inheritance chain, and three of the four types it
 /// tries live in another module — which is the cross-module downcast latte's
 /// own mount path depends on, exercised from a consumer.
 fn name_of(component: Component) -> string {

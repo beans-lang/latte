@@ -82,21 +82,21 @@ accepted: no, o, ono-like names that do not begin on
 ======== a closed generic component tag ========
 refused: <Grid<int>>
   | <Grid<int>>x</Grid>
-  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection cannot construct Grid<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
+  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection has no zero-argument initializer for a closed generic, on either backend, so latte cannot activate Grid<...> through markup. Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
   refusal.bx:5:13: error: a closing tag with nothing open — remove it, or add the opening tag it closes
 refused: <Grid<T>> — a type parameter reads the same way
   | <Grid<T>>x</Grid>
-  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection cannot construct Grid<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
+  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection has no zero-argument initializer for a closed generic, on either backend, so latte cannot activate Grid<...> through markup. Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
   refusal.bx:5:11: error: a closing tag with nothing open — remove it, or add the opening tag it closes
 refused: a dotted component, self-closing
   | <ui.Table<Order> />
-  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection cannot construct ui.Table<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends ui.Table<Order>
+  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection has no zero-argument initializer for a closed generic, on either backend, so latte cannot activate ui.Table<...> through markup. Wrap it in a non-generic component, as in a Rows class that extends ui.Table<Order>
 refused: <Grid<int> /> self-closing
   | <Grid<int> />
-  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection cannot construct Grid<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
+  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection has no zero-argument initializer for a closed generic, on either backend, so latte cannot activate Grid<...> through markup. Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
 refused: nested angles
   | <Grid<Map<string, int>> />
-  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection cannot construct Grid<...> and the two backends disagree about reading its fields (BLOCKERS.md B1). Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
+  refusal.bx:5:1: error: a closed generic component tag is not supported — reflection has no zero-argument initializer for a closed generic, on either backend, so latte cannot activate Grid<...> through markup. Wrap it in a non-generic component, as in a Rows class that extends Grid<Order>
 accepted: <Grid> open, which is the supported spelling
 accepted: a lowercase tag with an entity is not a generic
 
@@ -527,7 +527,7 @@ refused: a generic component may not spell its type parameter
   | pub partial class Refusal<T> extends Component { pub rows: List<T> = []; pub fn init() {} }
   | </beans>
   | $for row: T in self.rows { <p>x</p> }
-  refusal.bx:5:1: error: a $for header spells T, and the generated half of a generic component may not — `partial class` may carry its type parameters on exactly one part, so latte-bx writes `partial class` with none and T is not a name it can use (probes/ANSWERS.md §4). Drop the annotation and let it be inferred, or move the code that needs T into the <beans> block
+  refusal.bx:5:1: error: a $for header spells T, and the generated half of a generic component may not — `partial class` may carry its type parameters on exactly one part, so latte-bx writes `partial class` with none and T is not a name it can use. Drop the annotation and let it be inferred, or move the code that needs T into the <beans> block
 accepted: a generic component that lets the element type be inferred
 accepted: a comment mentioning partial class is not a declaration
 

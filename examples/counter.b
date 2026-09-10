@@ -11,8 +11,8 @@ package main
 import {Builder, Callback, Component, FocusEvent, InputEvent, KeyboardEvent, MouseEvent, Reference, SubmitEvent} from latte
 
 
-// examples/counter.bx — the counter page from PLAN.md, and the smallest whole
-// latte program: a route, a parameter, a layout, an event, a branch, a keyed
+// examples/counter.bx — the counter page, and the smallest whole latte
+// program: a route, a parameter, a layout, an event, a branch, a keyed
 // loop and a child component with a callback.
 //
 //     beansc run   examples/counter.b                     # the tree interpreter
@@ -206,8 +206,8 @@ fn serve(found: PageMatch) {
 
     io.println("")
     io.println("== one click on the button ==")
-    // The `new` is on its own line because `new <a named import>()` inside a
-    // string interpolation does not compile — BLOCKERS.md B9.
+    // The `new` is on its own line, and the interpolation below just reads
+    // the variable — clearer than constructing an object inside `"{ }"`.
     let click: MouseEvent = new MouseEvent()
     io.println("the click found its handler: {r.fire_mouse(button, click)}")
     io.println("renders this pass: {r.flush()}")

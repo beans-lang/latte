@@ -2,8 +2,8 @@
 //
 // Cross-site WebSocket hijacking: SameSite does not protect a handshake, so
 // the upgrade checks `Origin` **and the circuit id must match the session
-// cookie**. The Origin half was there. The session half was not, and the way
-// it was missing is the shape RULES.md calls "the refusal that never runs":
+// cookie**. The Origin half was there. The session half was not, and it was
+// missing in the way a refusal can sit in the code and never actually run:
 //
 //   * `EndpointOptions.session_cookie` said `"sid"`. `map_pages` sets
 //     `latte_session`. So `context.request.cookie(...)` answered `none` for

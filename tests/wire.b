@@ -1,20 +1,20 @@
 // tests/wire.b — wire v1, both directions, and the bounded JSON reader.
 //
-// PLAN.md's wire row says v1 "stays supported forever as the debugging
-// encoding", so this file is not a placeholder suite for something better
-// later: it is the specification of what latte puts on a socket, written down
-// as bytes. Two claims run through every section.
+// v1 stays supported forever as the debugging encoding, so this file is not a
+// placeholder suite for something better later: it is the specification of
+// what latte puts on a socket, written down as bytes. Two claims run through
+// every section.
 //
 //   * **The encoding is lossless.** § 6 builds a batch that carries EVERY
 //     frame opcode and EVERY edit opcode — all 19 frame variants and all 12
 //     edit variants — and pins the exact string. A frame kind added to
 //     `frames.b` without an opcode in `wire.b` is a non-exhaustive match and
 //     will not compile; one whose opcode changes shape is a diff here.
-//   * **Every refusal has a positive control beside it.** RULES.md, "The
-//     refusal that never runs": without an input that must be ACCEPTED you
-//     cannot tell "refused for the right reason" from "refused earlier, for a
-//     different one". Each limit is exercised at its exact boundary — the
-//     largest input that is taken, and the smallest that is not.
+//   * **Every refusal has a positive control beside it.** Without an input
+//     that must be ACCEPTED you cannot tell "refused for the right reason"
+//     from "refused earlier, for a different one". Each limit is exercised at
+//     its exact boundary — the largest input that is taken, and the smallest
+//     that is not.
 //
 // § 2 records a refusal that could not fire and is now gone: `decode_event`
 // carried its own "a submit payload with more than N fields" check, and the
@@ -801,16 +801,16 @@ fn main() {
 
     // ========================================================== § 13
     //
-    // The message sequence and the `seen` fence — BLOCKERS.md B11.
+    // The message sequence and the `seen` fence.
     //
     // Wire v1.0 had no server frame meaning "I processed your message and it
     // changed nothing", so a client that sent one sat in `onmessage` until its
     // read deadline. `n` on a client message asks for a fence; `seen` is it.
     //
-    // The refusals here need their positive control beside them (RULES.md,
-    // "The refusal that never runs"): a bad `n` is refused BEFORE the kind is
-    // looked at, so without 13.10-13.13 there would be no evidence that a good
-    // `n` still reaches every kind rather than being swallowed on the way.
+    // The refusals here need their positive control beside them: a bad `n` is
+    // refused BEFORE the kind is looked at, so without 13.10-13.13 there would
+    // be no evidence that a good `n` still reaches every kind rather than
+    // being swallowed on the way.
     io.println("")
     io.println("-- 13. the message sequence, and the seen fence")
 
@@ -839,7 +839,8 @@ fn main() {
          "REFUSED a message sequence must be a whole number")
 
     // Every kind carries it. The fence rule is about MESSAGES, so a kind that
-    // could not carry a sequence would be a hole in exactly the shape B11 is.
+    // could not carry a sequence would be a hole in exactly the shape the
+    // fence is supposed to close.
     r.eq("13.10 attach", told(r#"{"t":"attach","c":"abc","u":"/","n":1}"#, wide),
          "attach c=abc u=/ seq=1")
     r.eq("13.11 resume", told(r#"{"t":"resume","c":"abc","a":2,"n":2}"#, wide),

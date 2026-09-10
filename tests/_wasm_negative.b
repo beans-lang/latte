@@ -4,8 +4,8 @@
 //
 // Without it the leg is a dead gate. `tests/_wasm_core.b` passing proves the
 // core has no OS-bound import only if the compiler is still refusing one, and
-// a gate that would go green after its own mechanism stopped working is the
-// failure RULES.md rule 5 names. So the leg checks both directions: the core
+// a gate that would go green after its own mechanism stopped working is a
+// failure that looks like a pass. So the leg checks both directions: the core
 // must pass, and this must not.
 package main
 

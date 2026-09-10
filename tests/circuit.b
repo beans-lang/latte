@@ -1,20 +1,18 @@
 // tests/circuit.b — the circuit as a state machine, gated.
 //
-// PLAN.md gate 7's first half. The second half is a real server on port 0 and
-// lives in `tests/circuit_live.b`; this file is everything the circuit MEANS,
-// driven by hand with no socket, no clock and no fibers-that-are-not-brewed:
-// what a client message does, which batch number goes out, what an ack
-// retires, what a disconnect retains, what a limit ends, and where a panic
-// lands.
+// This file is everything the circuit MEANS, driven by hand with no socket,
+// no clock and no fibers-that-are-not-brewed: what a client message does,
+// which batch number goes out, what an ack retires, what a disconnect
+// retains, what a limit ends, and where a panic lands. The other half — a
+// real server on port 0 — lives in `tests/circuit_live.b`.
 //
 // Three rules shape it.
 //
 //   * **Every section builds its own circuit.** A section must not pass
 //     because of something another section left behind.
-//   * **Every refusal has a positive control beside it** (RULES.md, "the
-//     refusal that never runs"). § 9 walks all nine `bye` kinds, and each one
-//     is a pair: the input that ends the circuit, and the neighbouring input
-//     that must NOT.
+//   * **Every refusal has a positive control beside it.** § 9 walks all nine
+//     `bye` kinds, and each one is a pair: the input that ends the circuit,
+//     and the neighbouring input that must NOT.
 //   * **The numbers are exact.** "A click sends one text edit" is the headline
 //     claim of the whole update model, and a circuit that re-sent the page
 //     would still show the right button. Only the frame counts and the exact
@@ -162,8 +160,8 @@ fn circuit_over(page: Component, options: CircuitOptions) -> Circuit {
 
 /// Everything queued for the wire, one frame per line, drained. The host's
 /// writer fiber is the only other caller of `take_outbox`, so a section that
-/// reads frames also clears them — which is what makes "and nothing else" an
-/// assertion rather than a hope.
+/// reads frames also clears them, so "and nothing else" is an assertion
+/// rather than a hope.
 fn drained(c: Circuit) -> string {
     return c.take_outbox().join("\n")
 }
@@ -989,7 +987,7 @@ fn main() {
 
     // ========================================================== § 15
     //
-    // The `seen` fence — BLOCKERS.md B11.
+    // The `seen` fence.
     //
     // § 3 is the hole itself: an inert click produces NOTHING, which over a
     // socket is indistinguishable from a server that has died. This section is

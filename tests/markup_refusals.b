@@ -292,12 +292,12 @@ pub class Suite {
 
     // ================================================================ SECTION 3
     //
-    // **A closed generic component tag.** `BLOCKERS.md` B1: reflection cannot
-    // construct a closed generic, and the two backends disagree about reading
-    // its fields. This refusal was dead code until this lane fixed it —
-    // `is_name_byte` stops at `<`, so the old `tag.contains("<")` was a
-    // question no tag could answer yes to, and `<Grid<int>>` fell through to
-    // "a < inside <Grid>". These cases are what prove it fires now.
+    // **A closed generic component tag.** A closed generic has no
+    // zero-argument reflective initializer on either backend, so latte cannot
+    // activate one. This refusal used to be dead code: `is_name_byte` stops at `<`, so the old
+    // `tag.contains("<")` was a question no tag could ever answer yes to, and
+    // `<Grid<int>>` fell through to "a < inside <Grid>" instead. These cases
+    // prove the refusal actually fires.
 
     fn closed_generics() {
         self.heading("a closed generic component tag")

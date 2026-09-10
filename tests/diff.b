@@ -1,8 +1,7 @@
-// PLAN.md gate 1 (the diff half): edits for old and new pairs, including
-// keyed reorders of at least five items, nested component swaps and branch
-// flips — and gate 3's Beans half on every case here, because every step also
-// applies its own batch and asserts the applier landed on the serializer's
-// HTML of the new tree.
+// Edits for old and new pairs, including keyed reorders of at least five
+// items, nested component swaps and branch flips. Every step also applies its
+// own batch and asserts the applier landed on the serializer's HTML of the
+// new tree.
 //
 // Two things this suite is built to refuse to let slide:
 //
@@ -11,8 +10,8 @@
 //     differ that rebuilds the list every time still lands on the right HTML.
 //     Every named case pins its number.
 //   * **Five rows, and 120 permutations of them.** A single swap proves
-//     nothing about a keyed pass; RULES.md rule 4 says so and this workspace
-//     has shipped a bug behind a test that passed only because n=1.
+//     nothing about a keyed pass — this workspace has shipped a bug behind a
+//     test that passed only because n=1.
 package main
 
 import std.io

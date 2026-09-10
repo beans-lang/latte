@@ -56,7 +56,8 @@ component, diffs it against the previous frame, and sends only what changed.
 ## Requirements
 
 - **Beans 0.1.41**, built from `beans/` on `main`. Not an installed release —
-  see `RULES.md`. `beansc --version` must print
+  an installed release lags the tree and can hide fixes that only exist on
+  `main`. `beansc --version` must print
   `beansc 0.1.41 (language 1.0, runtime ABI 20)`.
 - **espresso** (`../espresso`) hosts the HTTP server and the WebSocket upgrade.
 - **barista** (`../barista`) is the service container. Only `latte_app` requires
@@ -630,7 +631,7 @@ Beyond the suites, it runs legs that answer questions a suite cannot:
 A refusal test needs a positive control beside it. Without one you cannot tell
 "refused for the right reason" from "refused earlier, for a different one" — and
 `probes/delete_faults.sh` is how you find out whether the test would notice the
-refusal disappearing. `RULES.md` is the contract for changing anything here.
+refusal disappearing.
 
 ## Status
 
@@ -639,6 +640,4 @@ the differ, the wire, a service container, `@inject`, view-models, signals,
 `live`, `@memo`, and signed state across the prerender seam. The gate is 33
 suites over 68 legs, both backends, byte-identical, and it drives a real Chrome.
 
-The API will still move. `BLOCKERS.md` records the language walls found along
-the way; the lane notes in `lanes/` record what each piece cost and what turned
-out to be wrong about the plan for it.
+The API will still move.
