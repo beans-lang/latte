@@ -19,10 +19,23 @@ beans=$(cd "$here/../../../beans" && pwd)
 beansc="${BEANSC:-$beans/build/beansc}"
 
 [[ -x "$beansc" ]] || { echo "no beansc at $beansc" >&2; exit 1; }
-case "$("$beansc" --version)" in
-    *"0.1.41"*) ;;
-    *) echo "the refusals are recorded against beansc 0.1.41" >&2; exit 1 ;;
-esac
+
+# 0.1.41 is the floor these answers were first recorded against, and it is a
+# floor rather than an exact match on purpose. Refusing to run on a newer
+# compiler would switch this check off at the one moment it earns its keep: a
+# compiler that has just started ACCEPTING one of these shapes is what it
+# exists to catch, and that can only happen in a version it has not seen. An
+# expected.txt that no longer matches is then a real answer to look at, not a
+# reason to pin harder.
+version_floor=0.1.41
+version_line=$("$beansc" --version 2>/dev/null || true)
+version_number=$(printf '%s\n' "$version_line" |
+                 sed -n 's/^beansc \([0-9][0-9.]*\).*/\1/p')
+if [[ -z $version_number ]] || [[ "$(printf '%s\n%s\n' "$version_floor" \
+        "$version_number" | sort -V | head -1)" != "$version_floor" ]]; then
+    echo "the recorded refusals need beansc $version_floor or newer; this one says: ${version_line:-<no answer>}" >&2
+    exit 1
+fi
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/latte-refusals.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT

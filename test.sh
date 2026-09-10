@@ -49,21 +49,28 @@ if [[ -n ${BEANS_ROOT:-} ]]; then
     [[ -z ${BEANS_LOG:-}      && -d "$BEANS_ROOT/runtime/log"       ]] && export BEANS_LOG="$BEANS_ROOT/runtime/log"
 fi
 
-# The compiler must be 0.1.41. Latte uses permessage-deflate, Deflater and
-# encode_response_head_append, none of which exist in 0.1.39, and it now also
-# needs what 0.1.41 repaired: reflection over a member a generic class declares
-# answers on both backends rather than `unsupported` natively, a closed
-# generic's annotations are found at all, and a type named inside a string
-# interpolation is resolved with the file's imports. On 0.1.40 a generic
+# 0.1.41 is a floor, not an exact version. Latte uses permessage-deflate,
+# Deflater and encode_response_head_append, none of which exist in 0.1.39, and
+# it needs what 0.1.41 repaired: reflection over a member a generic class
+# declares answers on both backends rather than `unsupported` natively, a
+# closed generic's annotations are found at all, and a type named inside a
+# string interpolation is resolved with the file's imports. On 0.1.40 a generic
 # component's @param scan is silently empty in a native build, which reads as a
 # latte bug and is not one. Refuse rather than mislead.
+#
+# This compares versions instead of matching one, because an exact match turns
+# every future compiler release into a red latte gate that names the wrong
+# cause.
+version_floor=0.1.41
 version_line=$("$BEANSC" --version 2>/dev/null || true)
-case "$version_line" in
-    *"0.1.41"*) ;;
-    *) echo "latte needs beansc 0.1.41; this one says: ${version_line:-<no answer>}" >&2
-       echo "  build it: cd $BEANS_ROOT && rm -f build/beansc && make BEANSC_BOOT=\$HOME/.beans/bin/beansc" >&2
-       exit 1 ;;
-esac
+version_number=$(printf '%s\n' "$version_line" |
+                 sed -n 's/^beansc \([0-9][0-9.]*\).*/\1/p')
+if [[ -z $version_number ]] || [[ "$(printf '%s\n%s\n' "$version_floor" \
+        "$version_number" | sort -V | head -1)" != "$version_floor" ]]; then
+    echo "latte needs beansc $version_floor or newer; this one says: ${version_line:-<no answer>}" >&2
+    echo "  build it: cd $BEANS_ROOT && rm -f build/beansc && make BEANSC_BOOT=\$HOME/.beans/bin/beansc" >&2
+    exit 1
+fi
 
 # Which beansc produced this result. `--version` cannot tell you: two builds
 # that differ by a real bug fix both answer "beansc 0.1.40". A green whose
@@ -1122,7 +1129,12 @@ run_recorded_refusals_leg() {
     fi
     local out
     if ! out=$(BEANSC="$BEANSC" bash "$script" 2>&1); then
-        echo "--- recorded-refusals FAILED: a shape the design was built around is no longer refused ---" >&2
+        # Do not name the cause here. This script exits non-zero for a shape
+        # that stopped being refused, for a message that changed wording, and
+        # for its own setup going wrong — and announcing the first of those
+        # over the third sent a reader looking for a compiler regression that
+        # was really a version guard. Its output says which.
+        echo "--- recorded-refusals FAILED ---" >&2
         echo "$out" >&2
         failed=1
         return
