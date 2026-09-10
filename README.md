@@ -55,12 +55,14 @@ component, diffs it against the previous frame, and sends only what changed.
 
 ## Requirements
 
-- **Beans 0.1.41**, built from `beans/` on `main`. Not an installed release —
-  an installed release lags the tree and can hide fixes that only exist on
-  `main`. `beansc --version` must print
-  `beansc 0.1.41 (language 1.0, runtime ABI 20)`.
-- **espresso** (`../espresso`) hosts the HTTP server and the WebSocket upgrade.
-- **barista** (`../barista`) is the service container. Only `latte_app` requires
+- **Beans 0.1.41 or newer**, built from `beans/` on `main`. Not an installed
+  release — an installed release lags the tree and can hide fixes that only
+  exist on `main`. 0.1.41 is a floor: latte needs the reflection repairs it
+  made, and `test.sh` refuses anything older.
+- **[espresso](https://github.com/beans-lang/espresso)** (`../espresso`) hosts
+  the HTTP server and the WebSocket upgrade.
+- **[barista](https://github.com/beans-lang/barista)** (`../barista`) is the
+  service container. Only `latte_app` requires
   it; an application that never names a barista type needs no `require` row of
   its own.
 
