@@ -13,9 +13,6 @@ kind library
 # ships a latte page never links a compiler.
 
 # `latte.web` — the circuit endpoint — is the one package under this module
-# that imports espresso, and this is the row that finds it. espresso sits two
-# directories above this manifest from BOTH `community-libs/latte` and
-# `.worktrees/latte-wN`, so one row serves the worktree and the merged tree.
-# Nothing at the module root imports `latte.web`, so a program that only
-# renders static pages never loads espresso and the wasm leg is unaffected.
-require path "../../community-libs/espresso"
+# that imports espresso. Nothing at the module root imports `latte.web`, so a
+# static-page program never loads espresso and the wasm leg is unaffected.
+require github.com/beans-lang/espresso v0.3.0

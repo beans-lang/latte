@@ -14,5 +14,5 @@ kind library
 # Nothing under `latte/`'s module root imports this, so latte's core stays
 # free of espresso and its wasm leg is unaffected.
 require path ".."
-require path "../../../community-libs/espresso"
-require path "../../../community-libs/barista"
+require github.com/beans-lang/espresso v0.3.0
+require github.com/beans-lang/barista v0.1.1

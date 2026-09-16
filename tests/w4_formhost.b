@@ -21,7 +21,7 @@
 // chose. Nothing here reads a wall clock.
 package main
 
-import espresso
+import github.com/beans-lang/espresso
 import std.http
 import std.io
 import std.reflect

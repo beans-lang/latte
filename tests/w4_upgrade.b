@@ -50,7 +50,7 @@
 // is about.
 package main
 
-import espresso
+import github.com/beans-lang/espresso
 import std.io
 import std.net
 import std.thread

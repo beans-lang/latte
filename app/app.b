@@ -27,8 +27,8 @@
 // see them.
 package latte_app
 
-import barista
-import espresso
+import github.com/beans-lang/barista
+import github.com/beans-lang/espresso
 import std.io
 import std.os
 import std.time

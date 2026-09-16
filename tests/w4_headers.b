@@ -28,7 +28,7 @@
 // here and searched for every construct that would force one of them back in.
 package main
 
-import espresso
+import github.com/beans-lang/espresso
 import std.fs
 import std.http
 import std.io

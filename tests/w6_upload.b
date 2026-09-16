@@ -20,7 +20,7 @@
 package main
 
 import std.io
-import espresso
+import github.com/beans-lang/espresso
 import {Builder, Component, Renderer, Serializer, Upload, UploadFile,
         UploadProgress, UPLOAD_MAX_BYTES, UPLOAD_MAX_FILES} from latte
 import {run} from latte.boundary

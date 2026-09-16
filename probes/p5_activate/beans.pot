@@ -6,4 +6,4 @@ kind application
 # `.worktrees/latte-wN/probes/p5_activate`, so one row serves the worktree and
 # the merged tree. If this ever stops resolving, count the segments before
 # changing anything else.
-require path "../../../../community-libs/espresso"
+require github.com/beans-lang/espresso v0.3.0

@@ -53,7 +53,7 @@
 //     handshake.
 package web
 
-import espresso
+import github.com/beans-lang/espresso
 import std.http
 import std.net
 import std.random

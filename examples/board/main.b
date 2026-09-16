@@ -35,8 +35,8 @@
 // CSP to see it styled would be teaching the wrong thing.
 package main
 
-import barista
-import espresso
+import github.com/beans-lang/barista
+import github.com/beans-lang/espresso
 import std.fs
 import std.io
 import std.os

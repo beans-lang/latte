@@ -9,7 +9,7 @@
 // bytes go and what happens to them if the request never finishes.
 package uploads
 
-import espresso
+import github.com/beans-lang/espresso
 import std.io
 
 /// Every open and every release, in order, for a test or a log to read.

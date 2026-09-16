@@ -22,7 +22,7 @@
 // nothing.
 package main
 
-import espresso
+import github.com/beans-lang/espresso
 import std.http
 import std.io
 import {ShellOptions, render_shell, BOOT_ATTRIBUTE, ROOT_ID,

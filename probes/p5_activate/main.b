@@ -17,7 +17,7 @@
 //   activate(3)  resolve one with three
 package main
 
-import espresso
+import github.com/beans-lang/espresso
 import std.io
 import std.reflect
 import std.time

@@ -30,7 +30,7 @@
 // is sent only after the answer to the one before has been read.
 package main
 
-import espresso
+import github.com/beans-lang/espresso
 import std.io
 import std.thread
 import std.websocket
