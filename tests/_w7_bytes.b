@@ -33,7 +33,7 @@
 // machine for the wrong reason.
 package main
 
-import espresso
+import github.com/beans-lang/espresso
 import std.io
 import std.compress
 import std.net

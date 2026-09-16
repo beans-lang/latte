@@ -32,7 +32,7 @@
 // is a title, a stylesheet, and a clock the test can predict.
 package main
 
-import espresso
+import github.com/beans-lang/espresso
 import std.fs
 import std.http
 import std.io

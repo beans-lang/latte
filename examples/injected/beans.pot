@@ -3,5 +3,5 @@ kind application
 
 require path "../.."
 require path "../../app"
-require path "../../../../community-libs/barista"
-require path "../../../../community-libs/espresso"
+require github.com/beans-lang/barista v0.1.1
+require github.com/beans-lang/espresso v0.3.0

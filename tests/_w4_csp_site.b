@@ -14,7 +14,7 @@
 // something different from a page that never arrived at all.
 package main
 
-import espresso
+import github.com/beans-lang/espresso
 import std.fs
 import std.io
 import std.thread

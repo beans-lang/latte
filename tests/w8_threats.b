@@ -32,7 +32,7 @@
 // that sweep automatically yet.
 package main
 
-import espresso
+import github.com/beans-lang/espresso
 import std.io
 import std.reflect
 import {Antiforgery, Anonymous, Applier, Batch, Builder, Circuit,

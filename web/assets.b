@@ -21,7 +21,7 @@
 // `map_client` for what a failed or empty read does.
 package web
 
-import espresso
+import github.com/beans-lang/espresso
 import std.fs
 
 /// Where `map_client` serves the client, and what `shell.b` points at.

@@ -55,32 +55,35 @@ component, diffs it against the previous frame, and sends only what changed.
 
 ## Requirements
 
-- **Beans 0.1.41 or newer**, built from `beans/` on `main`. Not an installed
-  release — an installed release lags the tree and can hide fixes that only
-  exist on `main`. 0.1.41 is a floor: latte needs the reflection repairs it
-  made, and `test.sh` refuses anything older.
-- **[espresso](https://github.com/beans-lang/espresso)** (`../espresso`) hosts
-  the HTTP server and the WebSocket upgrade.
-- **[barista](https://github.com/beans-lang/barista)** (`../barista`) is the
-  service container. Only `latte_app` requires
-  it; an application that never names a barista type needs no `require` row of
-  its own.
+- **Beans 0.1.44 or newer.** 0.1.41 is what building this repository needs —
+  the reflection repairs it made, and `test.sh` refuses anything older. 0.1.44
+  is what *using* it needs: `latte_app` is a module inside this repository, and
+  reaching a nested module through a `require` row is what that release fixed.
+- **[espresso](https://github.com/beans-lang/espresso)** hosts the HTTP server
+  and the WebSocket upgrade.
+- **[barista](https://github.com/beans-lang/barista)** is the service
+  container. Only `latte_app` requires it; an application that never names a
+  barista type needs no `require` row of its own.
 
-Your application's `beans.pot` needs **two rows**. `latte_app` brings espresso
-and barista with it, so you only name them when your own source does:
+Your application's `beans.pot` needs **one row**. `latte_app` lives inside this
+repository, so the same row reaches both, and it brings espresso and barista
+with it — you name those only when your own source does:
 
 ```
 module myapp
 kind application
 
-# paths are relative to this manifest
-require path "../latte"
-require path "../latte/app"
+require github.com/beans-lang/latte v0.1.1
 
-# and only if this module's own source names their types:
-# require path "../barista"     # e.g. ServiceCollection
-# require path "../espresso"    # e.g. WebApplication, TestHost
+# and only if this module's own source names their types. Pin them at the refs
+# latte pins, or the build refuses two refs for one dependency:
+# require github.com/beans-lang/barista v0.1.1    # e.g. ServiceCollection
+# require github.com/beans-lang/espresso v0.3.0   # e.g. WebApplication, TestHost
 ```
+
+Then `import github.com/beans-lang/latte` and
+`import {LatteApp} from github.com/beans-lang/latte/app`. The bindings are
+`latte` and `latte_app` — the names those manifests declare, not the paths.
 
 An import resolves through the *importing* package's own `require` rows, so a
 file inside latte finds barista through latte's row — an application that only
@@ -348,8 +351,8 @@ one `Antiforgery` is shared by construction rather than by remembering to.
 `barista` is the container, a standalone package espresso and latte both use.
 
 ```beans
-import barista
-import {LatteApp, LatteOptions, build_with} from latte_app
+import github.com/beans-lang/barista
+import {LatteApp, LatteOptions, build_with} from github.com/beans-lang/latte/app
 
 fn services() -> barista.ServiceCollection {
     var services: barista.ServiceCollection = new barista.ServiceCollection()

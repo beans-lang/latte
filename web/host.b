@@ -12,7 +12,7 @@
 // espresso's own `constant_time_equal` rather than reimplementing it).
 package web
 
-import espresso
+import github.com/beans-lang/espresso
 import std.crypto
 import std.http
 

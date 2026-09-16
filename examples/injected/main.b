@@ -16,8 +16,8 @@
 // rather than asserting it.
 package main
 
-import barista
-import espresso
+import github.com/beans-lang/barista
+import github.com/beans-lang/espresso
 import std.io
 import {Builder, Component, inject, page} from latte
 import {LatteApp, LatteOptions, build_with} from latte_app
