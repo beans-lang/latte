@@ -12,6 +12,7 @@
     "playwright": "1.63.0"
   },
   "dependencies": {
-    "canvaskit-wasm": "0.39.1"
+    "canvaskit-wasm": "0.39.1",
+    "roboto-fontface": "^0.10.0"
   }
 }

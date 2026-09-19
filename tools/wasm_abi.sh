@@ -23,16 +23,37 @@ bash tools/wasm_build.sh tests/canvas/_abi_surface.b "$module" >/dev/null
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/latte-abi.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 
-# What Beans declares.
-grep -oE 'pub extern "C" fn latte_js_[a-z_]+' browser/bridge.b |
-    sed 's/.*fn //' | sort -u > "$tmp/declared"
+# What Beans declares. Both halves: the page's own services and the drawing
+# surface, which are separate packages and one boundary.
+# Two declaring sides, because the boundary has two. Beans declares what Beans
+# calls; `wasm/latte_wasm_host.c` declares what the *runtime* calls through it —
+# the float text hooks, which no Beans line names and which are imports all the
+# same.
+{
+    grep -hoE 'pub extern "C" fn latte_js_[a-z_]+' browser/bridge.b canvaskit/bridge.b |
+        sed 's/.*fn //'
+    grep -oE '^extern [a-z0-9_ ]*latte_js_[a-z_0-9]+' wasm/latte_wasm_host.c |
+        grep -oE 'latte_js_[a-z_0-9]+'
+} | sort -u > "$tmp/declared"
 
-# What the page supplies.
-node -e '
-const source = require("fs").readFileSync("js/latte-runtime.js", "utf8");
-const body = source.slice(source.indexOf("env: {"));
-const names = [...body.matchAll(/^\s{16}(latte_js_[a-z_]+)\(/gm)].map((m) => m[1]);
-process.stdout.write([...new Set(names)].sort().join("\n") + "\n");
+# What the page supplies — asked of the modules rather than read out of them
+# with a pattern. A regex over the source was what this used to do, and it
+# answered "nothing at all" the first time somebody reindented the file, which
+# is a gate reporting a catastrophe because its own scraper broke.
+node --input-type=module -e '
+import { LatteRuntime } from "./js/latte-runtime.js";
+import { canvasKitImports } from "./js/latte-canvaskit.js";
+
+// Neither object is called, only listed, so the stubs need only exist.
+const runtime = new LatteRuntime({});
+runtime.memory = new WebAssembly.Memory({ initial: 1 });
+const surface = { surface: null, ensureSurface: () => false, revision: 0, isSoftware: false,
+                  images: new Map(), paragraphs: new Map() };
+const names = new Set([
+    ...Object.keys(runtime.imports().env),
+    ...Object.keys(canvasKitImports(runtime, surface)),
+]);
+process.stdout.write([...names].sort().join("\n") + "\n");
 ' > "$tmp/supplied"
 
 # What the module really imports.
@@ -54,9 +75,9 @@ else
     echo "ok wasm-abi/pair — $(wc -l < "$tmp/declared" | tr -d ' ') imports, declared and supplied"
 fi
 
-# Every real import must be a declared one, or one of the memory builtins the
-# host file defines. Anything else is a symbol that slipped through
-# --allow-undefined and would trap in a page.
+# Every real import must be a declared one. Anything else is a symbol that
+# slipped through --allow-undefined — usually a libc call Clang decided to
+# emit — and would be a LinkError in a page.
 unexpected=$(comm -23 "$tmp/imported" "$tmp/declared" || true)
 if [[ -n "$unexpected" ]]; then
     echo "--- the built module imports names nothing declares ---" >&2
@@ -68,7 +89,12 @@ else
     echo "ok wasm-abi/closed — the module imports nothing beyond what is declared"
 fi
 
-missing=$(comm -13 "$tmp/imported" "$tmp/declared" || true)
+# The float hooks are reached from C, not from Beans, so no Beans line can
+# reference them and the coverage check below would report them forever. They
+# are covered by tests/canvas/floats.b instead, which prints floats and is
+# diffed against the other two backends.
+grep -v -E '^latte_js_(format|parse)_f64$' "$tmp/declared" > "$tmp/declared_beans"
+missing=$(comm -13 "$tmp/imported" "$tmp/declared_beans" || true)
 if [[ -n "$missing" ]]; then
     echo "--- declared imports the ABI surface never referenced ---" >&2
     echo "$missing" | sed 's/^/    /' >&2

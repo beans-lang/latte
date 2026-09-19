@@ -23,10 +23,30 @@ typedef long long           i64;
 /* Where the linker put the end of static data. Everything above it is ours. */
 extern u8 __heap_base;
 
-/* The two things only the page can do. Unresolved at link time, so they arrive
- * as WebAssembly imports and JavaScript supplies them. */
+/* The things only the page can do. Unresolved at link time, so they arrive as
+ * WebAssembly imports and JavaScript supplies them. */
 extern void latte_js_write(int stream, const char *bytes, u32 len);
 extern void latte_js_exit(int code);
+
+/* Floating-point text.
+ *
+ * The Beans runtime declares these two as host hooks because correct
+ * double-to-decimal cannot be written in a few lines, and a freestanding
+ * module has no libc to borrow one from. JavaScript's own conversions are
+ * correctly rounded by specification, so the page is the right place to ask —
+ * what is left here is spelling, and `tests/canvas/floats.b` holds it to what
+ * the other two backends print, byte for byte.
+ *
+ * They are only reached by a program that puts a float into text. Nothing on
+ * the drawing path calls them: a coordinate crosses as a double. */
+/* `int` rather than `long long`, although the hook it feeds returns one: a
+ * 64-bit return crosses to JavaScript as a BigInt, and a plain number thrown
+ * back at it is a TypeError inside the import. The value is a byte count of a
+ * buffer this file sized, so 32 bits is not a limit anything can reach — and
+ * the runtime measures the text with strlen anyway. */
+extern int latte_js_format_f64(char *out, u32 cap, double value,
+                               int places, int mode);
+extern int latte_js_parse_f64(const char *text, double *out, const char **end);
 
 /* ---- the memory builtins -------------------------------------------------
  *
@@ -311,6 +331,15 @@ void beans_host_write(int stream, const char *bytes, u64 len) {
 }
 
 void beans_host_exit(int code) { latte_js_exit(code); }
+
+long long beans_host_format_f64(char *out, u64 cap, double value,
+                                int places, int mode) {
+    return (long long)latte_js_format_f64(out, (u32)cap, value, places, mode);
+}
+
+int beans_host_parse_f64(const char *text, double *out, const char **end) {
+    return latte_js_parse_f64(text, out, end);
+}
 
 /* How many bytes are handed out right now, and how big the heap has grown.
  * The lifecycle gate reads both: a mount/unmount loop must leave the first

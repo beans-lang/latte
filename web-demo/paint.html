@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Latte — drawing</title>
+<style>
+  html, body { margin: 0; height: 100%; font: 13px system-ui, sans-serif; }
+  body { display: grid; grid-template-rows: auto 1fr; background: #f6f6f7; color: #101828; }
+  header { padding: 8px 16px; border-bottom: 1px solid #d7d7dc; display: flex; gap: 16px; align-items: baseline; }
+  #host { position: relative; margin: 16px; background: #fff; border: 1px solid #d7d7dc; border-radius: 8px; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #state { color: #667085; }
+</style>
+<header>
+  <strong>Latte</strong>
+  <span id="state">loading…</span>
+</header>
+<div id="host"><canvas id="canvas"></canvas></div>
+<!-- CanvasKit ships as a UMD script, not an ES module: importing it asks for
+     a default export it does not have. Loaded here, it leaves CanvasKitInit
+     on window. -->
+<script src="../node_modules/canvaskit-wasm/bin/canvaskit.js"></script>
+<script type="module">
+import { LattePage } from "../js/latte-page.js";
+
+const state = document.getElementById("state");
+const host = document.getElementById("host");
+const canvas = document.getElementById("canvas");
+
+try {
+  const canvasKit = await CanvasKitInit({
+    locateFile: (file) => `../node_modules/canvaskit-wasm/bin/${file}`,
+  });
+  const page = await LattePage.load({
+    element: canvas,
+    canvasKit,
+    module: "../build/browser/paint_demo.wasm",
+    // CanvasKit ships no fonts and cannot read the system's, so a page has to
+    // supply them. `node tools/font_prepare.mjs` writes these.
+    fonts: [
+      "../build/fonts/latte-regular.ttf",
+      "../build/fonts/latte-medium.ttf",
+      "../build/fonts/latte-bold.ttf",
+    ],
+    semanticsRoot: host,
+    editingRoot: host,
+    onError: (message) => { state.textContent = `error: ${message}`; console.error(message); },
+    stdout: (line) => console.log(line),
+  });
+  await page.mount();
+  window.__lattePage = page;
+  state.textContent = page.surface.isSoftware ? "drawing on the CPU" : "drawing on the GPU";
+  // Two frames, so the first layout and the paint that follows it are both
+  // done before anything looks. A screenshot taken on the first frame catches
+  // a scene that has measured and not yet drawn.
+  await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+  window.__latteReady = true;
+  window.__latteFacts = () => ({
+    software: page.surface.isSoftware,
+    frames: page.surface.frames,
+    resources: page.surface.resourceCount(),
+    moduleFrames: page.runtime.exports.latte_frames(),
+    painted: page.runtime.exports.latte_painted(),
+    requests: page.runtime.exports.latte_requests(),
+    a11yNodes: page.semantics ? page.semantics.count() : 0,
+    error: page.lastError(),
+  });
+} catch (error) {
+  state.textContent = `failed: ${error}`;
+  console.error(error);
+  window.__latteFailed = String(error && error.stack || error);
+}
+</script>

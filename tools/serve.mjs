@@ -9,8 +9,12 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 
-const ROOT = resolve(process.argv[3] || ".");
-const PORT = Number(process.argv[2] || 8731);
+// The directory served, and the port. Read from the environment rather than
+// from argv, because this file is imported by tools that have argv of their
+// own — `tools/shoot.mjs` passes an output path as its second argument, and a
+// server that took it as its root answered 404 for everything.
+const ROOT = resolve(process.env.LATTE_SERVE_ROOT || ".");
+const PORT = Number(process.env.LATTE_SERVE_PORT || 8731);
 
 const TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -58,8 +62,9 @@ const server = createServer(async (request, response) => {
 // for the server object and chooses its own port; a module that listened on
 // import would take the default port away from a serve running beside it.
 if (process.argv[1] && import.meta.url === `file://${resolve(process.argv[1])}`) {
-    server.listen(PORT, "127.0.0.1", () => {
-        console.log(`serving ${ROOT} at http://127.0.0.1:${PORT}/`);
+    const port = Number(process.argv[2] || PORT);
+    server.listen(port, "127.0.0.1", () => {
+        console.log(`serving ${ROOT} at http://127.0.0.1:${port}/`);
     });
 }
 

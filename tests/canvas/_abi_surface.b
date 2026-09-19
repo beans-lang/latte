@@ -8,9 +8,15 @@
 //
 // It is never run. Calling these outside a browser would reach functions that
 // do not exist.
+//
+// Both halves of the boundary are here: the page's own services, and the
+// drawing surface. They are separate Beans packages and one WebAssembly import
+// table, so one file has to name them all.
 package main
 
 import latte.browser
+import latte.canvaskit
+import latte.paint
 import latte.platform
 import latte.geometry
 import latte.stage
@@ -36,6 +42,40 @@ pub extern "C" fn surface() -> i32 as "latte_abi_surface" {
         ok(_) => {} err(_) => {}
     }
     match host.semantics_end() { ok(_) => {} err(_) => {} }
+    let r: canvaskit.CanvasKitRenderer = new canvaskit.CanvasKitRenderer()
+    if r.ready() { touched = touched + 1 }
+    touched = touched + r.revision()
+    if r.software() { touched = touched + 1 }
+    match r.use_font("") { ok(_) => {} err(_) => {} }
+    touched = touched + r.font_state()
+    match r.paragraph("hi", 13.0, 0.0, 0) {
+        ok(p) => { touched = touched + p.size().width as int + p.hit_test(1.0, 1.0) }
+        err(_) => {}
+    }
+    match r.styled_paragraph("hi", paint.TextStyle.weighted(13.0, 5), 100.0, 0) {
+        ok(p) => { touched = touched + p.metrics().height as int
+                   touched = touched + p.caret(1).width as int
+                   match p.selection(0, 1) { ok(boxes) => { touched = touched + boxes.len() } err(_) => {} } }
+        err(_) => {}
+    }
+    match r.graphemes("hi") { ok(g) => { touched = touched + g.len() } err(_) => {} }
+    match r.words("hi") { ok(w) => { touched = touched + w.len() } err(_) => {} }
+    match r.image("x.png") { ok(i) => { touched = touched + i.size().width as int } err(_) => {} }
+    match r.snapshot() { ok(px) => { touched = touched + px.width } err(_) => {} }
+    match r.begin(geometry.Size.of(10.0, 10.0), 1.0, 0) {
+        ok(c) => {
+            c.save(); c.restore(); c.translate(1.0, 1.0); c.rotate(1.0); c.scale(1.0, 1.0)
+            c.clip(geometry.Rect.of(0.0, 0.0, 1.0, 1.0), 0.0)
+            c.rectangle(geometry.Rect.of(0.0, 0.0, 1.0, 1.0), 0.0, 0, 0.0)
+            c.ellipse(geometry.Rect.of(0.0, 0.0, 1.0, 1.0), 0, 0, 0.0)
+            c.path("M0 0", 0, 0, 0.0)
+            c.visual(0, geometry.Rect.of(0.0, 0.0, 1.0, 1.0), "", paint.VisualStyle {})
+            match r.image("y.png") { ok(i) => { c.image(i, geometry.Rect.of(0.0, 0.0, 1.0, 1.0)) } err(_) => {} }
+            match r.paragraph("z", 13.0, 0.0, 0) { ok(p) => { c.paragraph(p, 0.0, 0.0) } err(_) => {} }
+        }
+        err(_) => {}
+    }
+    match r.end() { ok(_) => {} err(_) => {} }
     return touched as i32
 }
 

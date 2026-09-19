@@ -38,3 +38,22 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Roboto
+
+The showcase and the screenshot gates draw text with **Roboto**, which is
+licensed under the Apache License 2.0. It arrives through the `roboto-fontface`
+npm package and `tools/font_prepare.mjs` turns its WOFF files back into the
+TrueType files CanvasKit can read; nothing is committed to this repository.
+
+Why a font is needed at all: **CanvasKit has no fonts and cannot read the
+system's.** A browser will not hand a page glyph data, and CanvasKit ships
+none, so a page that registers nothing lays every paragraph out as zero glyphs
+— the controls appear in the right places with no words in any of them, and no
+error is raised anywhere. Latte refuses to shape text with no font registered
+rather than draw that.
+
+An application may of course use its own face. `Renderer.use_font` takes the
+files, and the metrics of the shipped theme were measured against the macOS
+system font, so a different face will not match the pinned screenshots — see
+`docs/source-copy.md`.

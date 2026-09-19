@@ -39,6 +39,19 @@ pub class VisualRender extends RenderObject {
         super.init(renderer, theme, dirty)
     }
     pub override fn role() -> string { return "image" }
+
+    /// A drawing has no words, so it offers no accessible name of its own.
+    ///
+    /// The base class uses a node's text as its name, which is right for a
+    /// label and a button and wrong here: this node's text is the shape's SVG
+    /// path data, and a screen reader read "M8 32 L32 8 L56 32 Z" aloud. A
+    /// drawing that means something says so with `a11y_label`; one that does
+    /// not is decoration and is better left silent.
+    pub override fn semantics() -> SemanticsNode {
+        return new SemanticsNode(self.identity,
+            if self.a11y_role == "" { self.role() } else { self.a11y_role },
+            self.a11y_name, self.a11y_value, self.visual_frame(), self.enabled)
+    }
     pub fn arm_transitions() { self.transitions_armed = true }
     pub override fn animating() -> bool {
         return self.scalar_tweens.len() > 0 || self.color_tweens.len() > 0

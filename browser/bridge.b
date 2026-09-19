@@ -99,6 +99,24 @@ pub class Text {
         unsafe { return RawPtr.from_address(buffer.as_ptr().address()) }
     }
 
+    /// Copies text the page handed over with an explicit length.
+    ///
+    /// Used for the text on an event, where the page wrote the bytes into this
+    /// module's memory just before the call. Copying here rather than keeping
+    /// the pointer is the point: the module may grow its memory during the
+    /// handler that follows, and growing moves everything.
+    ///
+    /// A null pointer or a non-positive length answers "", which is what an
+    /// event that carries no text has.
+    pub static fn copy_in(pointer: RawPtr<i8>, length: int) -> string {
+        if pointer.is_null() || length <= 0 { return "" }
+        unsafe {
+            let bytes: RawPtr<u8> = RawPtr.from_address(pointer.address())
+            let copy: Bytes = Bytes.from_raw(bytes, length)
+            return copy.to_string()
+        }
+    }
+
     /// Reads text back with the two-call shape.
     pub static fn read(attempt: string, probe: fn(RawPtr<i8>, i32) -> i32) -> Result<string> {
         let needed: int = probe(RawPtr.null(), 0) as int

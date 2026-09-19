@@ -23,6 +23,8 @@
 // file. A name added on one side and not the other fails the gate rather than
 // failing at instantiation in somebody's browser.
 
+import { floatImports } from "./latte-floats.js";
+
 const CAPABILITY = {
     FRAME_CLOCK: 1,
     CLIPBOARD: 2,
@@ -58,6 +60,19 @@ export class LatteRuntime {
         this.renderer = options.renderer || null;
         this.exited = null;
         this.onFrame = options.onFrame || null;
+        // Imports beyond the core list — the drawing half, when a page has
+        // one. They are merged into `env` rather than given a module of their
+        // own because wasm-ld puts every undefined symbol in `env` and there
+        // is no way to ask it for a second.
+        //
+        // A function, not an object, and that is what makes the drawing
+        // imports possible: they decode pointers against this module's memory,
+        // and that memory does not exist until the module is instantiated. So
+        // they are built from the runtime, once, at the moment they are needed.
+        this.buildImports = typeof options.imports === "function"
+            ? options.imports
+            : (options.imports ? () => options.imports : null);
+        this.extraImports = null;
     }
 
     /// Feature detection, not a browser name. A capability answered from a
@@ -116,125 +131,141 @@ export class LatteRuntime {
 
     imports() {
         const self = this;
-        return {
-            env: {
-                latte_js_write(stream, pointer, length) {
-                    const which = stream === 2 ? 2 : 1;
-                    self.pending[which] += self.text(pointer, length);
-                    let at = self.pending[which].indexOf("\n");
-                    while (at >= 0) {
-                        const line = self.pending[which].slice(0, at);
-                        self.pending[which] = self.pending[which].slice(at + 1);
-                        if (which === 2) self.stderr(line); else self.stdout(line);
-                        at = self.pending[which].indexOf("\n");
-                    }
-                },
+        const core = {
+            latte_js_write(stream, pointer, length) {
+                const which = stream === 2 ? 2 : 1;
+                self.pending[which] += self.text(pointer, length);
+                let at = self.pending[which].indexOf("\n");
+                while (at >= 0) {
+                    const line = self.pending[which].slice(0, at);
+                    self.pending[which] = self.pending[which].slice(at + 1);
+                    if (which === 2) self.stderr(line); else self.stdout(line);
+                    at = self.pending[which].indexOf("\n");
+                }
+            },
 
-                latte_js_exit(code) {
-                    self.exited = code;
-                    // A trap rather than a return. The module called exit
-                    // because it cannot continue, and returning would let it.
-                    throw new Error(`the Latte module exited with ${code}`);
-                },
+            latte_js_exit(code) {
+                self.exited = code;
+                // A trap rather than a return. The module called exit
+                // because it cannot continue, and returning would let it.
+                throw new Error(`the Latte module exited with ${code}`);
+            },
 
-                latte_js_now() {
-                    return performance.now() / 1000;
-                },
+            latte_js_now() {
+                return performance.now() / 1000;
+            },
 
-                latte_js_can(capability) {
-                    return self.can(capability) ? 1 : 0;
-                },
+            latte_js_can(capability) {
+                return self.can(capability) ? 1 : 0;
+            },
 
-                latte_js_appearance() {
-                    if (typeof matchMedia !== "function") return 0;
-                    return matchMedia("(prefers-color-scheme: dark)").matches ? 1 : 0;
-                },
+            latte_js_appearance() {
+                if (typeof matchMedia !== "function") return 0;
+                return matchMedia("(prefers-color-scheme: dark)").matches ? 1 : 0;
+            },
 
-                latte_js_scale() {
-                    return typeof devicePixelRatio === "number" ? devicePixelRatio : 1;
-                },
+            latte_js_scale() {
+                return typeof devicePixelRatio === "number" ? devicePixelRatio : 1;
+            },
 
-                latte_js_reduce_motion() {
-                    if (typeof matchMedia !== "function") return 0;
-                    return matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 0;
-                },
+            latte_js_reduce_motion() {
+                if (typeof matchMedia !== "function") return 0;
+                return matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 0;
+            },
 
-                latte_js_request_frame() {
-                    if (typeof requestAnimationFrame !== "function") return -1;
-                    if (self.frameHandle) return 0;
-                    self.frameHandle = requestAnimationFrame((stamp) => {
-                        self.frameHandle = 0;
-                        self.deliverFrame(stamp / 1000);
-                    });
-                    return 0;
-                },
-
-                latte_js_cancel_frame() {
-                    if (!self.frameHandle) return 0;
-                    cancelAnimationFrame(self.frameHandle);
+            latte_js_request_frame() {
+                if (typeof requestAnimationFrame !== "function") return -1;
+                if (self.frameHandle) return 0;
+                self.frameHandle = requestAnimationFrame((stamp) => {
                     self.frameHandle = 0;
-                    return 1;
-                },
+                    self.deliverFrame(stamp / 1000);
+                });
+                return 0;
+            },
 
-                latte_js_clipboard_write(pointer, length) {
-                    const text = self.text(pointer, length);
-                    self.clipboardText = text;
-                    if (typeof navigator === "undefined" || !navigator.clipboard) return -1;
-                    // Fire and forget: the module cannot wait for a promise,
-                    // and the page's own clipboard is already updated above so
-                    // a paste inside the same document works either way.
-                    navigator.clipboard.writeText(text).catch(() => {});
-                    return 0;
-                },
+            latte_js_cancel_frame() {
+                if (!self.frameHandle) return 0;
+                cancelAnimationFrame(self.frameHandle);
+                self.frameHandle = 0;
+                return 1;
+            },
 
-                latte_js_clipboard_read(pointer, capacity) {
-                    // The system clipboard is only readable from a promise, and
-                    // a WebAssembly call cannot wait for one. What is readable
-                    // synchronously is the last text this document copied, plus
-                    // whatever a paste event handed over — `noteClipboard` is
-                    // how the page supplies that.
-                    return self.writeInto(self.clipboardText, pointer, capacity);
-                },
+            latte_js_clipboard_write(pointer, length) {
+                const text = self.text(pointer, length);
+                self.clipboardText = text;
+                if (typeof navigator === "undefined" || !navigator.clipboard) return -1;
+                // Fire and forget: the module cannot wait for a promise,
+                // and the page's own clipboard is already updated above so
+                // a paste inside the same document works either way.
+                navigator.clipboard.writeText(text).catch(() => {});
+                return 0;
+            },
 
-                latte_js_text_input(active, pointer, length, anchor, caret, x, y, width, height) {
-                    if (!self.editingHost) return -1;
-                    self.editingHost.setState({
-                        active: active === 1,
-                        text: self.text(pointer, length),
-                        anchor, caret, x, y, width, height,
-                    });
-                    return 0;
-                },
+            latte_js_clipboard_read(pointer, capacity) {
+                // The system clipboard is only readable from a promise, and
+                // a WebAssembly call cannot wait for one. What is readable
+                // synchronously is the last text this document copied, plus
+                // whatever a paste event handed over — `noteClipboard` is
+                // how the page supplies that.
+                return self.writeInto(self.clipboardText, pointer, capacity);
+            },
 
-                latte_js_semantics_begin() {
-                    if (!self.semanticsHost) return -1;
-                    self.semanticsHost.begin();
-                    return 0;
-                },
+            latte_js_text_input(active, pointer, length, anchor, caret, x, y, width, height) {
+                if (!self.editingHost) return -1;
+                self.editingHost.setState({
+                    active: active === 1,
+                    text: self.text(pointer, length),
+                    anchor, caret, x, y, width, height,
+                });
+                return 0;
+            },
 
-                latte_js_semantics_node(id, rolePtr, roleLen, labelPtr, labelLen,
-                                        valuePtr, valueLen, x, y, width, height,
-                                        enabled, focused) {
-                    if (!self.semanticsHost) return -1;
-                    self.semanticsHost.node({
-                        id: typeof id === "bigint" ? id : BigInt(id),
-                        role: self.text(rolePtr, roleLen),
-                        label: self.text(labelPtr, labelLen),
-                        value: self.text(valuePtr, valueLen),
-                        x, y, width, height,
-                        enabled: enabled === 1,
-                        focused: focused === 1,
-                    });
-                    return 0;
-                },
+            latte_js_semantics_begin() {
+                if (!self.semanticsHost) return -1;
+                self.semanticsHost.begin();
+                return 0;
+            },
 
-                latte_js_semantics_end() {
-                    if (!self.semanticsHost) return -1;
-                    self.semanticsHost.end();
-                    return 0;
-                },
+            latte_js_semantics_node(id, rolePtr, roleLen, labelPtr, labelLen,
+                                    valuePtr, valueLen, x, y, width, height,
+                                    enabled, focused) {
+                if (!self.semanticsHost) return -1;
+                self.semanticsHost.node({
+                    id: typeof id === "bigint" ? id : BigInt(id),
+                    role: self.text(rolePtr, roleLen),
+                    label: self.text(labelPtr, labelLen),
+                    value: self.text(valuePtr, valueLen),
+                    x, y, width, height,
+                    enabled: enabled === 1,
+                    focused: focused === 1,
+                });
+                return 0;
+            },
+
+            latte_js_semantics_end() {
+                if (!self.semanticsHost) return -1;
+                self.semanticsHost.end();
+                return 0;
             },
         };
+        // Floating-point text. Part of the core rather than an option: a
+        // program that puts a float into a string panics without it, and
+        // "printing a number" is not a capability a page should have to opt
+        // into.
+        Object.assign(core, floatImports(this));
+        if (this.buildImports && !this.extraImports) {
+            this.extraImports = this.buildImports(this);
+        }
+        // A name supplied twice is a mistake worth catching here: the page
+        // would otherwise get whichever one the spread happened to put last.
+        if (this.extraImports) {
+            for (const name of Object.keys(this.extraImports)) {
+                if (name in core) {
+                    throw new Error(`${name} is supplied twice: once by the runtime and once by the page`);
+                }
+            }
+        }
+        return { env: Object.assign(core, this.extraImports || {}) };
     }
 
     /// Hands the module the frame it asked for.
