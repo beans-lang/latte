@@ -1,11 +1,11 @@
-// Generated from templates/combo_box_popup_template.bx by latte. Do not edit.
+// Generated from templates/combo_box_popup_template.bx by latte-bx. Do not edit.
 //
 // The <beans> block below is combo_box_popup_template.bx's, copied through byte for byte; its
 // own package line is blanked so every line after it keeps its number. The
-// render method under it is the markup, as Builder calls.
-// Change combo_box_popup_template.bx and regenerate:
+// render method under it is the markup, as Builder calls with fixed
+// sequence numbers. Change combo_box_popup_template.bx and regenerate:
 //
-//     latte generate templates/combo_box_popup_template.bx
+//     latte-bx build templates/combo_box_popup_template.bx
 package templates
 
 import {Builder, Component} from latte.compose
@@ -85,7 +85,7 @@ partial class ComboBoxPopupTemplate {
         b.number("spacing", (0) as f64)
         b.word("align", "stretch")
         b.number("padding_x", (self.menu_row_inset) as f64)
-        var _cortado_row_0: int = 0
+        var _latte_row_0: int = 0
         for index in 0..self.choices.len() {  // combo_box_popup_template.bx:12
             b.open("Button")  // combo_box_popup_template.bx:13
             b.key("{"option-{index}"}")
@@ -95,7 +95,7 @@ partial class ComboBoxPopupTemplate {
             b.flag("prominent", index == self.highlighted)
             b.on("click", fn(e: UiEvent) { self.choose(index) })
             b.close()
-            _cortado_row_0 += 1
+            _latte_row_0 += 1
         }
         b.close()
         b.close()

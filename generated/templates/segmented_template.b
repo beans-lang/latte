@@ -1,11 +1,11 @@
-// Generated from templates/segmented_template.bx by latte. Do not edit.
+// Generated from templates/segmented_template.bx by latte-bx. Do not edit.
 //
 // The <beans> block below is segmented_template.bx's, copied through byte for byte; its
 // own package line is blanked so every line after it keeps its number. The
-// render method under it is the markup, as Builder calls.
-// Change segmented_template.bx and regenerate:
+// render method under it is the markup, as Builder calls with fixed
+// sequence numbers. Change segmented_template.bx and regenerate:
 //
-//     latte generate templates/segmented_template.bx
+//     latte-bx build templates/segmented_template.bx
 package templates
 
 import {Builder, Component} from latte.compose
@@ -40,7 +40,7 @@ partial class SegmentedTemplate {
             b.word("transition_easing", "ease_in_out")
             b.close()
         }
-        var _cortado_row_0: int = 0
+        var _latte_row_0: int = 0
         for index in 0..self.choices.len() {  // segmented_template.bx:12
             b.open("Label")  // segmented_template.bx:13
             b.key("{"segment-{index}"}")
@@ -56,7 +56,7 @@ partial class SegmentedTemplate {
             b.number("baseline", (self.baseline) as f64)
             b.number("alignment", (1) as f64)
             b.close()
-            _cortado_row_0 += 1
+            _latte_row_0 += 1
         }
         b.close()
     }

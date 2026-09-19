@@ -238,6 +238,8 @@ fn line_of(name: string, value: string) -> string {
 /// Shaped by hand rather than by a generic writer: an array of names reads on
 /// one line and an array of objects reads one per line, which is what the file
 /// this replaces did and what a reviewer of a diff needs.
+/// The html target's surface. What `latte-bx vocabulary` prints by default,
+/// and what `editors/shared/bx.json` carries.
 pub fn vocabulary_json() -> string {
     let lines: List<string> = []
     lines.push(line_of("$generated",
@@ -259,4 +261,107 @@ pub fn vocabulary_json() -> string {
     lines.push(line_of("urlAttributes", json_strings(url_attributes())))
     lines.push(line_of("allowedSchemes", json_strings(allowed_schemes())))
     return "\{\n{lines.join(",\n")}\n\}\n"
+}
+
+/// The surface for one target.
+///
+/// An editor offers what the file it is editing can contain, and that is not
+/// the same list for a page and for a screen: `<!DOCTYPE>`, `attrs=` and a
+/// void element are HTML's, and a closed set of control tags with typed
+/// properties is the canvas's. One printer with a target rather than two
+/// printers, so a section added to the language appears in both.
+pub fn vocabulary_json_for(target: Target) -> string {
+    match target {
+        html => { return vocabulary_json() }
+        canvas => { return canvas_vocabulary_json() }
+    }
+}
+
+/// The canvas target's surface.
+pub fn canvas_vocabulary_json() -> string {
+    let lines: List<string> = []
+    lines.push(line_of("$generated",
+        json_string("Written by community-libs/latte/tests/w3_editor_data.b, out of latte's own tables. Do not edit by hand.")))
+    lines.push(line_of("$source", json_string("latte bx/vocabulary.b, bx/canvas_events.b, bx/canvas_widgets.b, bx/parse.b")))
+    lines.push(line_of("$target", json_string("canvas")))
+    lines.push(line_of("$language", json_string("latte markup for the browser runtime — a whole-file document whose tags are Latte controls, not HTML elements")))
+    // The forms are the language's and are the same in both targets, which is
+    // the whole point of one front end — minus `$html`, which has nothing to
+    // write into here and is refused by name.
+    lines.push(block_of("blocks", json_rows(canvas_blocks())))
+    lines.push(block_of("interpolations", json_rows(interpolations())))
+    lines.push(block_of("events", json_canvas_events()))
+    lines.push(block_of("bindings", json_rows(canvas_bindings())))
+    lines.push(block_of("reservedAttributes", json_rows(canvas_reserved_attributes())))
+    lines.push(line_of("controls", json_strings(canvas_drawn_tags())))
+    lines.push(line_of("controlsNotYetDrawn", json_strings(canvas_undrawn_tags())))
+    lines.push(line_of("attributes", json_strings(canvas_attribute_names())))
+    return "\{\n{lines.join(",\n")}\n\}\n"
+}
+
+/// The framework's own attributes, for the canvas target.
+///
+/// `attrs`, `preserve` and `live` are HTML's: a bag of string attributes, a
+/// subtree a third-party script owns, and a text node a signal patches. None
+/// of the three has anything to mean here, all three are refused by name in
+/// `CanvasRules`, and an editor that offered them would be offering three
+/// completions whose only outcome is a diagnostic.
+fn canvas_reserved_attributes() -> List<VocabRow> {
+    let out: List<VocabRow> = []
+    for row: VocabRow in reserved_attributes() {
+        if row.name == "attrs" || row.name == "preserve" || row.name == "live" { continue }
+        out.push(row)
+    }
+    return move out
+}
+
+/// The control tags a canvas file may use today.
+pub fn canvas_drawn_tags() -> List<string> {
+    var out: List<string> = []
+    for tag: string in canvas_widget_tags() {
+        if canvas_tag_is_drawn(tag) { out.push(tag) }
+    }
+    return move out
+}
+
+/// The ones the markup language knows and the renderer has not got yet. An
+/// editor offers them greyed rather than not at all, because a reader looking
+/// for `<Spinner>` should find out that it exists and is not ready — not that
+/// latte has never heard of it.
+pub fn canvas_undrawn_tags() -> List<string> {
+    var out: List<string> = []
+    for tag: string in canvas_widget_tags() {
+        if !canvas_tag_is_drawn(tag) { out.push(tag) }
+    }
+    return move out
+}
+
+/// The `$` blocks a canvas file may contain: every one the language has,
+/// except the raw-HTML bypass, which has nothing here to bypass.
+fn canvas_blocks() -> List<VocabRow> {
+    let out: List<VocabRow> = []
+    for row: VocabRow in blocks() {
+        if row.name == "$html" { continue }
+        out.push(row)
+    }
+    return move out
+}
+
+fn json_canvas_events() -> List<string> {
+    let out: List<string> = []
+    for name: string in canvas_event_names() {
+        out.push("    \{\"name\": {json_string(name)}, \"detail\": {json_string("on:{name}=\{fn(e: UiEvent) \{ … \}\}")}, \"note\": {json_string("every canvas handler receives one UiEvent")}\}")
+    }
+    return move out
+}
+
+fn canvas_bindings() -> List<VocabRow> {
+    return [
+        new VocabRow("bind:value",
+            r#"bind:value={self.name}"#,
+            "two-way on the controls that hold text a user edits — TextField, SecureField, SearchField and TextArea"),
+        new VocabRow("bind:checked",
+            r#"bind:checked={self.on}"#,
+            "two-way on CheckBox, RadioButton and Switch"),
+    ]
 }

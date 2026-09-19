@@ -1,0 +1,12 @@
+
+== 1 — every tag the compiler knows is a kind the runtime knows ==
+every one of the 39 tags resolves to a kind
+
+== 2 — every kind the runtime has is a tag the compiler knows ==
+every one of the 31 kinds has a tag
+
+== 3 — the compiler refuses exactly the kinds the renderer cannot build ==
+the two tables agree on every tag
+
+== 4 — what a canvas component can be built from, today ==
+Box, Button, Canvas, CheckBox, ComboBox, Container, Disclosure, Grid, GroupBox, HStack, Label, LevelIndicator, ProgressBar, RadioButton, ScrollView, SecureField, SearchField, Segmented, Separator, Slider, SplitView, Stepper, Switch, TabView, Table, TextArea, TextField, VStack, Ellipse, Path, Rectangle, ResourceImage

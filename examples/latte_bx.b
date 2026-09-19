@@ -32,6 +32,7 @@ fn usage() {
     io.eprintln("options:")
     io.eprintln("  -o <path>          write the generated Beans to <path> (one input only)")
     io.eprintln("  --stdout           write the generated Beans to stdout")
+    io.eprintln("  --target <name>    html (the default) or canvas")
     io.eprintln("  --latte <module>   the module Builder comes from (default: latte)")
     io.eprintln("  --package <name>   the package the generated file declares")
     io.eprintln("")
@@ -56,11 +57,20 @@ fn main() {
     // and `tests/w2_editor_data.out` is the same string as a golden, so the
     // gate says the two cannot drift.
     if command == "vocabulary" {
-        if args.len() > 1 {
-            io.eprintln("latte-bx: vocabulary takes no arguments — it prints latte's own surface")
+        var target: bx.Target = bx.Target.html
+        if args.len() == 3 && args[1] == "--target" {
+            match bx.Target.of(args[2]) {
+                some(chosen) => { target = chosen }
+                none => {
+                    io.eprintln("latte-bx: {args[2]} is not a target — the two are html and canvas")
+                    os.exit(2)
+                }
+            }
+        } else if args.len() > 1 {
+            io.eprintln("latte-bx: vocabulary takes only --target <name> — it prints latte's own surface")
             os.exit(2)
         }
-        io.print(bx.vocabulary_json())
+        io.print(bx.vocabulary_json_for(target))
         return
     }
     if command != "build" && command != "check" {
@@ -76,6 +86,22 @@ fn main() {
     var index: int = 1
     for index < args.len() {
         let arg: string = args[index]
+        if arg == "--target" {
+            index = index + 1
+            if index >= args.len() {
+                io.eprintln("latte-bx: --target needs a name — html or canvas")
+                os.exit(2)
+            }
+            match bx.Target.of(args[index]) {
+                some(target) => { options.target = target }
+                none => {
+                    io.eprintln("latte-bx: {args[index]} is not a target — the two are html and canvas")
+                    os.exit(2)
+                }
+            }
+            index = index + 1
+            continue
+        }
         if arg == "-o" {
             index = index + 1
             if index >= args.len() {

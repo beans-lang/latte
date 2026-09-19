@@ -1,0 +1,44 @@
+{
+  "$generated": "Written by community-libs/latte/tests/w3_editor_data.b, out of latte's own tables. Do not edit by hand.",
+  "$source": "latte bx/vocabulary.b, bx/canvas_events.b, bx/canvas_widgets.b, bx/parse.b",
+  "$target": "canvas",
+  "$language": "latte markup for the browser runtime — a whole-file document whose tags are Latte controls, not HTML elements",
+  "blocks": [
+    {"name": "$if", "detail": "$if <expr> { ... }", "note": "A branch. Its arms take disjoint sequence ranges out of the enclosing counter, so a flip renumbers nothing."},
+    {"name": "else", "detail": "$if <expr> { ... } else if <expr> { ... } else { ... }", "note": "Written without a $, because it continues the $if that opened the block."},
+    {"name": "$for", "detail": "$for <name> in <expr> { ... }", "note": "A region. Its body restarts sequence numbering at 0, and a direct child may carry key={ } to name a row's identity."},
+    {"name": "$match", "detail": "$match <expr> { <pattern> => { ... } }", "note": "A branch with more than two arms. At least one arm is required."},
+    {"name": "$slot", "detail": "$slot | $slot(<expr>) | $slot:<name> | $slot:<name> as <expr> | $slot:<name> as <p>: <Type> { ... }", "note": "Places or defines a fragment. A body makes it a definition and only reads that way inside a component tag."}
+  ],
+  "interpolations": [
+    {"name": "$<chain>", "detail": "$self.count, $row.title, $self.rows[0]", "note": "An implicit chain. It ends where the chain ends, so $5.00 and US$ are ordinary text."},
+    {"name": "$( )", "detail": "$(a + b)", "note": "A parenthesised expression. One line: a newline inside it is refused."},
+    {"name": "${ }", "detail": "${self.name}", "note": "A braced expression. One line, and a } in running text closes an enclosing block, so write \\} for a literal one."},
+    {"name": "$$", "detail": "$$", "note": "A literal $ in front of a word. Everywhere else a $ that is not followed by an identifier, ( or { is already text."}
+  ],
+  "events": [
+        {"name": "activate", "detail": "on:activate={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "blur", "detail": "on:blur={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "change", "detail": "on:change={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "click", "detail": "on:click={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "commit", "detail": "on:commit={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "focus", "detail": "on:focus={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "key_down", "detail": "on:key_down={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "key_up", "detail": "on:key_up={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "pointer_down", "detail": "on:pointer_down={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "pointer_move", "detail": "on:pointer_move={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "pointer_up", "detail": "on:pointer_up={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"},
+        {"name": "select", "detail": "on:select={fn(e: UiEvent) { … }}", "note": "every canvas handler receives one UiEvent"}
+  ],
+  "bindings": [
+    {"name": "bind:value", "detail": "bind:value={self.name}", "note": "two-way on the controls that hold text a user edits — TextField, SecureField, SearchField and TextArea"},
+    {"name": "bind:checked", "detail": "bind:checked={self.on}", "note": "two-way on CheckBox, RadioButton and Switch"}
+  ],
+  "reservedAttributes": [
+    {"name": "key", "detail": "key={<expr>}", "note": "The identity of one row. It belongs on a tag directly inside a $for body and nowhere else."},
+    {"name": "ref", "detail": "ref={<place>}", "note": "On an element, a Reference to the node. On a component tag, an assignment of the child into an Option<T> place, written after every parameter and taking no sequence number."}
+  ],
+  "controls": ["Box", "Button", "Canvas", "CheckBox", "ComboBox", "Container", "Disclosure", "Grid", "GroupBox", "HStack", "Label", "LevelIndicator", "ProgressBar", "RadioButton", "ScrollView", "SecureField", "SearchField", "Segmented", "Separator", "Slider", "SplitView", "Stepper", "Switch", "TabView", "Table", "TextArea", "TextField", "VStack", "Ellipse", "Path", "Rectangle", "ResourceImage"],
+  "controlsNotYetDrawn": ["ColorWell", "DatePicker", "Image", "Link", "Spinner", "OutlineView", "WebView"],
+  "attributes": ["a11y_label", "borderless", "compact", "align", "align_self", "alignment", "animating", "aspect_ratio", "background", "basis", "border_color", "border_width", "bottom", "checked", "color", "column_gap", "columns", "column_widths", "corner_radius", "day", "divider", "editable", "editable_when", "enabled", "flex", "baseline", "font_role", "font_size", "font_weight", "grow", "height", "height_percent", "hidden", "hide_above", "hide_below", "indeterminate", "items", "justify", "labels", "line_spacing", "lines", "margin", "margin_bottom", "margin_left", "margin_right", "margin_top", "margin_x", "margin_y", "max", "max_height", "max_column", "max_width", "min", "min_column", "min_height", "min_width", "opacity", "overhang", "open", "padding", "prominent", "padding_bottom", "padding_left", "padding_right", "padding_top", "padding_x", "padding_y", "right", "row_gap", "selected", "shrink", "source", "spacing", "stacked", "step", "text", "text_color", "value", "width", "width_percent", "wrap", "x", "y", "clip_radius", "d", "fill", "gradient_end", "gradient_start", "offset_x", "offset_y", "rotation", "scale_x", "scale_y", "shadow_blur", "shadow_color", "shadow_dx", "shadow_dy", "stroke", "stroke_cap", "stroke_join", "stroke_width", "transition_easing", "transition_seconds"]
+}

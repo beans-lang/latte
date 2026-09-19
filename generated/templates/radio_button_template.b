@@ -1,11 +1,11 @@
-// Generated from templates/radio_button_template.bx by latte. Do not edit.
+// Generated from templates/radio_button_template.bx by latte-bx. Do not edit.
 //
 // The <beans> block below is radio_button_template.bx's, copied through byte for byte; its
 // own package line is blanked so every line after it keeps its number. The
-// render method under it is the markup, as Builder calls.
-// Change radio_button_template.bx and regenerate:
+// render method under it is the markup, as Builder calls with fixed
+// sequence numbers. Change radio_button_template.bx and regenerate:
 //
-//     latte generate templates/radio_button_template.bx
+//     latte-bx build templates/radio_button_template.bx
 package templates
 
 import {Builder, Component} from latte.compose

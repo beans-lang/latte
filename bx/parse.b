@@ -74,8 +74,19 @@ pub class Document {
 }
 
 /// Parse a whole `.bx` source.
+/// Parses one file for one target.
+///
+/// The target changes what a tag means, what an attribute may be and which
+/// forms have something to compile into. It changes nothing about the syntax:
+/// the same lexer runs, the same nodes come out, the same spans point at the
+/// same bytes, and `tests/w3_shared_syntax.b` runs one fixture through both
+/// targets and asserts the trees are identical.
 pub fn parse_document(source: string) -> Document {
-    let parser: Parser = new Parser(new Lexer(source))
+    return parse_document_for(source, Target.html)
+}
+
+pub fn parse_document_for(source: string, target: Target) -> Document {
+    let parser: Parser = new Parser(new Lexer(source), target.rules())
     let out: Document = new Document()
     out.nodes = condense(parser.parse_nodes(STOP_EOF, false), false)
     out.beans = parser.beans
@@ -108,8 +119,13 @@ pub class Parser {
     /// message for that shape and could never reach it.
     nesting: int = 0
 
-    pub fn init(lex: Lexer) {
+    /// What this file is compiling into. Consulted for every decision that
+    /// differs between the two, and for none that does not.
+    pub rules: TargetRules = new HtmlRules()
+
+    pub fn init(lex: Lexer, rules: TargetRules) {
         self.lex = lex
+        self.rules = rules
     }
 
     // ------------------------------------------------------------ cursor
@@ -207,7 +223,7 @@ pub class Parser {
                     continue
                 }
                 if dollar_starts_transition(self.lex.src, self.lex.off) {
-                    flush_text(out, text, text_at, has_text)
+                    flush_text(out, text, text_at, has_text, self.rules)
                     text = []
                     has_text = false
                     match self.parse_transition(component_children) {
@@ -225,7 +241,7 @@ pub class Parser {
                     self.skip_past(62)
                     continue
                 }
-                flush_text(out, text, text_at, has_text)
+                flush_text(out, text, text_at, has_text, self.rules)
                 text = []
                 has_text = false
                 match self.parse_tag() {
@@ -241,7 +257,7 @@ pub class Parser {
             text.push(self.lex.src.slice(self.lex.off, self.lex.off + 1))
             self.lex.bump()
         }
-        flush_text(out, text, text_at, has_text)
+        flush_text(out, text, text_at, has_text, self.rules)
         if stop != STOP_EOF { self.nesting = self.nesting - 1 }
         return move out
     }
@@ -282,7 +298,11 @@ pub class Parser {
             return none
         }
 
-        let component: bool = names_a_component(tag)
+        let component: bool = self.rules.names_a_component(tag)
+        if !component {
+            let unknown_tag: string = self.rules.tag_refusal(tag)
+            if unknown_tag != "" { self.report(at, unknown_tag) }
+        }
         // `<Grid<int>>`. A tag name stops at the `<` — `is_name_byte` does not
         // include one — so this checks the byte that follows the name, not a
         // substring of it: `tag` itself can never contain a `<`, so a check
@@ -311,16 +331,16 @@ pub class Parser {
             return some(node)
         }
         self.lex.bump()
-        if is_void_element(tag) {
+        if self.rules.is_void_element(tag) {
             node.self_closed = true
             self.finish_empty(node, at)
             return some(node)
         }
-        if !component && is_raw_text_element(tag) {
+        if !component && self.rules.is_raw_text_element(tag) {
             self.parse_raw_text(node, at)
             return some(node)
         }
-        node.children = condense(self.parse_nodes(STOP_CLOSE_TAG, component), preserves_whitespace(tag))
+        node.children = condense(self.parse_nodes(STOP_CLOSE_TAG, component), self.rules.preserves_whitespace(tag))
         self.expect_close(tag, at)
         return some(node)
     }
@@ -329,7 +349,7 @@ pub class Parser {
     /// that says otherwise.
     fn finish_empty(node: ElementNode, at: Span) {
         if node.component { return }
-        if !is_void_element(node.tag) { return }
+        if !self.rules.is_void_element(node.tag) { return }
         if !node.self_closed { return }
     }
 
@@ -387,6 +407,8 @@ pub class Parser {
             self.report(at, "{text} is not markup latte knows — only <!-- comments --> and <!DOCTYPE ...> may start with <!")
             return none
         }
+        let refusal: string = self.rules.doctype_refusal(text)
+        if refusal != "" { self.report(at, refusal); return none }
         return some(DoctypeNode.of(text, at))
     }
 
@@ -570,8 +592,8 @@ pub class Parser {
             // attribute name, and the colon is a byte the safe set allows. It
             // falls through to the paths below — which is what makes
             // `xlink:href` writable and its scheme check reachable.
-            if !is_xml_namespace(space) {
-                self.report(at, "{name} uses an attribute namespace latte does not have — latte has two, on: for a DOM event and bind: for a two-way binding, beside the XML namespaces xlink:, xml: and xmlns:")
+            if !is_xml_namespace(space) || self.rules.target() == Target.canvas {
+                self.report(at, self.rules.namespace_refusal(name))
                 return none
             }
         }
@@ -609,6 +631,8 @@ pub class Parser {
                 self.report(at, "live takes no value — write it on its own")
                 return none
             }
+            let refusal: string = self.rules.live_refusal()
+            if refusal != "" { self.report(at, refusal); return none }
             return some(LiveAttr.of(at))
         }
         if node.component {
@@ -619,6 +643,8 @@ pub class Parser {
                 self.report(at, "attrs needs an expression: attrs=\{self.extra\}")
                 return none
             }
+            let refusal: string = self.rules.splat_refusal()
+            if refusal != "" { self.report(at, refusal); return none }
             return some(SplatAttr.of(code, at))
         }
         if name == "preserve" {
@@ -626,14 +652,24 @@ pub class Parser {
                 self.report(at, "preserve takes no value — write it on its own")
                 return none
             }
+            let refusal: string = self.rules.preserve_refusal()
+            if refusal != "" { self.report(at, refusal); return none }
             return some(PreserveAttr.of(at))
         }
-        if is_inline_handler_attribute(name) {
-            if names_an_event_handler(name) {
-                self.report(at, "{name} is an inline script handler and latte refuses it — a handler exists only as an id and the client never evaluates a string. Write on:{name.slice(2, name.len()).to_lower()}=\{fn(e: <EventType>) \{ ... \}\} instead")
-            } else {
-                self.report(at, "{name} starts with on, and latte refuses every attribute whose name does — HTML's inline handlers all have that shape, latte.Builder drops such an attribute at run time, and a folded constant subtree would keep what the unfolded walk dropped. Rename it, or write on:<event>=\{...\} if you meant a handler")
-            }
+        let handler_refusal: string = self.rules.inline_handler_refusal(name)
+        if handler_refusal != "" {
+            self.report(at, handler_refusal)
+            return none
+        }
+        // A name the target does not have. The html target has no such thing —
+        // HTML is open, and `data-`, `aria-` and a custom element's own
+        // property are all legitimate. The canvas target's controls have a
+        // closed set, so a misspelling is a mistake, and one that compiled to
+        // a silent no-op is the most common way an interface stops matching
+        // the markup that describes it.
+        let unknown: string = self.rules.attribute_refusal(node.tag, name)
+        if unknown != "" {
+            self.report(at, unknown)
             return none
         }
         if is_boolean_attribute(name) {
@@ -652,7 +688,7 @@ pub class Parser {
         if is_code {
             return some(ExprAttr.of(name, code, at))
         }
-        return some(LiteralAttr.of(name, resolve_references(literal), at))
+        return some(LiteralAttr.of(name, self.rules.resolve_literal(literal), at))
     }
 
     /// One parameter on a component tag: its Beans field, by its Beans name.
@@ -676,7 +712,7 @@ pub class Parser {
         if is_code {
             return some(ExprAttr.of(name, code, at))
         }
-        return some(LiteralAttr.of(name, resolve_references(literal), at))
+        return some(LiteralAttr.of(name, self.rules.resolve_literal(literal), at))
     }
 
     /// `on:click={...}`.
@@ -690,12 +726,12 @@ pub class Parser {
             self.report(at, "on:{event} needs a handler: on:{event}=\{fn(e: {family_or_event(event)}) \{ ... \}\}")
             return none
         }
-        if event_method(event) == "" {
-            let near: string = nearest_event(event)
+        if !self.rules.is_event(event) {
+            let near: string = self.rules.nearest_event(event)
             if near == "" {
-                self.report(at, "on:{event} is not an event latte has — the table is {event_list()}")
+                self.report(at, "on:{event} is not an event latte has — the table is {self.rules.event_list()}")
             } else {
-                self.report(at, "on:{event} is not an event latte has — did you mean on:{near}? The table is {event_list()}")
+                self.report(at, "on:{event} is not an event latte has — did you mean on:{near}? The table is {self.rules.event_list()}")
             }
             return none
         }
@@ -724,10 +760,11 @@ pub class Parser {
             self.report(at, "bind:{rest}=\{{code}\} is not a field to write back to — a binding needs a place, such as bind:{rest}=\{self.note\}")
             return none
         }
-        let tag: string = node.tag.to_lower()
+        let tag: string = node.tag
         if target == "checked" {
-            if tag != "input" {
-                self.report(at, "bind:checked works on an <input>, and this is a <{node.tag}>")
+            let state_refusal: string = self.rules.bind_state_refusal(tag)
+            if state_refusal != "" {
+                self.report(at, state_refusal)
                 return none
             }
             if modifier != "" {
@@ -744,14 +781,10 @@ pub class Parser {
             self.report(at, "bind:value.{modifier} is not a conversion latte has — the three are .int, .float and .bool")
             return none
         }
-        if tag == "input" || tag == "textarea" {
+        if self.rules.bind_value_refusal(tag) == "" {
             return some(BindAttr.of("value", modifier, code, at))
         }
-        if tag == "select" {
-            self.report(at, "bind:value on a <select> cannot set the initial selection: a select's value is not an attribute, it is which <option> carries selected. Write selected=\{...\} on the option and on:change=\{...\} for the write-back")
-            return none
-        }
-        self.report(at, "bind:value works on an <input> and a <textarea>, and this is a <{node.tag}>")
+        self.report(at, self.rules.bind_value_refusal(tag))
         return none
     }
 
@@ -815,6 +848,8 @@ pub class Parser {
         }
         let code: string = self.lex.src.slice(self.lex.off + 1, stop - 1)
         self.lex.advance_to(stop)
+        let refusal: string = self.rules.raw_html_refusal()
+        if refusal != "" { self.report(at, refusal); return none }
         return some(RawHtmlNode.of(code.trim(), at))
     }
 
@@ -1071,14 +1106,15 @@ pub class Parser {
 // -------------------------------------------------------------- whitespace
 
 /// Push whatever text has been collected, as one node.
-fn flush_text(out: List<Node>, pieces: List<string>, at: Span, has_text: bool) {
+fn flush_text(out: List<Node>, pieces: List<string>, at: Span, has_text: bool,
+              rules: TargetRules) {
     if !has_text { return }
     let joined: string = pieces.join("")
     if joined.len() == 0 { return }
-    out.push(TextNode.of(resolve_references(joined), at))
+    out.push(TextNode.of(rules.resolve_literal(joined), at))
 }
 
-/// Whether an element's text keeps its whitespace exactly as written.
+/// Whether an HTML element's text keeps its whitespace exactly as written.
 pub fn preserves_whitespace(tag: string) -> bool {
     let name: string = tag.to_lower()
     if name == "pre" { return true }

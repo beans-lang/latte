@@ -1565,6 +1565,25 @@ run_browser_leg() {
     fi
 }
 
+# --- the generated-file leg --------------------------------------------
+#
+# Every `.bx` file in the tree, recompiled into a scratch directory and diffed
+# against what is checked in. A markup file that changed and was never
+# regenerated is a program doing what the markup used to say, and nothing else
+# in this gate can see it.
+run_generated_leg() {
+    if (cd "$ROOT" && bash tools/check_generated.sh) >"$tmp/generated.log" 2>&1; then
+        sed 's/^/  /' "$tmp/generated.log"
+        legs=$((legs + 1))
+    else
+        echo "--- generated FAILED ---" >&2
+        cat "$tmp/generated.log" >&2
+        failed=1
+    fi
+}
+
+run_generated_leg
+
 if [[ -z "$only" || $canvas_only -eq 1 ]]; then
     run_canvas_leg
     [[ $browser_leg -eq 0 ]] || run_browser_leg

@@ -47,6 +47,36 @@ import std.fs
 /// `Callback`, `Reference` and the other four event classes are spelled by the
 /// author, in a handler closure or a component parameter. All nine are here
 /// because an unused import is not an error and a missing one is.
+/// The import lines a generated file carries, for one target.
+///
+/// The html target's names all come from the module root. The canvas target's
+/// come from two packages — the component model and the event record — so its
+/// line is built in two halves. An unused import is not an error and a missing
+/// one is, so every name a generated file *could* spell is imported whether or
+/// not this file needed it.
+pub fn import_lines(options: Options) -> List<string> {
+    match options.target {
+        html => {
+            return ["import \{{latte_imports().join(", ")}\} from {options.latte_module}"]
+        }
+        canvas => {
+            return ["import \{{canvas_imports().join(", ")}\} from {options.canvas_module}",
+                    "import \{{canvas_event_imports().join(", ")}\} from {options.canvas_events_module}"]
+        }
+    }
+}
+
+/// The names a canvas-target file imports from the component model.
+pub fn canvas_imports() -> List<string> {
+    return ["Builder", "Component"]
+}
+
+/// And from the event package. `UiEvent` is spelled by the author, in every
+/// handler closure.
+pub fn canvas_event_imports() -> List<string> {
+    return ["UiEvent"]
+}
+
 pub fn latte_imports() -> List<string> {
     return ["Builder", "Callback", "Component", "FocusEvent", "InputEvent",
             "KeyboardEvent", "MouseEvent", "Reference", "SubmitEvent"]
@@ -54,9 +84,18 @@ pub fn latte_imports() -> List<string> {
 
 /// How to compile one file.
 pub class Options {
-    /// Where `Builder` and friends come from. `latte` everywhere but in the
-    /// probes, which carry their own stub core.
+    /// What this file compiles into. `html` is the default and is what every
+    /// existing `.bx` file means; a file is only compiled for the canvas when
+    /// a caller says so, so nothing changes meaning by being recompiled.
+    pub target: Target = Target.html
+    /// Where `Builder` and friends come from for the html target. `latte`
+    /// everywhere but in the probes, which carry their own stub core.
     pub latte_module: string = "latte"
+    /// And for the canvas target, whose component model is a package of its
+    /// own rather than the module root — a package under `latte/` may not
+    /// import that root.
+    pub canvas_module: string = "latte.compose"
+    pub canvas_events_module: string = "latte.input"
     /// The package the generated file declares. Empty means: take the one the
     /// `<beans>` block declares, and failing that the containing folder's name.
     pub package_name: string = ""
@@ -442,7 +481,7 @@ pub fn compile_source(source: string, path: string, options: Options) -> Compile
     let wanted: string = class_name_for(stem)
     out.class_name = wanted
 
-    let doc: Document = parse_document(source)
+    let doc: Document = parse_document_for(source, options.target)
     for d: Diag in doc.diags { out.diags.push(d) }
 
     var block: string = ""
@@ -495,9 +534,28 @@ pub fn compile_source(source: string, path: string, options: Options) -> Compile
         index = index + 1
     }
 
-    let emitter: Emitter = new Emitter(file)
-    let emitted: Emitted = emitter.emit(doc, header.type_params)
-    for d: Diag in emitted.diags { out.diags.push(d) }
+    // One emitter per target. They share everything above this line — the
+    // lexer, the tree, the spans, the diagnostics, the header scan — and
+    // nothing below it: what a tag becomes is the whole difference between a
+    // DOM component and a drawn one.
+    var lines: List<string> = []
+    var components: List<string> = []
+    match options.target {
+        html => {
+            let emitter: Emitter = new Emitter(file)
+            let emitted: Emitted = emitter.emit(doc, header.type_params)
+            for d: Diag in emitted.diags { out.diags.push(d) }
+            for line: string in emitted.lines { lines.push(line) }
+            for tag: string in emitted.components { components.push(tag) }
+        }
+        canvas => {
+            let emitter: CanvasEmitter = new CanvasEmitter(file)
+            let emitted: CanvasEmitted = emitter.emit(doc, header.type_params)
+            for d: Diag in emitted.diags { out.diags.push(d) }
+            for line: string in emitted.lines { lines.push(line) }
+            for tag: string in emitted.components { components.push(tag) }
+        }
+    }
 
     if !out.is_ok() { return out }
 
@@ -521,23 +579,23 @@ pub fn compile_source(source: string, path: string, options: Options) -> Compile
     body.push("//     latte-bx build {path}")
     body.push("package {package_name}")
     body.push("")
-    body.push("import \{{latte_imports().join(", ")}\} from {options.latte_module}")
+    for line: string in import_lines(options) { body.push(line) }
     body.push("")
     body.push(blank_package_statement(block, header))
-    if !emitted.components.is_empty() {
+    if !components.is_empty() {
         body.push("")
         body.push("// Every component tag in {file}, checked by beansc rather than by latte-bx:")
         body.push("// a tag whose type is not a Component is a type error naming the type,")
         body.push("// instead of a blank subtree and a fault at run time. Unused, and an")
         body.push("// unused free function is not an error.")
-        for tag: string in emitted.components {
+        for tag: string in components {
             body.push("fn _latte_component_{stem}_{mangle_tag(tag)}(value: {tag}) -> Component \{ return value \}")
         }
     }
     body.push("")
     body.push("partial class {wanted} \{")
     body.push("    pub override fn render(b: Builder) \{")
-    for line: string in emitted.lines { body.push(line) }
+    for line: string in lines { body.push(line) }
     body.push("    \}")
     body.push("\}")
     out.source = "{body.join("\n")}\n"

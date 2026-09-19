@@ -1,11 +1,11 @@
-// Generated from templates/table_template.bx by latte. Do not edit.
+// Generated from templates/table_template.bx by latte-bx. Do not edit.
 //
 // The <beans> block below is table_template.bx's, copied through byte for byte; its
 // own package line is blanked so every line after it keeps its number. The
-// render method under it is the markup, as Builder calls.
-// Change table_template.bx and regenerate:
+// render method under it is the markup, as Builder calls with fixed
+// sequence numbers. Change table_template.bx and regenerate:
 //
-//     latte generate templates/table_template.bx
+//     latte-bx build templates/table_template.bx
 package templates
 
 import {Builder, Component} from latte.compose
@@ -54,7 +54,7 @@ partial class TableTemplate {
             b.number("font_size", (self.font_size) as f64)
             b.close()
         }
-        var _cortado_row_0: int = 0
+        var _latte_row_0: int = 0
         for row in self.rows {  // table_template.bx:5
             b.open("HStack")  // table_template.bx:6
             b.key("{"row-{row.index}"}")
@@ -65,7 +65,7 @@ partial class TableTemplate {
             b.word("align", "center")
             b.number("padding_x", (6) as f64)
             b.word("background", if row.selected { self.selection } else if row.index % 2 == 1 { self.stripe } else { "#00000000" })
-            var _cortado_row_1: int = 0
+            var _latte_row_1: int = 0
             for column in 0..row.cells.len() {  // table_template.bx:9
                 if row.index == self.editing_row && column == self.editing_column {  // table_template.bx:10
                     b.open("TextField")  // table_template.bx:11
@@ -86,10 +86,10 @@ partial class TableTemplate {
                     b.word("background", "#00000000")
                     b.close()
                 }
-                _cortado_row_1 += 1
+                _latte_row_1 += 1
             }
             b.close()
-            _cortado_row_0 += 1
+            _latte_row_0 += 1
         }
         b.open("HStack")  // table_template.bx:24
         b.number("y", (0) as f64)
@@ -99,7 +99,7 @@ partial class TableTemplate {
         b.word("align", "center")
         b.number("padding_x", (6) as f64)
         b.word("background", self.grouped)
-        var _cortado_row_2: int = 0
+        var _latte_row_2: int = 0
         for column in 0..self.titles.len() {  // table_template.bx:26
             b.open("Label")  // table_template.bx:27
             b.key("{"header-{column}"}")
@@ -108,7 +108,7 @@ partial class TableTemplate {
             b.number("font_size", (self.footnote) as f64)
             b.word("text_color", self.muted)
             b.close()
-            _cortado_row_2 += 1
+            _latte_row_2 += 1
         }
         b.close()
         b.close()

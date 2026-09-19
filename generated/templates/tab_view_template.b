@@ -1,11 +1,11 @@
-// Generated from templates/tab_view_template.bx by latte. Do not edit.
+// Generated from templates/tab_view_template.bx by latte-bx. Do not edit.
 //
 // The <beans> block below is tab_view_template.bx's, copied through byte for byte; its
 // own package line is blanked so every line after it keeps its number. The
-// render method under it is the markup, as Builder calls.
-// Change tab_view_template.bx and regenerate:
+// render method under it is the markup, as Builder calls with fixed
+// sequence numbers. Change tab_view_template.bx and regenerate:
 //
-//     latte generate templates/tab_view_template.bx
+//     latte-bx build templates/tab_view_template.bx
 package templates
 
 import {Builder, Component} from latte.compose
@@ -52,7 +52,7 @@ partial class TabViewTemplate {
                 b.word("transition_easing", "ease_in_out")
                 b.close()
             }
-            var _cortado_row_0: int = 0
+            var _latte_row_0: int = 0
             for index in 0..self.labels.len() {  // tab_view_template.bx:16
                 b.open("Label")  // tab_view_template.bx:17
                 b.key("{"tab-{index}"}")
@@ -68,7 +68,7 @@ partial class TabViewTemplate {
                 b.number("baseline", (self.baseline) as f64)
                 b.number("alignment", (1) as f64)
                 b.close()
-                _cortado_row_0 += 1
+                _latte_row_0 += 1
             }
             b.close()
             b.close()

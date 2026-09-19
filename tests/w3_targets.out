@@ -1,0 +1,46 @@
+
+== 1 — the shared syntax parses identically for both targets ==
+a screen with every shared form: same tree, same spans (13 lines)
+expressions with braces inside them: same tree, same spans (3 lines)
+a match with two arms: same tree, same spans (1 lines)
+
+== 2 — a form one target has and the other has not ==
+html doctype: accepted
+canvas doctype: <!DOCTYPE html> declares the grammar of an HTML document, and a canvas component draws controls — there is no document for it to be the first line of. Delete it; the surface a component renders into is made by the application, not by the markup
+html raw: accepted
+canvas raw: $html writes unescaped HTML and a canvas component draws controls, so there is nothing for it to write into. Build the controls you want with tags
+html splat: accepted
+canvas splat: attrs={ } splats a map of HTML attributes onto an element, and a canvas control has a closed set of typed properties rather than a bag of strings. Write the ones you mean
+html preserve: accepted
+canvas preserve: preserve stops the differ walking into a subtree a third-party script owns, and nothing but latte draws into a canvas. Remove it
+html live: accepted
+canvas live: live binds an element's text to a signal so a write patches one DOM node, and a canvas component repaints the control instead. Remove it; a change to state re-renders
+html inline handler: onclick is an inline script handler and latte refuses it — a handler exists only as an id and the client never evaluates a string. Write on:click={fn(e: <EventType>) { ... }} instead
+
+== 3 — what a tag means, which is where the two differ on purpose ==
+<Label>: html component, canvas control
+<VStack>: html component, canvas control
+<div>: html element, canvas refused
+<OrderRow>: html component, canvas component
+
+== 3b — what each target really has ==
+html bind:value on input: accepted
+html bind:value on a div: bind:value works on an <input> and a <textarea>, and this is a <div>
+canvas bind:value on TextField: accepted
+canvas bind:value on a Label: bind:value works on the controls that hold text a user edits — <TextField>, <SecureField>, <SearchField> and <TextArea> — and this is a <Label>
+canvas bind:checked on Switch: accepted
+html on:click: accepted
+canvas on:click: accepted
+canvas on:submit: on:submit is not an event latte has — the table is activate, blur, change, click, commit, focus, key_down, key_up, pointer_down, pointer_move, pointer_up, select
+canvas unknown attribute: <Label> has no attribute called wieght — did you mean right?
+html unknown attribute: accepted
+canvas html element: <div> is not a control latte draws — a canvas component is built from Box, Button, Canvas, CheckBox, ComboBox, Container, Disclosure, Grid, GroupBox, HStack, Label, LevelIndicator, ProgressBar, RadioButton, ScrollView, SecureField, SearchField, Segmented, Separator, Slider, SplitView, Stepper, Switch, TabView, Table, TextArea, TextField, VStack, Ellipse, Path, Rectangle, ResourceImage
+canvas retired container: <VFlex> is retired: every <VStack> shares out its leftover by grow and shrink now — write <VStack>
+
+== 4 — the html target is what a file means when nobody says ==
+default target: <div> element @1:1
+  . lit class="x" @1:6
+  text "hi & bye" @1:16
+
+  child: text "hi & bye" @1:16
+
