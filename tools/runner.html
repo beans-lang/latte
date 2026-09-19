@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Latte browser runner</title>
+<!-- Loads one built module, runs its exported entry, and leaves what it
+     printed on `window.__latteRun` for the gate to read. It has no UI on
+     purpose: a page that rendered its own results would be a second thing that
+     can be wrong about them. -->
+<pre id="out"></pre>
+<script type="module">
+import { LatteRuntime } from "../js/latte-runtime.js";
+
+const name = new URL(location.href).searchParams.get("module");
+const lines = [];
+const say = (line) => { lines.push(line); document.getElementById("out").textContent = lines.join("\n"); };
+
+try {
+    const runtime = await LatteRuntime.load(`../build/browser/${name}.wasm`, {
+        stdout: say, stderr: say,
+    });
+    // The entry is whichever `latte_*_run` the module exports. One per module,
+    // so a module with two would be a mistake worth catching here.
+    const entries = Object.keys(runtime.exports).filter((key) => key.endsWith("_run"));
+    if (entries.length !== 1) {
+        throw new Error(`${name}.wasm exports ${entries.length} entries (${entries.join(", ")}), expected exactly one ending in _run`);
+    }
+    const code = runtime.exports[entries[0]]();
+    runtime.flush();
+    window.__latteRun = {
+        code,
+        output: lines.join("\n") + "\n",
+        pages: Number(runtime.exports.latte_heap_pages ? runtime.exports.latte_heap_pages() : 0),
+        live: Number(runtime.exports.latte_heap_live ? runtime.exports.latte_heap_live() : 0),
+    };
+} catch (error) {
+    window.__latteRun = { code: -1, output: String(error && error.stack || error), pages: 0, live: 0 };
+}
+</script>

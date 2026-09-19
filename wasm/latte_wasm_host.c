@@ -78,6 +78,15 @@ int memcmp(const void *left, const void *right, unsigned long count) {
     return 0;
 }
 
+void *memchr(const void *block, int value, unsigned long count) {
+    const u8 *at = (const u8 *)block;
+    u8 byte = (u8)value;
+    for (unsigned long i = 0; i < count; i++) {
+        if (at[i] == byte) return (void *)(at + i);
+    }
+    return 0;
+}
+
 unsigned long strlen(const char *text) {
     unsigned long at = 0;
     while (text[at]) at++;

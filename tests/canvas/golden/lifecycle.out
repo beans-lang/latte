@@ -1,0 +1,9 @@
+renders after show: 1
+label: nothing yet
+label frame: 8,8 86x16
+button frame: 8,30 79x24
+after one click: clicked 1
+handlers while mounted: true
+handlers after close: 0
+closed: true
+handlers on the 25th mount: 1

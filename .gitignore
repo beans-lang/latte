@@ -9,3 +9,12 @@ tests/_w2_component_bad.b
 # test.sh stages one of these inside each nested example module while it
 # runs the examples leg, and removes it again.
 examples/*/tests/_examples_cover.b
+
+# The browser tooling: playwright and a pinned CanvasKit build.
+node_modules/
+package-lock.json
+
+# What the browser gate builds and what playwright leaves behind.
+build/browser/
+.playwright-mcp/
+test-results/

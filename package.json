@@ -1,0 +1,17 @@
+{
+  "name": "@beans-lang/latte-browser",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "The page half of Latte: the WebAssembly loader, the CanvasKit renderer, and the browser gates.",
+  "scripts": {
+    "gate": "node tools/browser_gate.mjs",
+    "serve": "node tools/serve.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  },
+  "dependencies": {
+    "canvaskit-wasm": "0.39.1"
+  }
+}

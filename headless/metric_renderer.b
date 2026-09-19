@@ -155,6 +155,26 @@ pub class MetricRenderer implements paint.Renderer {
         return err("could not load the image {source}: this renderer draws nothing, so it decodes nothing",
                    "unsupported")
     }
+
+    /// Never replaced: there is no surface to lose.
+    pub fn revision() -> int { return 0 }
+
+    pub fn software() -> bool { return true }
+
+    pub fn snapshot() -> Result<paint.Pixels> {
+        return err("could not read the frame back: this renderer paints nothing, so there are no pixels to read",
+                   "unsupported")
+    }
+
+    /// The commands of the last finished frame, for a gate that wants to
+    /// assert what was drawn rather than what it looked like.
+    pub fn last_frame() -> Option<paint.DisplayList> {
+        if self.recorded.len() == 0 { return none }
+        return some(self.recorded[self.recorded.len() - 1])
+    }
+
+    /// Drops every recorded frame. A long run would otherwise hold each one.
+    pub fn forget_frames() { self.recorded = [] }
 }
 
 /// A paragraph measured from a stated advance, not from a font file.

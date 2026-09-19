@@ -16,6 +16,8 @@
 #   ./test.sh diff         one suite, both legs
 #   ./test.sh --wasm       the core-imports-no-I/O leg, on its own
 #   ./test.sh --examples   the examples leg, on its own
+#   ./test.sh --canvas     the canvas-runtime suites, on both backends
+#   ./test.sh --browser    the canvas suites again, in every browser engine
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
@@ -87,12 +89,17 @@ compiler_line() {
 native=1
 wasm_only=0
 examples_only=0
+canvas_only=0
+browser_leg=1
 only=""
 for arg in "$@"; do
     case "$arg" in
         --interp) native=0 ;;
         --wasm)   wasm_only=1 ;;
         --examples) examples_only=1 ;;
+        --canvas) canvas_only=1 ;;
+        --browser) canvas_only=1; browser_leg=2 ;;
+        --no-browser) browser_leg=0 ;;
         -*) echo "unknown option: $arg" >&2; exit 2 ;;
         *) only="$arg" ;;
     esac
@@ -855,7 +862,7 @@ else
 fi
 
 shopt -s nullglob
-run_examples_leg
+[[ $canvas_only -eq 1 ]] || run_examples_leg
 
 
 # --- the refusal-coverage leg --------------------------------------------
@@ -1096,7 +1103,7 @@ run_refusal_coverage_leg() {
 
 # Reads two files and always runs, even for a single named suite: a check that
 # cannot be skipped cannot rot.
-run_refusal_coverage_leg
+[[ $canvas_only -eq 1 ]] || run_refusal_coverage_leg
 
 # Every recorded refusal in probes/*_bad/, re-checked against today's compiler.
 #
@@ -1153,7 +1160,7 @@ run_recorded_refusals_leg() {
 }
 
 # Always runs, for the same reason as the leg above.
-run_recorded_refusals_leg
+[[ $canvas_only -eq 1 ]] || run_recorded_refusals_leg
 
 # The browser half of gate 3. `tests/js_cases.b` is a gated suite already — it
 # prints a JavaScript fixture file, and both backends agree on it byte for
@@ -1250,7 +1257,7 @@ run_browser_apply_leg() {
 }
 
 # Runs even for a single named suite, like the two legs above.
-run_browser_apply_leg
+[[ $canvas_only -eq 1 ]] || run_browser_apply_leg
 
 # ------------------------------------------------------------------ the CSP
 #
@@ -1361,9 +1368,10 @@ run_csp_browser_leg() {
     fi
 }
 
-run_csp_browser_leg
+[[ $canvas_only -eq 1 ]] || run_csp_browser_leg
 
 for case in "$ROOT"/tests/*.b; do
+    [[ $canvas_only -eq 1 ]] && break
     name=$(basename "$case" .b)
     # Scratch drivers are allowed in tests/ and are not gated: a name starting
     # with "_" or "probe" is a probe, not a suite.
@@ -1419,7 +1427,148 @@ for case in "$ROOT"/tests/*.b; do
     fi
 done
 
-[[ -n "$only" ]] || run_wasm_leg
+[[ -n "$only" || $canvas_only -eq 1 ]] || run_wasm_leg
+
+# --- the canvas-runtime leg ----------------------------------------------
+#
+# `tests/canvas/*.b` are the suites for the half of latte that draws: the
+# component model, the layout solver, the render tree, input, and the scene
+# that holds them. They live apart from `tests/*.b` because they prove a
+# different thing — those are about HTML, these are about a canvas — and
+# because each one is ALSO a WebAssembly module, which the suites at the root
+# are not.
+#
+# Three legs per suite, and the third is the one that earns its keep. The
+# interpreter and the native binary have caught nearly every fault this
+# workspace has found; the browser is a third implementation of the same
+# program, through a different WebAssembly engine, and a difference there is a
+# fault nothing else can see.
+run_canvas_leg() {
+    local sources=("$ROOT"/tests/canvas/*.b)
+    if [[ ${#sources[@]} -eq 0 ]]; then
+        echo "--- canvas FAILED: tests/canvas/ has no suites ---" >&2
+        echo "    the canvas runtime is in the tree; a gate with nothing in it is not a pass." >&2
+        failed=1
+        return 0
+    fi
+
+    local ran=0
+    for case in "${sources[@]}"; do
+        local name
+        name=$(basename "$case" .b)
+        case "$name" in _*) continue ;; esac
+        if [[ -n "$only" && "$name" != "$only" ]]; then continue ; fi
+        local want="$ROOT/tests/canvas/golden/$name.out"
+        if [[ ! -f "$want" ]]; then
+            echo "--- canvas FAILED: tests/canvas/$name.b has no golden ---" >&2
+            echo "    record it: \$BEANSC run tests/canvas/$name.b > tests/canvas/golden/$name.out" >&2
+            failed=1
+            continue
+        fi
+        ran=$((ran + 1))
+        suites=$((suites + 1))
+
+        if ! (cd "$ROOT" && "$BEANSC" run "$case") >"$tmp/c_$name.interp" 2>"$tmp/c_$name.err"; then
+            echo "--- canvas/$name failed to run under the interpreter ---" >&2
+            cat "$tmp/c_$name.err" >&2
+            failed=1
+            continue
+        fi
+        if diff -u "$want" "$tmp/c_$name.interp"; then
+            legs=$((legs + 1))
+        else
+            echo "--- canvas/$name: interpreter output differs from the golden ---" >&2
+            failed=1
+            continue
+        fi
+
+        [[ $native -eq 1 ]] || continue
+        if ! (cd "$ROOT" && "$BEANSC" build "$case" -o "$tmp/c_$name.bin") >"$tmp/c_$name.build" 2>&1; then
+            echo "--- canvas/$name failed to build natively ---" >&2
+            cat "$tmp/c_$name.build" >&2
+            failed=1
+            continue
+        fi
+        if ! (cd "$ROOT" && "$tmp/c_$name.bin") >"$tmp/c_$name.native" 2>&1; then
+            echo "--- canvas/$name failed to run natively ---" >&2
+            cat "$tmp/c_$name.native" >&2
+            failed=1
+            continue
+        fi
+        if diff -u "$want" "$tmp/c_$name.native"; then
+            legs=$((legs + 1))
+        else
+            echo "--- canvas/$name: NATIVE output differs from the golden ---" >&2
+            echo "    the two backends disagree; that is a compiler fault until" >&2
+            echo "    proven otherwise." >&2
+            failed=1
+        fi
+    done
+    echo "ok canvas — $ran suite(s) on $([[ $native -eq 1 ]] && echo "both backends" || echo "the interpreter")"
+}
+
+# --- the browser leg ------------------------------------------------------
+#
+# The same suites, built for wasm32-unknown-unknown and run in Chromium,
+# Firefox and WebKit against the same goldens. It needs node, playwright's
+# browsers, a Clang with a wasm32 backend and a wasm-ld; each missing piece is
+# reported by name and counted as a SKIP, because a browser gate that quietly
+# passes when it ran nothing is worse than no browser gate.
+run_browser_leg() {
+    if ! command -v node >/dev/null 2>&1; then
+        echo "SKIP browser: node is not installed — no browser engine was tested"
+        skipped=$((skipped + 1))
+        return 0
+    fi
+    if [[ ! -d "$ROOT/node_modules/playwright" ]]; then
+        echo "SKIP browser: playwright is not installed — run 'npm install && npx playwright install'"
+        skipped=$((skipped + 1))
+        return 0
+    fi
+
+    local built=0
+    for case in "$ROOT"/tests/canvas/*.b; do
+        local name
+        name=$(basename "$case" .b)
+        case "$name" in _*) continue ;; esac
+        [[ -f "$ROOT/tests/canvas/golden/$name.out" ]] || continue
+        if ! (cd "$ROOT" && bash tools/wasm_build.sh "tests/canvas/$name.b" \
+                "build/browser/$name.wasm") >"$tmp/wasm_$name.log" 2>&1; then
+            echo "SKIP browser: $name.b did not build for wasm32 — no browser engine was tested"
+            sed 's/^/    /' "$tmp/wasm_$name.log" >&2
+            skipped=$((skipped + 1))
+            return 0
+        fi
+        built=$((built + 1))
+    done
+    if [[ $built -eq 0 ]]; then
+        echo "--- browser FAILED: nothing was built for the browser ---" >&2
+        failed=1
+        return 0
+    fi
+
+    if ! (cd "$ROOT" && bash tools/wasm_abi.sh) >"$tmp/abi.log" 2>&1; then
+        echo "--- browser FAILED: the WebAssembly boundary has drifted ---" >&2
+        cat "$tmp/abi.log" >&2
+        failed=1
+        return 0
+    fi
+    sed 's/^/  /' "$tmp/abi.log"
+
+    if (cd "$ROOT" && node tools/browser_gate.mjs) >"$tmp/browser.log" 2>&1; then
+        sed 's/^/  /' "$tmp/browser.log"
+        legs=$((legs + 1))
+    else
+        echo "--- browser FAILED ---" >&2
+        cat "$tmp/browser.log" >&2
+        failed=1
+    fi
+}
+
+if [[ -z "$only" || $canvas_only -eq 1 ]]; then
+    run_canvas_leg
+    [[ $browser_leg -eq 0 ]] || run_browser_leg
+fi
 
 
 if [[ $suites -eq 0 && $examples_ran -eq 0 && -n "$only" ]]; then
