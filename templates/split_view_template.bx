@@ -1,0 +1,17 @@
+<Box background={self.card}>
+  $if self.stacked {
+    <Box y={self.divider_half} height={1} width_percent={100.0} background={self.separator} />
+  }
+  $if !self.stacked {
+    <Box x={self.divider_half} width={1} height_percent={100.0} background={self.separator} />
+  }
+</Box>
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class SplitViewTemplate extends compose.SplitControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

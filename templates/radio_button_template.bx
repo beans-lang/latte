@@ -1,0 +1,24 @@
+<HStack spacing={self.toggle_gap} align="start">
+  <Box width={self.toggle_size} height={self.toggle_size}
+       background={if self.checked { self.accent_fill } else { self.track_off }}
+       corner_radius={self.capsule}>
+    $if self.checked {
+      <!-- The dot fills the circle's own box and is scaled about its centre.
+           A separately placed box rounds its two edges apart and drifts off centre. -->
+      <Ellipse width_percent={100.0} height_percent={100.0}
+               scale_x={self.radio_dot / self.toggle_size} scale_y={self.radio_dot / self.toggle_size}
+               fill={self.on_accent} />
+    }
+  </Box>
+  <Label text={self.title} text_color={self.ink} font_size={self.font_size}
+         baseline={self.toggle_baseline} grow={1} height={self.toggle_size} />
+</HStack>
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class RadioButtonTemplate extends compose.ToggleControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

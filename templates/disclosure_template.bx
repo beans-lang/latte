@@ -1,0 +1,16 @@
+<VStack background={self.card} corner_radius={self.radius}
+        border_width={1} border_color={self.separator} align="stretch">
+  <HStack spacing={4} padding={4} align="center">
+    <Label text={self.glyph} text_color={self.muted} font_size={self.caption} />
+    <Label text={self.title} text_color={self.ink} font_size={self.font_size} />
+  </HStack>
+</VStack>
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class DisclosureTemplate extends compose.DisclosureControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

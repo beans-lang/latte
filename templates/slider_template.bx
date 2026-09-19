@@ -1,0 +1,26 @@
+<Box width_percent={100.0} height_percent={100.0}>
+  <Box y={(self.slider_height - self.slider_track) / 2.0}
+       width_percent={100.0} height={self.slider_track}
+       background={self.track_off} corner_radius={self.capsule} />
+  <!-- The fill stops where the knob starts, not at the knob's centre. -->
+  <Box y={(self.slider_height - self.slider_track) / 2.0}
+       width={self.thumb_leading} height={self.slider_track}
+       background={self.accent_fill} corner_radius={self.capsule} />
+  <!-- A capsule, not a circle, and with no rim: AppKit gives it a soft shadow
+       and nothing else. Only that shadow reaches past the frame. -->
+  <Rectangle x={self.thumb_leading} y={(self.slider_height - self.slider_knob_height) / 2.0}
+             width={self.slider_knob} height={self.slider_knob_height}
+             corner_radius={self.slider_knob_height / 2.0}
+             overhang={self.slider_overhang}
+             fill={self.knob}
+             shadow_color={self.knob_shadow} shadow_blur={1.5} shadow_dy={0.5} />
+</Box>
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class SliderTemplate extends compose.RangeControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

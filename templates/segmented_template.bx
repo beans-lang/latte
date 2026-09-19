@@ -1,0 +1,30 @@
+<Box background={self.surface} corner_radius={self.radius}
+     width_percent={100.0} height_percent={100.0}>
+  <!-- One pill that slides, rather than a filled box per segment: the selection
+       moves between segments of different widths, so it has to know both. -->
+  $if self.selection_width > 0.0 {
+    <Rectangle x={0} y={0} width={self.selection_width} height_percent={100.0}
+               offset_x={self.selection_x}
+               corner_radius={self.radius}
+               fill={self.selection_fill}
+               transition_seconds={self.motion_selection} transition_easing="ease_in_out" />
+  }
+  $for index in 0..self.choices.len() {
+    <Label key={"segment-{index}"} text={self.choices[index]}
+           x={self.item_x[index]} y={0} width={self.item_width[index]} height_percent={100.0}
+           text_color={if self.selected == index && self.active { self.on_accent } else { self.ink }}
+           font_weight={if self.selected == index { self.selected_weight } else { 0 }}
+           background={self.clear}
+           font_size={self.font_size} baseline={self.baseline}
+           alignment={1} />
+  }
+</Box>
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class SegmentedTemplate extends compose.ChoiceControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

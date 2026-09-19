@@ -1,0 +1,22 @@
+<Box width_percent={100.0} height_percent={100.0}>
+  $for index in 0..self.level_cells {
+    <!-- Ten touching cells with a hairline rule between them. A filled cell
+         keeps its own darker rule; it does not lose the line. -->
+    <Box key={"cell-{index}"}
+         x={index as f64 * (self.level_cell_width + self.level_cell_gap)} y={0}
+         width={self.level_cell_width} height={self.level_cell_height}
+         corner_radius={self.level_cell_radius}
+         background={if (index as f64 + 1.0) * (100.0 / self.level_cells as f64) <= self.percent + 0.001 { self.level_fill } else { self.level_empty }}
+         border_width={self.hairline_width / 2.0}
+         border_color={if (index as f64 + 1.0) * (100.0 / self.level_cells as f64) <= self.percent + 0.001 { self.level_fill_border } else { self.level_border }} />
+  }
+</Box>
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class LevelIndicatorTemplate extends compose.RangeControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

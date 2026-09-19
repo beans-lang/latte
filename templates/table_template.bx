@@ -1,0 +1,58 @@
+<Box width={self.total_width} background={self.card} border_color={self.separator} border_width={1}>
+  $if self.total_rows == 0 {
+    <Label x={6} y={self.header_height + 6.0} text="No rows" text_color={self.muted} font_size={self.font_size} />
+  }
+  $for row in self.rows {
+    <HStack key={"row-{row.index}"} y={row.top} height={self.row_height} width={self.total_width}
+            spacing={0} align="center" padding_x={6}
+            background={if row.selected { self.selection } else if row.index % 2 == 1 { self.stripe } else { "#00000000" }}>
+      $for column in 0..row.cells.len() {
+        $if row.index == self.editing_row && column == self.editing_column {
+          <TextField key={"editor-{row.index}-{column}"} text={row.cells[column]}
+                     width={self.widths[column]} height={self.row_height}
+                     on:commit={fn(e: UiEvent) { self.commit(row.index, column, e.text) }}
+                     on:key_down={fn(e: UiEvent) { self.editor_key(e) }} />
+        } else {
+          <Label key={"cell-{row.index}-{column}"} text={row.cells[column]}
+                 width={self.widths[column]} font_size={self.font_size}
+                 text_color={if row.selected { self.on_accent } else { self.ink }}
+                 background="#00000000" />
+        }
+      }
+    </HStack>
+  }
+  <HStack y={0} height={self.header_height} width={self.total_width} spacing={0}
+          align="center" padding_x={6} background={self.grouped}>
+    $for column in 0..self.titles.len() {
+      <Label key={"header-{column}"} text={self.titles[column]} width={self.widths[column]}
+             font_size={self.footnote} text_color={self.muted} />
+    }
+  </HStack>
+</Box>
+<beans>
+package templates
+import latte.compose
+import latte.scene
+import latte.input
+import {view} from latte.annotations
+
+@view
+pub partial class TableTemplate extends compose.TableControlTemplate {
+    actions: Option<scene.ControlActions> = none
+    pub fn init() { super.init() }
+    pub override fn bind_actions(actions: scene.ControlActions) { self.actions = some(actions) }
+    pub fn commit(row: int, column: int, text: string) {
+        match self.actions {
+            some(actions) => { actions.commit_cell(row, column, text).expect("commit a table cell") }
+            none => { panic("table template has no actions") }
+        }
+    }
+    pub fn editor_key(event: input.UiEvent) {
+        if event.key() != input.Key.escape { return }
+        match self.actions {
+            some(actions) => { actions.cancel_cell().expect("cancel a table cell") }
+            none => { panic("table template has no actions") }
+        }
+    }
+}
+</beans>

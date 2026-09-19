@@ -1,0 +1,25 @@
+<Box background={if self.prominent { self.accent_fill } else { self.fill }}
+     corner_radius={self.radius}>
+  <Label text={self.title}
+         text_color={if self.prominent { self.on_accent } else { self.ink }}
+         font_size={self.font_size} font_weight={self.font_weight}
+         baseline={self.baseline} alignment={1}
+         width_percent={100.0} height_percent={100.0} />
+  $if self.focused {
+    <Rectangle x={0} y={0} width_percent={100.0} height_percent={100.0}
+               overhang={self.focus_width / 2.0}
+               corner_radius={self.radius + self.focus_width / 2.0}
+               fill="#00000000" stroke={self.focus_ring} stroke_width={self.focus_width} />
+  }
+</Box>
+<beans>
+package templates
+
+import latte.compose
+import {view} from latte.annotations
+
+@view
+pub partial class ButtonTemplate extends compose.ControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

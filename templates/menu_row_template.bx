@@ -1,0 +1,28 @@
+<Box background={if self.prominent { self.accent_fill } else { self.clear }}
+     corner_radius={self.menu_row_radius}
+     width_percent={100.0} height_percent={100.0}>
+  $if self.checked {
+    <!-- The mark's ink box, taken from the menu font's own check glyph. -->
+    <Path x={self.menu_mark_inset - self.menu_row_inset}
+          y={(self.menu_row_height - self.menu_mark_height) / 2.0}
+          width={self.menu_mark_width} height={self.menu_mark_height}
+          d={"M{self.menu_mark_stroke / 2.0} {self.menu_mark_height * 0.52} L{self.menu_mark_width * 0.3} {self.menu_mark_height - self.menu_mark_stroke / 2.0} L{self.menu_mark_width - self.menu_mark_stroke / 2.0} {self.menu_mark_stroke / 2.0}"}
+          stroke={if self.prominent { self.on_accent } else { self.ink }}
+          stroke_width={self.menu_mark_stroke}
+          stroke_cap="round" stroke_join="round" fill="#00000000" />
+  }
+  <Label text={self.title}
+         text_color={if self.prominent { self.on_accent } else if self.enabled { self.ink } else { self.faint }}
+         font_size={self.menu_font_size} baseline={self.menu_baseline}
+         x={self.menu_text_inset - self.menu_row_inset}
+         right={self.menu_trailing - self.menu_row_inset} height_percent={100.0} />
+</Box>
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class MenuRowTemplate extends compose.MenuRowControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

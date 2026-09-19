@@ -1,0 +1,19 @@
+<Box width_percent={100.0} height_percent={100.0}>
+  <Box y={(self.bar_control_height - self.bar_height) / 2.0}
+       width_percent={100.0} height={self.bar_height} background={self.bar_track}
+       border_width={0.5} border_color={self.bar_border}
+       corner_radius={self.bar_radius} />
+  <Box y={(self.bar_control_height - self.bar_height) / 2.0}
+       width_percent={if self.indeterminate { 35.0 } else { self.percent }}
+       height={self.bar_height} background={self.accent}
+       corner_radius={self.bar_radius} />
+</Box>
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class ProgressBarTemplate extends compose.RangeControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

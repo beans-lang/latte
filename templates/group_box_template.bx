@@ -1,0 +1,13 @@
+<VStack background={self.card} corner_radius={self.radius} padding={6}
+        border_width={1} border_color={self.separator} align="stretch">
+  <Label text={self.title} text_color={self.muted} font_size={self.footnote} />
+</VStack>
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class GroupBoxTemplate extends compose.ControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

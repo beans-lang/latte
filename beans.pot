@@ -16,3 +16,16 @@ kind library
 # that imports espresso. Nothing at the module root imports `latte.web`, so a
 # static-page program never loads espresso and the wasm leg is unaffected.
 require github.com/beans-lang/espresso v0.3.0
+
+# The browser host. `--emit shared` on wasm32-unknown-unknown links with
+# `-nostdlib`, so nothing in the module owns linear memory and Clang's calls to
+# memcpy and memset resolve to nothing. `wasm/latte_wasm_host.c` is the floor
+# the Beans runtime stands on there: an allocator over `__heap_base`, the four
+# memory builtins, and the two hooks that reach JavaScript — writing bytes out
+# and ending the program.
+#
+# It is selected by triple rather than by a `wasm` word because a selector is
+# matched against the target's os or its triple, and this target's os is
+# "none". A native build compiles none of it, so the "latte is pure Beans"
+# property holds everywhere a person runs latte today.
+csrc wasm32-unknown-unknown "wasm/latte_wasm_host.c"

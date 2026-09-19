@@ -1,0 +1,10 @@
+<Box background={self.separator} />
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class SeparatorTemplate extends compose.ControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

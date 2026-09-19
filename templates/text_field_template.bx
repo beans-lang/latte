@@ -1,0 +1,21 @@
+<Box overhang={self.field_overhang} width_percent={100.0} height_percent={100.0}
+     background={self.field} corner_radius={self.field_radius}
+     border_width={self.field_border_width} border_color={self.field_border}>
+  $if self.focused {
+    <Rectangle x={0} y={0} width_percent={100.0} height_percent={100.0}
+               overhang={self.field_overhang + self.focus_width / 2.0}
+               corner_radius={self.field_radius + self.focus_width / 2.0}
+               fill="#00000000" stroke={self.focus_ring} stroke_width={self.focus_width} />
+  }
+</Box>
+<beans>
+package templates
+
+import latte.compose
+import {view} from latte.annotations
+
+@view
+pub partial class TextFieldTemplate extends compose.ControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>

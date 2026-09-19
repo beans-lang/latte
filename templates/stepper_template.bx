@@ -1,0 +1,31 @@
+<Box background={self.surface} corner_radius={self.radius}
+     width_percent={100.0} height_percent={100.0}>
+  <!-- Two round-capped chevrons with a rule between them. Each path is inset
+       by half its stroke so the painted glyph is the box the capture measured. -->
+  <Path x={(self.stepper_width - self.stepper_glyph_width) / 2.0} y={self.stepper_glyph_top}
+        width={self.stepper_glyph_width} height={self.stepper_glyph_height}
+        d={"M{self.stepper_stroke / 2.0} {self.stepper_glyph_height - self.stepper_stroke / 2.0} L{self.stepper_glyph_width / 2.0} {self.stepper_stroke / 2.0} L{self.stepper_glyph_width - self.stepper_stroke / 2.0} {self.stepper_glyph_height - self.stepper_stroke / 2.0}"}
+        stroke={self.ink} stroke_width={self.stepper_stroke}
+        stroke_cap="round" stroke_join="round" fill="#00000000" />
+  <!-- The rule between the halves, a shade off the bezel and centred on it. -->
+  <Box x={self.stepper_divider_inset}
+       y={(self.stepper_height - self.stepper_divider_height) / 2.0}
+       width={self.stepper_width - self.stepper_divider_inset * 2.0}
+       height={self.stepper_divider_height}
+       background={self.stepper_divider} />
+  <Path x={(self.stepper_width - self.stepper_glyph_width) / 2.0}
+        y={self.stepper_height - self.stepper_glyph_bottom - self.stepper_glyph_height}
+        width={self.stepper_glyph_width} height={self.stepper_glyph_height}
+        d={"M{self.stepper_stroke / 2.0} {self.stepper_stroke / 2.0} L{self.stepper_glyph_width / 2.0} {self.stepper_glyph_height - self.stepper_stroke / 2.0} L{self.stepper_glyph_width - self.stepper_stroke / 2.0} {self.stepper_stroke / 2.0}"}
+        stroke={self.ink} stroke_width={self.stepper_stroke}
+        stroke_cap="round" stroke_join="round" fill="#00000000" />
+</Box>
+<beans>
+package templates
+import latte.compose
+import {view} from latte.annotations
+@view
+pub partial class StepperTemplate extends compose.RangeControlTemplate {
+    pub fn init() { super.init() }
+}
+</beans>
