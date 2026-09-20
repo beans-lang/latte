@@ -154,7 +154,14 @@ export function attachInput(element, handlers) {
         // mouse wheel, so a page that treated every delta as pixels scrolls
         // about a fortieth as far there as it does in Chrome.
         const lines = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 800 : 1;
-        handlers.scroll(x, y, -event.deltaX * lines, -event.deltaY * lines);
+        // The sign goes through unchanged, and that is worth stating because
+        // it looks like it should be flipped. A positive `deltaY` means the
+        // reader asked to go *down* the content; Latte's scroll offset is how
+        // far down the content the viewport has moved, so it goes up too.
+        // Negating here scrolled every list the wrong way — and a list that is
+        // already at the top does not move at all, so it read as "the wheel
+        // does nothing" rather than as a reversed direction.
+        handlers.scroll(x, y, event.deltaX * lines, event.deltaY * lines);
         event.preventDefault();
     }, { passive: false });
 

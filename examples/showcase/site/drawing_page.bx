@@ -1,0 +1,86 @@
+<ScrollView height={520}>
+  <VStack padding={20} spacing={14} align="stretch">
+    <Label text="Drawing and motion" font_size={23} />
+    <Label text="Shapes, gradients, shadows and transitions, all from markup." text_color="#555b6b" />
+
+    <HStack spacing={14} align="center">
+      <Box width={90} height={60}>
+        <Rectangle fill="#2f6f4f" clip_radius={10} />
+      </Box>
+      <Box width={90} height={60}>
+        <Ellipse fill="#365eea" stroke="#101828" stroke_width={2} />
+      </Box>
+      <Box width={90} height={60}>
+        <Rectangle gradient_start="#d5a665" gradient_end="#87582f" clip_radius={8}
+                   shadow_color="#00000055" shadow_blur={10} shadow_dy={3} />
+      </Box>
+      <Box width={90} height={60}>
+        <Path d="M10 50 L45 10 L80 50 Z" fill="#b03030" stroke="#5a1414" stroke_width={2} />
+      </Box>
+    </HStack>
+
+    <Separator height={1} />
+
+    <Label text="A transition runs in Beans, one frame at a time." />
+    <HStack spacing={14} align="center">
+      <Box key={"fade"} width={140} height={54}>
+        <Rectangle fill={if self.lit { "#365eea" } else { "#c7ccd8" }}
+                   clip_radius={12}
+                   transition_seconds={0.35} transition_easing="ease_in_out" />
+      </Box>
+      <Button key={"toggle"} text={if self.lit { "Fade out" } else { "Fade in" }}
+              on:click={fn(e: UiEvent) { self.flip() }} />
+      <Switch key={"lit"} checked={self.lit}
+              on:change={fn(e: UiEvent) { self.set_lit(e.index) }} />
+    </HStack>
+
+    <Separator height={1} />
+
+    <Label text="A canvas control with a shape inside it is an ordinary control: it lays out, it takes a frame, and it can be named for a screen reader." text_color="#555b6b" />
+    <Box key={"badge"} width={120} height={120} a11y_label="A round badge">
+      <Ellipse fill={self.shade()} stroke="#101828" stroke_width={3}
+               transition_seconds={0.5} transition_easing="linear" />
+    </Box>
+    <Slider key={"hue"} min={0.0} max={100.0} value={self.hue} step={1.0}
+            on:change={fn(e: UiEvent) { self.set_hue(e.index) }} />
+  </VStack>
+</ScrollView>
+<beans>
+package site
+
+import latte.compose
+import {view} from latte.annotations
+
+@view
+pub partial class DrawingPage extends compose.Component {
+    pub lit: bool = false
+    pub hue: f64 = 30.0
+
+    pub fn init() { super.init() }
+
+    pub fn flip() { self.lit = !self.lit; self.request_render() }
+
+    pub fn set_lit(value: int) { self.lit = value == 1; self.request_render() }
+
+    pub fn set_hue(value: int) { self.hue = value as f64; self.request_render() }
+
+    /// A colour built in Beans rather than picked from a list, so the
+    /// transition has somewhere to go on every step of the slider.
+    pub fn shade() -> string {
+        let red: int = 40 + (self.hue * 2.0) as int
+        let green: int = 90
+        let blue: int = 220 - (self.hue * 1.6) as int
+        return "#{two(red)}{two(green)}{two(blue)}"
+    }
+}
+
+/// One byte as two hex digits. Beans has no hex formatting, and a colour is
+/// written the way a stylesheet writes one.
+fn two(value: int) -> string {
+    var clamped: int = value
+    if clamped < 0 { clamped = 0 }
+    if clamped > 255 { clamped = 255 }
+    let digits: string = "0123456789abcdef"
+    return "{digits.slice(clamped / 16, clamped / 16 + 1)}{digits.slice(clamped % 16, clamped % 16 + 1)}"
+}
+</beans>

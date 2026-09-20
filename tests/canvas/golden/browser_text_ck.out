@@ -1,0 +1,12 @@
+== graphemes ==
+plain: 0 1 2 3
+accent: 0 1 2 4
+family: 0 25
+flag: 0 8
+skin tone: 0 8
+arabic: 0 2 4 6 8 10
+
+== words ==
+plain: 0 3 4 7
+punctuation: 0 1 2 3 4
+arabic: 0 10 11 18

@@ -1,0 +1,18 @@
+
+== 1 — the first frame paints, the second does not ==
+painted on show: false
+painted again with nothing changed: false
+animations running: false
+
+== 2 — a change paints once and settles ==
+painted after the change: true
+animations running: true
+frames that painted during a quarter-second fade: true
+animations after it finished: false
+painted after it finished: false
+
+== 3 — an idle scene asks the host for no frames at all ==
+pending before anything joins: false
+pending with one listener: true
+pending after the listener leaves: false
+listeners on the scene: 0

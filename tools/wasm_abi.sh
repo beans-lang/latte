@@ -30,7 +30,8 @@ trap 'rm -rf "$tmp"' EXIT
 # the float text hooks, which no Beans line names and which are imports all the
 # same.
 {
-    grep -hoE 'pub extern "C" fn latte_js_[a-z_]+' browser/bridge.b canvaskit/bridge.b |
+    grep -hoE 'pub extern "C" fn latte_js_[a-z_]+' \
+        browser/bridge.b browser/page_link.b canvaskit/bridge.b |
         sed 's/.*fn //'
     grep -oE '^extern [a-z0-9_ ]*latte_js_[a-z_0-9]+' wasm/latte_wasm_host.c |
         grep -oE 'latte_js_[a-z_0-9]+'
@@ -43,6 +44,7 @@ trap 'rm -rf "$tmp"' EXIT
 node --input-type=module -e '
 import { LatteRuntime } from "./js/latte-runtime.js";
 import { canvasKitImports } from "./js/latte-canvaskit.js";
+import { linkImports } from "./js/latte-link.js";
 
 // Neither object is called, only listed, so the stubs need only exist.
 const runtime = new LatteRuntime({});
@@ -52,6 +54,7 @@ const surface = { surface: null, ensureSurface: () => false, revision: 0, isSoft
 const names = new Set([
     ...Object.keys(runtime.imports().env),
     ...Object.keys(canvasKitImports(runtime, surface)),
+    ...Object.keys(linkImports(runtime, null)),
 ]);
 process.stdout.write([...names].sort().join("\n") + "\n");
 ' > "$tmp/supplied"

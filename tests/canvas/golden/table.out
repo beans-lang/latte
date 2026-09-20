@@ -1,0 +1,35 @@
+
+== 1 — drawing twenty rows costs twenty rows, not ten thousand ==
+rows in the source: 10000
+cell reads under a hundred: true
+cell reads over zero: true
+
+== 2 — a second frame with nothing changed reads nothing ==
+reads after an idle frame: 0
+
+== 3 — scrolling by less than a row reads nothing new ==
+offset moved to 4
+reads after a four-point scroll: 0
+
+== 4 — scrolling a whole page reads about a page ==
+offset after scrolling down 600: 604
+reads after a 600-point scroll are under two hundred: true
+and over zero: true
+
+== 4b — and scrolling back up is the other sign ==
+offset after scrolling back: 4
+
+== 5 — one editor at a time ==
+editing row 0 column 1
+after a second edit: row 3 column 1
+
+== 6 — Return commits and Escape cancels ==
+committed: row 5 column 1: Espresso
+the source kept it: Espresso
+editor after commit: row -1
+editor after cancel: row -1
+row six is unchanged: Cup 0
+
+== 7 — a column the policy refuses cannot be edited ==
+column 0 editable: false
+column 1 editable: true

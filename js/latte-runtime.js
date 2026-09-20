@@ -316,6 +316,18 @@ export class LatteRuntime {
         if (!runtime.memory) {
             throw new Error(`${url} did not export its linear memory`);
         }
+        // The module's own startup. A library has no `main`, so nothing has
+        // run its reflection registry, its static field initializers or its
+        // singletons — and none of that fails, it is simply absent: every
+        // reflective lookup answers "no such type", every annotation is
+        // missing, and a singleton's fields are zeroed memory. Calling it is
+        // not optional, and it is idempotent.
+        if (typeof runtime.exports.beans_module_start === "function") {
+            runtime.exports.beans_module_start();
+        } else {
+            throw new Error(
+                `${url} does not export beans_module_start — it was built with a compiler older than the one that emits it, and its reflection registry would be empty`);
+        }
         return runtime;
     }
 }

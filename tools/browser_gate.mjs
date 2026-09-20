@@ -26,6 +26,12 @@ const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const wantEngines = (process.env.LATTE_ENGINES || "chromium,firefox,webkit").split(",");
 
 /// Every `<name>.wasm` in build/browser that has a golden beside it.
+///
+/// A suite whose name starts `browser_` is built from `_browser_<name>.b` and
+/// runs here and nowhere else: it imports the drawing half, whose entries are
+/// undefined symbols outside a WebAssembly module. Its golden is its own, and
+/// deliberately not the measuring renderer's — the difference between the two
+/// is what those suites are for.
 async function suites() {
     const built = await readdir(join(ROOT, "build/browser")).catch(() => []);
     const golden = await readdir(join(ROOT, "tests/canvas/golden")).catch(() => []);

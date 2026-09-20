@@ -19,6 +19,14 @@ pub class TextFieldRender extends TextRender {
         super.init(renderer, theme, dirty)
         self.focusable = true
     }
+    /// The editor behind this field.
+    ///
+    /// Public because a caret, a selection and an undo are the field's
+    /// behaviour rather than its appearance, and both a test and an
+    /// application have reason to drive them directly — a "select all" command
+    /// in a menu is exactly that. The field stays the only thing that paints.
+    pub fn editor() -> TextEditor { return self.editor_value }
+
     pub fn selection_anchor() -> int { return self.editor_value.anchor() }
     pub fn selection_caret() -> int { return self.editor_value.caret() }
     pub fn editing_text() -> string { return self.editor_value.text() }

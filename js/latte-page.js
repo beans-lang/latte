@@ -16,6 +16,7 @@ import { CanvasKitSurface, canvasKitImports } from "./latte-canvaskit.js";
 import { SemanticsHost } from "./latte-semantics.js";
 import { EditingHost } from "./latte-editing.js";
 import { attachInput, EVENT } from "./latte-input.js";
+import { linkImports } from "./latte-link.js";
 
 /// One mounted Latte application.
 export class LattePage {
@@ -99,7 +100,10 @@ export class LattePage {
             renderer: page.surface,
             semanticsHost: page.semantics,
             editingHost: page.editing,
-            imports: (runtime) => canvasKitImports(runtime, page.surface),
+            imports: (runtime) => ({
+                ...canvasKitImports(runtime, page.surface),
+                ...linkImports(runtime, options.link || null),
+            }),
         });
         // A frame the module asked for lands here and goes straight back in.
         page.runtime.onFrame = null;

@@ -1,0 +1,61 @@
+<VStack padding={20} spacing={10} align="stretch">
+  <Label text="Panes and pages" font_size={23} />
+  <Label text="A split view, a tab view, and a scrolling list — the containers a real screen is made of." text_color="#555b6b" />
+
+  <SplitView key={"split"} stacked={false} divider={self.divider} height={200}>
+    <VStack padding={10} spacing={6} align="stretch" background="#f6f6f8">
+      <Label text="Sidebar" font_weight={5} />
+      $for name in self.sections {
+        <Button key={"section-{name}"} text={name}
+                on:click={fn(e: UiEvent) { self.choose(name) }} />
+      }
+    </VStack>
+    <VStack padding={10} spacing={6} align="stretch">
+      <Label key={"chosen"} text={"Showing: {self.chosen}"} font_weight={5} />
+      <Label text="The divider is a number in Beans, so a test can put it anywhere." text_color="#555b6b" />
+    </VStack>
+  </SplitView>
+
+  <TabView key={"tabs"} labels={self.tabs} selected={self.tab}
+           height={180} on:change={fn(e: UiEvent) { self.choose_tab(e.index) }}>
+    <VStack padding={12} spacing={6} align="stretch">
+      <Label text="Beans owns the layout." />
+      <Label text="A tab's page is laid out only while it is showing." text_color="#555b6b" />
+    </VStack>
+    <ScrollView height={140}>
+      <VStack padding={8} spacing={8} align="stretch">
+        $for row in 0..40 {
+          <HStack key={"row-{row}"} padding={8} spacing={10} background="#ffffff"
+                  corner_radius={8} border_width={1} border_color="#e4e4ea">
+            <Label text={"Row {row}"} grow={1} />
+            <Label text={if row % 3 == 0 { "ready" } else { "waiting" }}
+                   text_color={if row % 3 == 0 { "#2f6f4f" } else { "#8a8f9c" }} />
+          </HStack>
+        }
+      </VStack>
+    </ScrollView>
+    <VStack padding={12} spacing={6} align="stretch">
+      <Label text="Three pages, one selected index." />
+    </VStack>
+  </TabView>
+</VStack>
+<beans>
+package site
+
+import latte.compose
+import {view} from latte.annotations
+
+@view
+pub partial class PanesPage extends compose.Component {
+    pub sections: List<string> = ["Orders", "Roasts", "People"]
+    pub tabs: List<string> = ["About", "Rows", "Notes"]
+    pub chosen: string = "Orders"
+    pub tab: int = 0
+    pub divider: f64 = 180.0
+
+    pub fn init() { super.init() }
+
+    pub fn choose(name: string) { self.chosen = name; self.request_render() }
+    pub fn choose_tab(index: int) { self.tab = index; self.request_render() }
+}
+</beans>

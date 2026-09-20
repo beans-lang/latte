@@ -1,0 +1,60 @@
+<VStack padding={0} spacing={0} align="stretch">
+  <HStack padding={12} spacing={8} align="center" background="#f2f2f5" height={48}>
+    <Label text="Latte" font_size={17} font_weight={5} />
+    <Button key={"nav-controls"} text="Controls" prominent={self.page == 0}
+            on:click={fn(e: UiEvent) { self.show(0) }} />
+    <Button key={"nav-editing"} text="Editing" prominent={self.page == 1}
+            on:click={fn(e: UiEvent) { self.show(1) }} />
+    <Button key={"nav-table"} text="Table" prominent={self.page == 2}
+            on:click={fn(e: UiEvent) { self.show(2) }} />
+    <Button key={"nav-drawing"} text="Drawing" prominent={self.page == 3}
+            on:click={fn(e: UiEvent) { self.show(3) }} />
+    <Button key={"nav-panes"} text="Panes" prominent={self.page == 4}
+            on:click={fn(e: UiEvent) { self.show(4) }} />
+    <Label text="" grow={1} />
+    <Label key={"status"} text={self.status} text_color="#555b6b" />
+  </HStack>
+  <Separator height={1} />
+  $if self.page == 0 {
+    <ControlsPage />
+  } else if self.page == 1 {
+    <EditingPage />
+  } else if self.page == 2 {
+    <TablePage />
+  } else if self.page == 3 {
+    <DrawingPage />
+  } else {
+    <PanesPage />
+  }
+</VStack>
+<beans>
+package site
+
+import latte.compose
+import {view} from latte.annotations
+
+/// The showcase's frame: a row of buttons, and whichever screen they chose.
+///
+/// The `$if` chain rather than five screens with four hidden: a hidden control
+/// is still measured, still laid out and still in the accessibility tree, and
+/// a showcase that kept five of them would be measuring five screens on every
+/// frame to draw one.
+@view
+pub partial class Shell extends compose.Component {
+    pub page: int = 0
+    pub status: string = "ready"
+
+    pub fn init() { super.init() }
+
+    pub fn show(index: int) {
+        if self.page == index { return }
+        self.page = index
+        self.status = "ready"
+        self.request_render()
+    }
+
+    /// Which screen is showing, for a gate that drives the shell rather than
+    /// reaching inside it.
+    pub fn showing() -> int { return self.page }
+}
+</beans>

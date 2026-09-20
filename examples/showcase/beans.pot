@@ -1,0 +1,13 @@
+module showcase
+kind application
+
+# Latte's browser showcase: every control it draws, in .bx, on a canvas.
+#
+# One row, and it is relative to THIS manifest so the same text resolves from
+# `community-libs/latte/examples/showcase` and from a worktree copy of it.
+#
+# There is no espresso here and no `latte_app`. A canvas showcase is a
+# WebAssembly module and a page; nothing it does needs a server, which is the
+# claim `tools/browser_gate.mjs` checks by running it with no server behind it
+# beyond a static file server.
+require path "../.."

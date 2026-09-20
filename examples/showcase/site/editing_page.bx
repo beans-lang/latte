@@ -1,0 +1,68 @@
+<ScrollView height={520}>
+  <VStack padding={20} spacing={10} align="stretch">
+    <Label text="Editing" font_size={23} />
+    <Label text="Type, select, paste, and try your keyboard's input method. Double-click selects a word; option and arrow move by one." text_color="#555b6b" />
+
+    <Label text="Name" />
+    <TextField key={"name"} bind:value={self.name} a11y_label="Your name" />
+    <Label key={"echo"} text={"Value: {self.name}"} text_color="#555b6b" />
+
+    <Label text="Password" />
+    <SecureField key={"password"} bind:value={self.password} a11y_label="Password" />
+
+    <Label text="Search" />
+    <SearchField key={"search"} bind:value={self.search} a11y_label="Search orders" />
+
+    <Label text="Notes" />
+    <TextArea key={"notes"} height={120} bind:value={self.notes} a11y_label="Order notes" />
+
+    <HStack spacing={10}>
+      <Button key={"clear"} text="Clear" on:click={fn(e: UiEvent) { self.clear() }} />
+      <Button key={"fill"} text="Fill with emoji and RTL"
+              on:click={fn(e: UiEvent) { self.fill() }} />
+    </HStack>
+
+    <Label key={"lengths"} text={self.lengths()} text_color="#555b6b" />
+  </VStack>
+</ScrollView>
+<beans>
+package site
+
+import latte.compose
+import {view} from latte.annotations
+
+@view
+pub partial class EditingPage extends compose.Component {
+    pub name: string = ""
+    pub password: string = ""
+    pub search: string = ""
+    pub notes: string = ""
+
+    pub fn init() { super.init() }
+
+    pub fn clear() {
+        self.name = ""
+        self.password = ""
+        self.search = ""
+        self.notes = ""
+        self.request_render()
+    }
+
+    /// Text that breaks a naive editor: a family emoji is one grapheme made of
+    /// seven code points, an Arabic run is right to left, and a combining
+    /// accent attaches to the letter before it.
+    pub fn fill() {
+        self.name = "Zoë 👩‍👩‍👧‍👦"
+        self.search = "مرحبا bonjour"
+        self.notes = "café\nrésumé\n👋🏽 naïve"
+        self.request_render()
+    }
+
+    /// Byte lengths, which is what a caret counts in. A test reads this rather
+    /// than the field, so a change to selection cannot be hidden by a change
+    /// to what is displayed.
+    pub fn lengths() -> string {
+        return "name {self.name.len()} bytes, search {self.search.len()}, notes {self.notes.len()}"
+    }
+}
+</beans>

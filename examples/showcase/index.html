@@ -1,0 +1,89 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Latte — the showcase</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    display: grid; grid-template-rows: 1fr;
+    background: #ececed;
+    font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #101828;
+  }
+  /* The canvas is the application. Everything around it is chrome for the
+     demo page, and there is deliberately very little of it: a showcase whose
+     frame was HTML would be showing HTML. */
+  #host {
+    position: relative; margin: 16px; background: #fff;
+    border: 1px solid #d7d7dc; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  #problem {
+    position: absolute; inset: 0; display: none; place-content: center;
+    padding: 24px; font: 12px ui-monospace, monospace; color: #b42318;
+    background: #fff5f4; white-space: pre-wrap;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #16171a; color: #f2f4f7; }
+    #host { background: #1d1f24; border-color: #2e3138; }
+  }
+</style>
+<div id="host">
+  <canvas id="canvas"></canvas>
+  <pre id="problem"></pre>
+</div>
+<!-- CanvasKit ships as a UMD script rather than an ES module: importing it
+     asks for a default export it has not got. -->
+<script src="../../node_modules/canvaskit-wasm/bin/canvaskit.js"></script>
+<script type="module">
+import { LattePage } from "../../js/latte-page.js";
+
+const problem = document.getElementById("problem");
+const show = (message) => {
+  problem.style.display = "grid";
+  problem.textContent = message;
+};
+
+try {
+  const canvasKit = await CanvasKitInit({
+    locateFile: (file) => `../../node_modules/canvaskit-wasm/bin/${file}`,
+  });
+  const page = await LattePage.load({
+    element: document.getElementById("canvas"),
+    canvasKit,
+    module: "../../build/browser/showcase.wasm",
+    // CanvasKit has no fonts of its own and cannot read the system's.
+    // `node tools/font_prepare.mjs` writes these.
+    fonts: [
+      "../../build/fonts/latte-regular.ttf",
+      "../../build/fonts/latte-medium.ttf",
+      "../../build/fonts/latte-bold.ttf",
+    ],
+    semanticsRoot: document.getElementById("host"),
+    editingRoot: document.getElementById("host"),
+    onError: show,
+  });
+  await page.mount();
+  window.__lattePage = page;
+
+  // Two frames, so the first layout and the paint that follows it are both
+  // finished before a screenshot looks.
+  await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+  window.__latteReady = true;
+  window.__latteFacts = () => ({
+    software: page.surface.isSoftware,
+    surfaceFrames: page.surface.frames,
+    resources: page.surface.resourceCount(),
+    frames: page.runtime.exports.latte_frames(),
+    painted: page.runtime.exports.latte_painted(),
+    requests: page.runtime.exports.latte_requests(),
+    a11yNodes: page.semantics ? page.semantics.count() : 0,
+    error: page.lastError(),
+  });
+} catch (error) {
+  show(String((error && error.stack) || error));
+  window.__latteReady = true;
+  window.__latteFailed = String((error && error.stack) || error);
+}
+</script>

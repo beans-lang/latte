@@ -139,3 +139,22 @@ pub class Text {
         return ok(buffer.to_string())
     }
 }
+
+/// Writes `text` into a caller-supplied buffer, and answers the bytes it
+/// needed.
+///
+/// The two-call shape the page uses everywhere: a null buffer, or one too
+/// small, answers the length and writes nothing. Here rather than in each
+/// module's exports because every `latte_*` that answers a string does the
+/// same thing, and three copies of a length protocol is three chances to trust
+/// the first answer.
+pub fn write_text(text: string, out: RawPtr<i8>, cap: int) -> int {
+    let bytes: Bytes = Bytes.from(text)
+    if out.is_null() || cap <= 0 { return bytes.len() }
+    if bytes.len() > cap { return bytes.len() }
+    unsafe {
+        let target: RawPtr<u8> = RawPtr.from_address(out.address())
+        for index: int in 0..bytes.len() { target.offset(index).write(bytes.get(index) as u8) }
+    }
+    return bytes.len()
+}

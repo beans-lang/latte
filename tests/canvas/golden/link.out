@@ -1,0 +1,22 @@
+
+== 1 — a screen with no link gets a named refusal, not silence ==
+could not ask: could not send orders.list: this program has no link to a server
+
+== 2 — asking is one message, and the screen does not wait ==
+status while waiting: asked
+messages sent: 1
+the last one: orders.list: {"page":1}
+rows so far: 0
+
+== 3 — the answer arrives later and the screen takes it ==
+status: 3 rows
+rows: Order 1 | Order 2 | Order 3
+
+== 4 — an action is a request, and a refusal is a message too ==
+the action sent: orders.save: {"row": 2, "text": "Espresso"}
+status: the server refused: not allowed
+
+== 5 — the interface keeps working with the link closed ==
+link ready: false
+still drawing: true
+status after a click with no server: could not ask: could not send orders.list: the link is closed

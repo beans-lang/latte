@@ -5,17 +5,42 @@
      printed on `window.__latteRun` for the gate to read. It has no UI on
      purpose: a page that rendered its own results would be a second thing that
      can be wrong about them. -->
+<canvas id="surface" width="400" height="300" style="position:absolute;left:-9999px"></canvas>
 <pre id="out"></pre>
+<script src="../node_modules/canvaskit-wasm/bin/canvaskit.js"></script>
 <script type="module">
 import { LatteRuntime } from "../js/latte-runtime.js";
+import { CanvasKitSurface, canvasKitImports } from "../js/latte-canvaskit.js";
 
 const name = new URL(location.href).searchParams.get("module");
 const lines = [];
 const say = (line) => { lines.push(line); document.getElementById("out").textContent = lines.join("\n"); };
 
 try {
+    // A suite that asks the renderer anything needs a real one. CanvasKit is
+    // loaded for every suite rather than only the ones that import it: a
+    // module with no drawing imports simply never calls it, and deciding which
+    // is which from here would be a second list to keep in step.
+    const canvasKit = await CanvasKitInit({
+        locateFile: (file) => `../node_modules/canvaskit-wasm/bin/${file}`,
+    });
+    const element = document.getElementById("surface");
+    const surface = new CanvasKitSurface(canvasKit, element);
+    surface.useFont([
+        "../build/fonts/latte-regular.ttf",
+        "../build/fonts/latte-medium.ttf",
+        "../build/fonts/latte-bold.ttf",
+    ].join(" "));
+    // The fonts are a fetch, and a suite that shapes text before they land
+    // gets a refusal rather than the wrong metrics.
+    for (let waited = 0; surface.fontState === 1 && waited < 10000; waited += 10) {
+        await new Promise((done) => setTimeout(done, 10));
+    }
+
     const runtime = await LatteRuntime.load(`../build/browser/${name}.wasm`, {
         stdout: say, stderr: say,
+        renderer: surface,
+        imports: (rt) => canvasKitImports(rt, surface),
     });
     // The entry is whichever `latte_*_run` the module exports. One per module,
     // so a module with two would be a mistake worth catching here.

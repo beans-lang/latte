@@ -1530,9 +1530,17 @@ run_browser_leg() {
     for case in "$ROOT"/tests/canvas/*.b; do
         local name
         name=$(basename "$case" .b)
-        case "$name" in _*) continue ;; esac
+        # A `_browser_`-named suite is built for the page and nowhere else: it
+        # imports the drawing half, whose every entry is an undefined symbol
+        # outside a WebAssembly module. `_abi_surface` is the same shape.
+        case "$name" in
+            _browser_*) name=${name#_browser_}; name="browser_$name" ;;
+            _*) continue ;;
+        esac
         [[ -f "$ROOT/tests/canvas/golden/$name.out" ]] || continue
-        if ! (cd "$ROOT" && bash tools/wasm_build.sh "tests/canvas/$name.b" \
+        local source_name
+        source_name=$(basename "$case" .b)
+        if ! (cd "$ROOT" && bash tools/wasm_build.sh "tests/canvas/$source_name.b" \
                 "build/browser/$name.wasm") >"$tmp/wasm_$name.log" 2>&1; then
             echo "SKIP browser: $name.b did not build for wasm32 — no browser engine was tested"
             sed 's/^/    /' "$tmp/wasm_$name.log" >&2

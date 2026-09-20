@@ -1,0 +1,82 @@
+<VStack padding={20} spacing={10} align="stretch">
+  <Label text="Virtual table" font_size={23} />
+  <Label text="10,000 rows. Cells are read only as they scroll into view." text_color="#555b6b" />
+  <Label text="Double-click a Cup cell to edit it, or select a row, choose a column with Left and Right and press Return. Return commits, Escape cancels." text_color="#555b6b" />
+  <Table key={"orders"} columns={self.titles} column_widths={self.widths}
+         source={self.rows} editable_when={self.policy} height={380}
+         on:select={fn(e: UiEvent) { self.choose(e.index) }}
+         on:commit={fn(e: UiEvent) { self.commit(e.index, e.token, e.text) }} />
+  <Label key={"state"} text={self.state()} text_color="#555b6b" />
+</VStack>
+<beans>
+package site
+
+import latte.compose
+import latte.controls
+import {view} from latte.annotations
+
+/// Ten thousand rows that are not in memory.
+///
+/// `cell` is the whole source: a row is a string built when it is asked for,
+/// and nothing holds the ten thousand. `reads` counts the calls, which is what
+/// `tests/canvas/table.b` asserts against — a table that read every row to
+/// draw twenty would show it as a number in the thousands.
+pub class OrderRows implements controls.TableRows {
+    pub reads: int = 0
+    pub total: int = 10000
+    edits: Map<int, string> = {}
+
+    pub fn init() {}
+
+    pub fn row_count() -> int { return self.total }
+
+    pub fn cell(row: int, column: int) -> string {
+        self.reads = self.reads + 1
+        if column == 0 { return "Order {row}" }
+        return match self.edits.get(row) {
+            some(value) => value,
+            none => "Cup {row % 3}",
+        }
+    }
+
+    pub fn save(row: int, column: int, text: string) {
+        if column == 1 { self.edits[row] = text }
+    }
+
+    pub fn forget() { self.edits = {} }
+}
+
+@view
+pub partial class TablePage extends compose.Component {
+    pub rows: OrderRows
+    pub titles: List<string> = ["Order", "Cup"]
+    pub widths: List<f64> = [220.0, 200.0]
+    pub selected: int = -1
+    pub last_edit: string = "none"
+    pub policy: compose.TableEditRule
+
+    pub fn init() {
+        self.rows = new OrderRows()
+        // Only the second column. A policy rather than a flag on the table:
+        // which cells may be edited is a question about the data, and a table
+        // that asked its own columns would have to be told again for every
+        // source it is given.
+        self.policy = new compose.TableEditRule(fn(row: int, column: int) -> bool {
+            return column == 1
+        })
+        super.init()
+    }
+
+    pub fn choose(index: int) { self.selected = index; self.request_render() }
+
+    pub fn commit(row: int, column: int, text: string) {
+        self.rows.save(row, column, text)
+        self.last_edit = "row {row}, column {column}: {text}"
+        self.request_render()
+    }
+
+    pub fn state() -> string {
+        return "selected row {self.selected}, last edit {self.last_edit}, {self.rows.reads} cell reads"
+    }
+}
+</beans>

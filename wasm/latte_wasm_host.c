@@ -113,6 +113,58 @@ unsigned long strlen(const char *text) {
     return at;
 }
 
+/* ---- the arithmetic libc would have supplied ------------------------------
+ *
+ * WebAssembly has instructions for square root, absolute value and the four
+ * roundings, so Clang emits those inline. What it cannot lower to an
+ * instruction becomes a call into libm, and a `-nostdlib` module has none.
+ *
+ * Each one here is exact rather than approximate, and each says why it is
+ * allowed to be.
+ */
+
+/* Beans' `%` on a pair of doubles. Exact.
+ *
+ * The textbook scale-and-subtract: scale the divisor up by powers of two until
+ * one more doubling would pass the dividend, then halve back down, subtracting
+ * wherever it fits. Every step is exact in binary floating point — multiplying
+ * and dividing by two move the exponent and leave the significand alone, and
+ * subtracting two values within a factor of two of each other is exact by
+ * Sterbenz's lemma. So this is not an approximation of fmod, it is fmod.
+ *
+ * The one case it does not cover is a subnormal divisor, where halving loses
+ * bits. Nothing in a layout produces one — a coordinate that small is zero to
+ * every renderer — and a result there would be wrong rather than imprecise, so
+ * it is named here rather than left to be discovered. */
+double fmod(double x, double y) {
+    /* NaN in, NaN out — including 0/0 built here, since there is no NAN
+     * macro without a header. */
+    double nan = (x - x) / (x - x);
+    if (x != x || y != y) return nan;
+    if (y == 0.0) return nan;
+
+    double ax = x < 0.0 ? -x : x;
+    double ay = y < 0.0 ? -y : y;
+    /* An infinity has no remainder; a finite dividend by an infinite divisor
+     * is itself. */
+    if (ax > 1.7976931348623157e308) return nan;
+    if (ay > 1.7976931348623157e308) return x;
+    if (ax < ay) return x;
+
+    double scaled = ay;
+    while (scaled * 2.0 <= ax) scaled *= 2.0;
+    while (scaled >= ay) {
+        if (ax >= scaled) ax -= scaled;
+        scaled *= 0.5;
+    }
+    return x < 0.0 ? -ax : ax;
+}
+
+/* The same, for a single-precision `%`. Computed in double and rounded once,
+ * which is exact: every float is a double, and the true remainder of two
+ * floats is representable as a float. */
+float fmodf(float x, float y) { return (float)fmod((double)x, (double)y); }
+
 /* ---- the allocator -------------------------------------------------------
  *
  * A first-fit free list with coalescing, over one growing region.

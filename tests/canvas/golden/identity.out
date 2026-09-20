@@ -1,0 +1,19 @@
+
+== 1 — a component that stays is the same object ==
+rows built: 3
+rows built after a render: 3
+what b remembers: " (typed)"
+
+== 2 — reordering keeps each row's identity ==
+rows built after reordering: 3
+b is the same object: true
+and still remembers: " (typed)"
+
+== 3 — a row that leaves is gone, and coming back is a new one ==
+rows built after removing one: 3
+rows built after putting it back: 4
+it is a new object: true
+with nothing remembered: ""
+
+== 4 — adding a sibling does not rebuild the rows ==
+rows built after adding a sibling: 0

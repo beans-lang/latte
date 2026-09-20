@@ -16,6 +16,7 @@ package main
 
 import latte.browser
 import latte.canvaskit
+import latte.link
 import latte.paint
 import latte.platform
 import latte.geometry
@@ -76,6 +77,10 @@ pub extern "C" fn surface() -> i32 as "latte_abi_surface" {
         err(_) => {}
     }
     match r.end() { ok(_) => {} err(_) => {} }
+    let channel: browser.PageLink = new browser.PageLink()
+    if channel.ready() { touched = touched + 1 }
+    match channel.send("ping", "none") { ok(_) => { touched = touched + 1 } err(_) => {} }
+    match channel.receive() { some(message) => { touched = touched + message.topic.len() } none => {} }
     return touched as i32
 }
 

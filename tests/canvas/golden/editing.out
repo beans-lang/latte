@@ -1,0 +1,28 @@
+
+== 1 — a grapheme is not a byte and not a code point ==
+Zoe with an accent: 0 1 2 4
+a family emoji: 0 25
+a flag, which this renderer splits: 0 4 8
+an Arabic word: 0 2 4 6 8 10
+
+== 2 — the caret moves by grapheme, never into one ==
+text is 27 bytes
+caret stops moving right: 0 1 26 27 27
+and coming back: 27 26 1 0 0
+
+== 3 — a delete removes a whole grapheme ==
+after one backspace over the emoji: 2 bytes
+what is left: "ab"
+
+== 4 — a selection covers whole graphemes ==
+a double-click selects 0..5
+which is "café"
+
+== 4b — and a word moves by word, not by character ==
+one word right lands at 5
+two words right lands at 14
+
+== 5 — a secure field holds text and shows none of it ==
+it holds 7 bytes
+what it draws: "•••••••"
+the two are different: true

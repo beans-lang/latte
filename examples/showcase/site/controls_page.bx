@@ -1,0 +1,105 @@
+<ScrollView height={520}>
+  <VStack padding={20} spacing={12} align="stretch">
+    <Label text="Controls" font_size={23} />
+    <Label text="Every control below is drawn by Latte from a .bx template." text_color="#555b6b" />
+
+    <CheckBox key={"milk"} text="Include milk" checked={self.milk == 1}
+              on:change={fn(e: UiEvent) { self.set_milk(e.index) }} />
+    <HStack spacing={12} align="center">
+      <RadioButton key={"small"} text="Small" checked={self.size == 0}
+                   on:change={fn(e: UiEvent) { self.choose(0, e.index) }} />
+      <RadioButton key={"large"} text="Large" checked={self.size == 1}
+                   on:change={fn(e: UiEvent) { self.choose(1, e.index) }} />
+    </HStack>
+
+    <HStack spacing={12} align="center">
+      <Label text="Notifications" grow={1} />
+      <Switch key={"notify"} checked={self.notify == 1}
+              on:change={fn(e: UiEvent) { self.set_notify(e.index) }} />
+    </HStack>
+
+    <Label key={"intensity-label"} text={"Intensity {self.intensity}"} />
+    <Slider key={"intensity"} min={0.0} max={100.0} value={self.intensity} step={5.0}
+            on:change={fn(e: UiEvent) { self.slide(e.index) }} />
+
+    <HStack spacing={12} align="center">
+      <Label text="Shots" grow={1} />
+      <Stepper key={"shots"} min={0.0} max={10.0} value={self.shots} step={1.0}
+               on:change={fn(e: UiEvent) { self.step(e.index) }} />
+    </HStack>
+
+    <Label text={"Progress {self.intensity}%"} />
+    <ProgressBar key={"progress"} min={0.0} max={100.0} value={self.intensity} />
+    <LevelIndicator key={"level"} min={0.0} max={100.0} value={self.intensity} />
+
+    <HStack spacing={12} align="center">
+      <Label text="Roast" grow={1} />
+      <ComboBox key={"roast"} items={self.roasts} selected={self.roast}
+                on:change={fn(e: UiEvent) { self.choose_roast(e.index) }} />
+    </HStack>
+
+    <Segmented key={"grind"} items={self.grinds} selected={self.grind}
+               on:change={fn(e: UiEvent) { self.choose_grind(e.index) }} />
+
+    <Separator height={1} />
+
+    <GroupBox text="Order options" height={72}>
+      <Label text="Beans, milk, and cup size" />
+    </GroupBox>
+
+    <Disclosure key={"details"} text="Order details" open={self.details == 1} height={80}
+                on:change={fn(e: UiEvent) { self.set_details(e.index) }}>
+      <Button key={"detail"} text="Roasted today"
+              on:click={fn(e: UiEvent) { self.note() }} />
+    </Disclosure>
+
+    <Label key={"summary"} text={self.summary()} text_color="#555b6b" />
+  </VStack>
+</ScrollView>
+<beans>
+package site
+
+import latte.compose
+import {view} from latte.annotations
+
+@view
+pub partial class ControlsPage extends compose.Component {
+    pub milk: int = 0
+    pub size: int = 0
+    pub notify: int = 1
+    pub intensity: f64 = 40.0
+    pub shots: f64 = 2.0
+    pub roast: int = 1
+    pub grind: int = 0
+    pub details: int = 0
+    pub notes: int = 0
+    pub roasts: List<string> = ["Light", "Medium", "Dark"]
+    pub grinds: List<string> = ["Fine", "Medium", "Coarse"]
+
+    pub fn init() { super.init() }
+
+    pub fn set_milk(value: int) { self.milk = value; self.request_render() }
+    pub fn set_notify(value: int) { self.notify = value; self.request_render() }
+    pub fn set_details(value: int) { self.details = value; self.request_render() }
+    pub fn note() { self.notes = self.notes + 1; self.request_render() }
+    pub fn slide(value: int) { self.intensity = value as f64; self.request_render() }
+    pub fn step(value: int) { self.shots = value as f64; self.request_render() }
+    pub fn choose_roast(index: int) { self.roast = index; self.request_render() }
+    pub fn choose_grind(index: int) { self.grind = index; self.request_render() }
+
+    /// A radio group is two controls and one fact. The `change` a radio raises
+    /// says whether *it* is now on, so the one that switched off raises one
+    /// too — and acting on that would clear the choice the other just made.
+    pub fn choose(which: int, on: int) {
+        if on != 1 { return }
+        self.size = which
+        self.request_render()
+    }
+
+    pub fn summary() -> string {
+        let milk: string = if self.milk == 1 { "with milk" } else { "black" }
+        let size: string = if self.size == 1 { "large" } else { "small" }
+        return "{size}, {milk}, {self.shots as int} shot(s), {self.roasts[self.roast]} roast, {self.grinds[self.grind]} grind, {self.notes} note(s)"
+    }
+}
+</beans>
