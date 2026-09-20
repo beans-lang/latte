@@ -15,6 +15,7 @@ import std.io
 import latte.compose
 import latte.geometry
 import latte.headless
+import latte.input
 import latte.platform
 import latte.scene
 import latte.stage
@@ -138,7 +139,63 @@ pub extern "C" fn run() -> i32 as "latte_animation_run" {
     io.println("frames back down: {trace(page, shape)}")
 
     page.close()
+
+    rule("5 — a control's own template animates, driven by a real click")
+
+    // The transitions above are written in this file's markup. A switch's is
+    // written in `templates/switch_template.bx` and nothing in an application
+    // asks for it — which is the claim a shipped theme makes and the one worth
+    // checking with a click rather than with a property write.
+    let toggle_page: stage.Scene = new stage.Scene(new headless.MetricRenderer(),
+                                                   geometry.Size.of(200.0, 100.0))
+    let toggle: Toggle = new Toggle()
+    toggle_page.show(toggle).expect("show")
+    io.println("animating at rest: {toggle_page.has_active_animations()}")
+    match centre_of(toggle_page, "switch") {
+        none => { io.println("no switch on the screen") }
+        some(where) => {
+            toggle_page.pointer(input.EventKind.pointer_down, where, 1, 1, 0).expect("press")
+            toggle_page.pointer(input.EventKind.pointer_up, where, 1, 1, 0).expect("release")
+            io.println("on after the click: {toggle.on}")
+            io.println("animating after the click: {toggle_page.has_active_animations()}")
+            var moved: int = 0
+            for step: int in 0..30 {
+                if toggle_page.advance(1.0 / 60.0).expect("advance") { moved = moved + 1 }
+            }
+            io.println("frames painted while it moved: {moved}")
+            io.println("animating once it settled: {toggle_page.has_active_animations()}")
+        }
+    }
+    toggle_page.close()
     return 0
+}
+
+/// A switch, and nothing else. Its motion is the shipped template's.
+pub class Toggle extends compose.Component {
+    pub on: bool = false
+    pub fn init() { super.init() }
+    pub override fn render(b: compose.Builder) {
+        b.open("VStack")
+        b.number("padding", 8.0)
+        b.open("Switch")
+        b.key("only")
+        b.flag("checked", self.on)
+        b.on("change", fn(e: input.UiEvent) { self.on = e.index == 1; self.request_render() })
+        b.close()
+        b.close()
+    }
+}
+
+/// The middle of the first node with this role.
+fn centre_of(page: stage.Scene, role: string) -> Option<geometry.Point> {
+    for node: scene.SemanticsNode in page.semantics() {
+        if node.role() == role {
+            let box: geometry.Rect = node.bounds()
+            return some(geometry.Point.at(box.x + box.width / 2.0,
+                                          box.y + box.height / 2.0))
+        }
+    }
+    return none
 }
 
 fn main() { run() }

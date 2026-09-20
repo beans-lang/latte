@@ -17,3 +17,10 @@ caught halfway at 11.20
 after turning round, still at 11.20
 it did not jump: true
 frames back down: 11.20 10.45 9.71 8.96 8.21 7.47 6.72 5.97 5.23 4.48 3.73 2.99 2.24 1.49 0.75 0.00 0.00
+
+== 5 — a control's own template animates, driven by a real click ==
+animating at rest: false
+on after the click: true
+animating after the click: true
+frames painted while it moved: 9
+animating once it settled: false
