@@ -1628,6 +1628,40 @@ run_browser_leg() {
     fi
 }
 
+# --- the vocabulary leg -------------------------------------------------
+#
+# `WidgetKind.all()` is hand-written, because Beans cannot enumerate an enum,
+# and a kind left out of it is invisible to every other gate here.
+run_vocabulary_leg() {
+    if (cd "$ROOT" && bash tools/check_vocabulary.sh) >"$tmp/vocabulary.log" 2>&1; then
+        cat "$tmp/vocabulary.log"
+        legs=$((legs + 1))
+    else
+        echo "--- vocabulary FAILED ---" >&2
+        cat "$tmp/vocabulary.log" >&2
+        failed=1
+    fi
+}
+
+run_vocabulary_leg
+
+# --- the constants leg --------------------------------------------------
+#
+# The numbers that cross the WebAssembly boundary are written twice, once in
+# Beans and once in JavaScript, and nothing else here reads both.
+run_constants_leg() {
+    if (cd "$ROOT" && bash tools/check_constants.sh) >"$tmp/constants.log" 2>&1; then
+        cat "$tmp/constants.log"
+        legs=$((legs + 1))
+    else
+        echo "--- constants FAILED ---" >&2
+        cat "$tmp/constants.log" >&2
+        failed=1
+    fi
+}
+
+run_constants_leg
+
 # --- the generated-file leg --------------------------------------------
 #
 # Every `.bx` file in the tree, recompiled into a scratch directory and diffed

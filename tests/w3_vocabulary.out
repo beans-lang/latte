@@ -10,3 +10,12 @@ the two tables agree on every tag
 
 == 4 — what a canvas component can be built from, today ==
 Box, Button, Canvas, CheckBox, ComboBox, Container, Disclosure, Grid, GroupBox, HStack, Label, LevelIndicator, ProgressBar, RadioButton, ScrollView, SecureField, SearchField, Segmented, Separator, Slider, SplitView, Stepper, Switch, TabView, Table, TextArea, TextField, VStack, Ellipse, Path, Rectangle, ResourceImage
+
+== 5 — the two tables agree on every tag and attribute pair ==
+2065 pair(s) checked, and the two tables answer the same for every one
+
+== 5b — the names that mean a layout to one tag and a property to another ==
+columns: a layout name everywhere, and a property on Table
+
+== 6 — the placement names, which are written out on both sides ==
+every name is a placement name to both, or to neither
