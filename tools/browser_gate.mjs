@@ -15,11 +15,11 @@ import { chromium, firefox, webkit } from "playwright";
 import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { server } from "./serve.mjs";
+import { server, listenOnAFreePort } from "./serve.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const PORT = Number(process.env.LATTE_GATE_PORT || 8732);
+let PORT = 0;
 const ENGINES = { chromium, firefox, webkit };
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -65,7 +65,7 @@ async function main() {
         process.exit(1);
     }
 
-    await new Promise((done) => server.listen(PORT, "127.0.0.1", done));
+    PORT = await listenOnAFreePort();
 
     let failures = 0;
     let ran = 0;

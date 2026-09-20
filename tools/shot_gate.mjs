@@ -30,11 +30,11 @@ import { chromium, firefox, webkit } from "playwright";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { server } from "./serve.mjs";
+import { server, listenOnAFreePort } from "./serve.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const PORT = Number(process.env.LATTE_SHOT_PORT || 8747);
+let PORT = 0;
 const ENGINES = { chromium, firefox, webkit };
 
 /// One channel may differ by this much before a pixel counts as different.
@@ -109,7 +109,7 @@ async function main() {
         process.exit(1);
     }
 
-    await new Promise((done) => server.listen(PORT, "127.0.0.1", done));
+    PORT = await listenOnAFreePort();
     let browser;
     try {
         browser = await engine.launch();

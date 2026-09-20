@@ -69,6 +69,14 @@ export class CanvasKitSurface {
         this.lastError = "";
         this.commands = 0;
         this.frames = 0;
+        // How many times the frame has been copied back through the CPU.
+        // **It should be zero for every frame a reader ever sees.** A desktop
+        // renderer that presents by reading pixels into a native canvas pays a
+        // full copy per frame; a page does not have to, because the surface
+        // Skia draws into is the one the browser composites. The counter is
+        // here so that is a number a gate can read rather than a claim in a
+        // comment.
+        this.readbacks = 0;
         // The paint objects. Two, reused: a Paint is a Skia object and one per
         // command would be an allocation and a delete per rectangle.
         this.fillPaint = new this.ck.Paint();
@@ -523,6 +531,7 @@ export class CanvasKitSurface {
     /// which is why nothing on the drawing path calls it.
     readPixels() {
         if (!this.surface || this.surface.isDeleted()) return null;
+        this.readbacks++;
         const image = this.surface.makeImageSnapshot();
         if (!image) return null;
         try {

@@ -11,10 +11,10 @@
 // pixels: a pixel comparison would fail for a font, and what is in question
 // here is behaviour.
 import { chromium, firefox, webkit } from "playwright";
-import { server } from "./serve.mjs";
+import { server, listenOnAFreePort } from "./serve.mjs";
 
 const ENGINES = { chromium, firefox, webkit };
-const PORT = Number(process.env.LATTE_UI_PORT || 8745);
+let PORT = 0;
 const wanted = (process.env.LATTE_ENGINES || "chromium,firefox,webkit").split(",");
 
 /// Where a node with this accessible name is, in canvas coordinates. The
@@ -158,6 +158,19 @@ async function run(engineName, engine) {
     check(results, "a screen reader's activate reaches the control",
         activated.before !== activated.after, JSON.stringify(activated));
 
+    // --- nothing is copied back ------------------------------------------
+    //
+    // The surface Skia draws into is the one the browser composites, so a
+    // frame costs no CPU copy. A desktop renderer that presents by reading
+    // pixels into a native canvas pays one per frame, and the whole reason
+    // this port draws onto a page's own GPU surface is not to.
+    const drawn = await page.evaluate(() => ({
+        frames: window.__lattePage.surface.frames,
+        readbacks: window.__lattePage.surface.readbacks,
+    }));
+    check(results, "no frame was copied back through the CPU",
+        drawn.frames > 0 && drawn.readbacks === 0, JSON.stringify(drawn));
+
     // --- resize and scale -------------------------------------------------
     await page.setViewportSize({ width: 600, height: 500 });
     await page.waitForTimeout(120);
@@ -206,7 +219,7 @@ async function run(engineName, engine) {
 }
 
 async function main() {
-    await new Promise((done) => server.listen(PORT, "127.0.0.1", done));
+    PORT = await listenOnAFreePort();
     let failures = 0;
     let ran = 0;
     const skipped = [];

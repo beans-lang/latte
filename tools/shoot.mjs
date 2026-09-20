@@ -7,7 +7,7 @@
 // screenshot compared against one taken with a different font is a comparison
 // of two different layouts.
 import { chromium, firefox, webkit } from "playwright";
-import { server } from "./serve.mjs";
+import { server, listenOnAFreePort } from "./serve.mjs";
 import { resolve } from "node:path";
 
 const ENGINES = { chromium, firefox, webkit };
@@ -21,14 +21,18 @@ export async function shoot(options) {
         height = 620,
         scale = 1,
         wait = () => window.__latteReady === true,
-        port = 8734,
+        port = 0,
         settle = 0,
     } = options;
 
-    const listening = await new Promise((done) => {
-        if (server.listening) return done(false);
-        server.listen(port, "127.0.0.1", () => done(true));
-    });
+    let listening = false;
+    let bound = port;
+    if (!server.listening) {
+        bound = await listenOnAFreePort(port);
+        listening = true;
+    } else {
+        bound = server.address().port;
+    }
 
     const browser = await ENGINES[engine].launch();
     const page = await browser.newPage({
@@ -47,7 +51,7 @@ export async function shoot(options) {
         if (message.type() === "error") problems.push(message.text());
     });
 
-    await page.goto(`http://127.0.0.1:${port}/${url.replace(/^\//, "")}`, { waitUntil: "load" });
+    await page.goto(`http://127.0.0.1:${bound}/${url.replace(/^\//, "")}`, { waitUntil: "load" });
     await page.waitForFunction(wait, undefined, { timeout: 30000 });
     if (settle) await page.waitForTimeout(settle);
     await page.screenshot({ path: resolve(out), scale: "device" });

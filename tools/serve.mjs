@@ -68,4 +68,19 @@ if (process.argv[1] && import.meta.url === `file://${resolve(process.argv[1])}`)
     });
 }
 
+/// Starts the server on a free port and answers it.
+///
+/// Port 0 rather than a number each gate picked for itself: two gates running
+/// at once — a `./test.sh --canvas` and a hand-run gate, which is exactly what
+/// happens while working — collided on a fixed port, and the second died with
+/// EADDRINUSE. A gate that fails because another gate is running is a gate
+/// nobody can trust the red of.
+export async function listenOnAFreePort(wanted = 0) {
+    await new Promise((done, fail) => {
+        server.once("error", fail);
+        server.listen(wanted, "127.0.0.1", () => { server.removeListener("error", fail); done(); });
+    });
+    return server.address().port;
+}
+
 export { server, ROOT };
