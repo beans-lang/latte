@@ -33,9 +33,11 @@ pub interface Host {
 
     /// Asks to be called back once, before the next frame the display shows.
     ///
-    /// One request, one callback — the shape `requestAnimationFrame` has and
-    /// the shape a display link has. `FrameSource` is what turns that into a
-    /// running clock with listeners on it.
+    /// One request, one callback, **per caller**. A page has one
+    /// `requestAnimationFrame` and more than one thing that wants it — the
+    /// scene advancing its transitions, and a `motion.FrameClock` moving
+    /// something a program wrote — so a host that kept one handler would
+    /// deliver to whichever asked last and the other would wait forever.
     fn request_frame(handler: fn(f64)) -> Result<bool>
     /// Drops a pending request. Answers whether there was one.
     fn cancel_frame() -> Result<bool>
@@ -95,7 +97,9 @@ pub singleton class HostDesk {
 /// and a clock is arithmetic, not a capability.
 pub class HeadlessHost implements Host {
     nanos: int = 0
-    pending: Option<fn(f64)> = none
+    /// Every handler waiting for the next frame. A list rather than one slot:
+    /// two callers is the normal case, not the exception.
+    pending: List<fn(f64)> = []
 
     pub fn init() {}
 
@@ -121,28 +125,33 @@ pub class HeadlessHost implements Host {
     pub fn now_nanos() -> int { return self.nanos }
 
     pub fn request_frame(handler: fn(f64)) -> Result<bool> {
-        self.pending = some(handler)
+        self.pending.push(handler)
         return ok(true)
     }
 
     pub fn cancel_frame() -> Result<bool> {
-        let had: bool = self.pending != none
-        self.pending = none
+        let had: bool = self.pending.len() > 0
+        self.pending = []
         return ok(had)
     }
 
-    /// Runs the pending frame callback `seconds` after the last one. The test
-    /// clock: nothing here moves on its own.
+    /// Runs every pending frame callback, `seconds` after the last frame. The
+    /// test clock: nothing here moves on its own.
+    ///
+    /// The list is taken before the walk, so a handler that asks for another
+    /// frame from inside this one is waiting for the *next* frame and not
+    /// running twice in this one.
     pub fn advance(seconds: f64) -> bool {
         self.nanos = self.nanos + (seconds * 1000000000.0) as int
-        match self.pending {
-            none => { return false }
-            some(handler) => {
-                self.pending = none
-                handler(self.nanos as f64 / 1000000000.0)
-                return true
-            }
-        }
+        // Copied rather than moved: a field cannot be moved out of yet, and
+        // the copy is the point anyway — a handler that asks for another frame
+        // from inside this one is waiting for the next, not running twice.
+        var waiting: List<fn(f64)> = []
+        for handler: fn(f64) in self.pending { waiting.push(handler) }
+        self.pending = []
+        if waiting.len() == 0 { return false }
+        for handler: fn(f64) in waiting { handler(self.nanos as f64 / 1000000000.0) }
+        return true
     }
 
     pub fn text_input(active: bool, text: string, anchor: int, caret: int,

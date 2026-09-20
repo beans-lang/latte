@@ -68,6 +68,19 @@ pub extern "C" fn run() -> i32 as "latte_frames_run" {
 
     io.println("the first listener's frames carry its own token: {seen[0].contains("token 7")}")
 
+    rule("4b — two different things can each want the same frame")
+
+    // A page has one requestAnimationFrame and more than one thing that wants
+    // it: the scene advancing its own transitions, and a clock moving
+    // something a program wrote. A host that kept one handler would deliver to
+    // whichever asked last, and the other would wait forever — which reads as
+    // "animation works for controls and not for anything I write".
+    var scene_side: int = 0
+    clock_host.request_frame(fn(seconds: f64) { scene_side = scene_side + 1 }).expect("ask")
+    let both_before: int = ticks + other
+    clock_host.advance(1.0 / 60.0)
+    io.println("the clock's listeners heard {ticks + other - both_before}, the other caller {scene_side}")
+
     rule("5 — when the last listener leaves, nothing is asked for")
 
     clock.stop().expect("stop")

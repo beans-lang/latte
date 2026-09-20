@@ -12,10 +12,11 @@ import latte.platform
 /// was being attempted — never as a quiet no-op, which is what a missing
 /// paste looks like when nothing reports it.
 pub class BrowserHost implements platform.Host {
-    /// The one frame callback outstanding, if any. The page's own
-    /// `requestAnimationFrame` handle is JavaScript's business; this side only
-    /// has to know whether it asked.
-    pending: Option<fn(f64)> = none
+    /// Every handler waiting for the next frame. A list, because a page has
+    /// one `requestAnimationFrame` and more than one thing that wants it; the
+    /// page's own handle is JavaScript's business and this side only has to
+    /// know whether it has asked.
+    pending: List<fn(f64)> = []
 
     pub fn init() {}
 
@@ -86,31 +87,38 @@ pub class BrowserHost implements platform.Host {
     }
 
     pub fn request_frame(handler: fn(f64)) -> Result<bool> {
-        self.pending = some(handler)
+        self.pending.push(handler)
         unsafe {
             if latte_js_request_frame() < 0 {
-                self.pending = none
+                self.pending = []
                 return err("could not ask for a frame: the page refused", "platform_refused")
             }
         }
         return ok(true)
     }
 
+    /// Cancels every pending request. The page keeps one
+    /// `requestAnimationFrame` for all of them, so there is one to cancel.
     pub fn cancel_frame() -> Result<bool> {
-        let had: bool = self.pending != none
-        self.pending = none
+        let had: bool = self.pending.len() > 0
+        self.pending = []
         unsafe { latte_js_cancel_frame() }
         return ok(had)
     }
 
-    /// The page calling back. One request buys one callback, so the handler is
-    /// taken before it runs — a handler that asks for another frame from
-    /// inside this one must not be overwritten by the clearing afterwards.
+    /// The page calling back.
+    ///
+    /// The list is taken before the walk, so a handler that asks for another
+    /// frame from inside this one is waiting for the *next* frame rather than
+    /// being cleared by the emptying afterwards.
     pub fn deliver_frame(seconds: f64) {
-        match self.pending {
-            none => {}
-            some(handler) => { self.pending = none; handler(seconds) }
-        }
+        // Copied rather than moved: a field cannot be moved out of yet, and
+        // the copy is the point anyway — a handler that asks for another frame
+        // from inside this one is waiting for the next, not running twice.
+        var waiting: List<fn(f64)> = []
+        for handler: fn(f64) in self.pending { waiting.push(handler) }
+        self.pending = []
+        for handler: fn(f64) in waiting { handler(seconds) }
     }
 
     pub fn text_input(active: bool, text: string, anchor: int, caret: int,

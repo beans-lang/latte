@@ -14,6 +14,9 @@ the first heard 1 more, the second 1
 == 4 — the token is each listener's own ==
 the first listener's frames carry its own token: true
 
+== 4b — two different things can each want the same frame ==
+the clock's listeners heard 2, the other caller 1
+
 == 5 — when the last listener leaves, nothing is asked for ==
 pending with one left: true
 pending with none: false
