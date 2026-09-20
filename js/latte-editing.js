@@ -1,19 +1,5 @@
-// Where typing really happens.
-//
-// A `<canvas>` cannot receive text. Every browser routes typing, input methods,
-// autocorrect and dictation through an editable element, so Latte has one:
-// invisible, one line tall, positioned under the caret Beans drew.
-//
-// **Position is not cosmetic.** An input method puts its candidate window
-// under the editing element, so an element parked at the origin puts a
-// Japanese candidate list in the corner of the page while the text appears in
-// the middle. Moving it is the whole reason `platform.Host.text_input` carries
-// a rectangle.
-//
-// It is `contenteditable` rather than a `<textarea>` for one reason: Safari
-// fires `compositionupdate` on a contenteditable and not reliably on a hidden
-// textarea, and an input method that reports nothing until it commits cannot
-// show a composition underline.
+// The hidden editable element typing really arrives at, placed under the caret
+// Beans drew. Why it is contenteditable, and why it moves: docs/notes.md.
 
 export class EditingHost {
     constructor(parent, options = {}) {
@@ -31,10 +17,8 @@ export class EditingHost {
         this.element.setAttribute("aria-hidden", "true");
         Object.assign(this.element.style, {
             position: "absolute",
-            // Not `display: none` and not `visibility: hidden`: an element
-            // that is not rendered cannot be focused, and one that cannot be
-            // focused never receives a keystroke. One transparent pixel of
-            // real layout is what an input method needs to aim at.
+            // Not `display: none`: an element that is not rendered cannot be
+            // focused, and one that is not focused never gets a keystroke.
             opacity: "0",
             padding: "0",
             margin: "0",
@@ -62,28 +46,22 @@ export class EditingHost {
         };
         on("beforeinput", (event) => {
             handlers.onBeforeInput(event);
-            // The element's own content is never the truth — Beans holds the
-            // text. Letting the browser insert into it would leave a second
-            // copy that drifts, and would grow without bound over a session.
+            // The element's content is never the truth — Beans holds the text.
+            // A browser insert would leave a second copy that grows and drifts.
             event.preventDefault();
         });
         on("compositionstart", (event) => handlers.onCompositionStart(event));
         on("compositionupdate", (event) => handlers.onCompositionUpdate(event));
         on("compositionend", (event) => {
             handlers.onCompositionEnd(event);
-            // The committed text is Beans' now. Clearing here rather than in
-            // `beforeinput` is deliberate: an input method reads the element's
-            // content while it composes, and emptying it mid-session cancels
-            // the composition in Safari.
+            // The committed text is Beans' now. Cleared here, not in
+            // `beforeinput`: emptying mid-composition cancels it in Safari.
             this.element.textContent = "";
         });
     }
 
-    /// Where the caret is, and what is being edited.
-    ///
-    /// Called from the module whenever the editing state changes. `active`
-    /// false ends the session: the element is blurred, so the browser stops
-    /// showing a software keyboard and an input method closes its window.
+    /// Where the caret is and what is being edited. `active` false ends the
+    /// session: blurring closes a software keyboard and an input method.
     setState(state) {
         if (!state.active) {
             if (this.active) {
@@ -93,12 +71,8 @@ export class EditingHost {
             }
             return;
         }
-        // The coordinates are the scene's, and the scene is the canvas — so
-        // they are offset by wherever the canvas sits inside this element's
-        // parent. In the common case the canvas fills its container and the
-        // offset is zero; a Latte panel beside other HTML is where it is not,
-        // and an input method's candidate window would otherwise appear that
-        // far away from the text.
+        // Scene coordinates, offset by where the canvas sits in this element's
+        // parent — zero when it fills its container, not when it is a panel.
         const origin = this.originOf();
         this.element.style.left = `${Math.round(origin.x + state.x)}px`;
         this.element.style.top = `${Math.round(origin.y + state.y)}px`;

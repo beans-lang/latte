@@ -9,17 +9,12 @@ pub extern "C" fn latte_js_link_send(action: RawPtr<i8>, action_len: i32,
                                      payload: RawPtr<i8>, payload_len: i32) -> i32
 /// 1 when the channel is usable.
 pub extern "C" fn latte_js_link_ready() -> i32
-/// The next message waiting, with the two-call shape: a null buffer answers
-/// the bytes needed and takes nothing off the queue. 0 means nothing is
-/// waiting.
+/// The next message waiting: a null buffer answers the bytes needed and takes
+/// nothing off the queue, and 0 means nothing is waiting.
 pub extern "C" fn latte_js_link_receive(out: RawPtr<i8>, cap: i32) -> i32
 
-/// `link.Link` over a page.
-///
-/// A message crosses as one string, `topic\npayload`, rather than as two
-/// calls. One call is one queue pop, and a pair of calls could be interleaved
-/// by a message arriving between them — which would hand a component one
-/// message's topic and another's body, and nothing downstream could tell.
+/// `link.Link` over a page. One string, `topic\npayload`, because two calls
+/// could be interleaved and hand one message's topic to another's body.
 pub class PageLink implements link.Link {
     pub fn init() {}
 

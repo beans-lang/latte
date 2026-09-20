@@ -1,15 +1,5 @@
-// Does a component keep its identity when the tree around it changes?
-//
-// The question a differ answers, and the one that decides whether typing into
-// a field survives the render that happens while you type. A component that
-// was rebuilt on every render would lose its state, its caret and its
-// scroll offset — and it would look like an intermittent bug rather than a
-// design, because it only shows when a render lands mid-interaction.
-//
-// Three claims:
-//   * a component that stays in the tree is the same object across renders
-//   * a keyed row keeps its identity when its siblings move
-//   * a subtree that goes away really goes away
+// Does a component keep its identity when the tree around it changes? It
+// decides whether typing survives a render that lands mid-keystroke.
 package main
 
 import std.io
@@ -24,9 +14,8 @@ import latte.stage
 pub class Row extends compose.Component {
     pub label: string = ""
     pub typed: string = ""
-    /// A number nothing but this object's own construction sets, so two rows
-    /// can be told apart without reference equality — which Beans does not
-    /// spell, and which a `Map` lookup would answer for the wrong reason.
+    /// A number only this object's construction sets, so two rows can be told
+    /// apart without reference equality, which Beans does not spell.
     pub serial: int = 0
     pub fn init() {
         super.init()

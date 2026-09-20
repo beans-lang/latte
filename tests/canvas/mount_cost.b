@@ -1,19 +1,5 @@
-// What does putting a control on a screen cost?
-//
-// Not in milliseconds — a timing assertion passes or fails on how busy the
-// machine is, and the number it would pin is this laptop's. In **work**: how
-// many times the framework reflects over a type.
-//
-// That is the number that went wrong. A control with a `.bx` template gets a
-// `Mount` of its own, the plan cache was a field on `Mount`, and so every
-// button on a screen scanned its template's 146 fields again — 109 ms of
-// asking each one for annotations it does not have. Twelve buttons took a
-// second and a half, and thirty mount-and-unmount rounds took forty-three
-// seconds.
-//
-// A plan is a fact about a *type*, so it is worked out once for the program.
-// This is what says so, and it says it in a way that cannot be satisfied by a
-// faster machine.
+// What a control costs to put on a screen, counted in reflection rather than
+// milliseconds — a timing assertion pins this laptop. See `compose.PlanDesk`.
 package main
 
 import std.io

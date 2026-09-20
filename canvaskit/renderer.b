@@ -4,23 +4,11 @@ package canvaskit
 import latte.geometry
 import latte.paint
 
-/// The renderer a Latte page draws with.
-///
-/// It owns no pixels and no Skia objects. Every one of those lives in the
-/// CanvasKit module, and this holds **handles** — small integers the page
-/// issued — which it gives back explicitly. That is the whole ownership story,
-/// and it is the reason a paragraph going out of scope in Beans frees Skia
-/// memory in the same breath rather than at the next collection.
-///
-/// It draws straight onto the page's GPU surface. There is no frame readback:
-/// `end()` flushes the surface the browser is already compositing. Reading
-/// pixels back is what `snapshot()` does, it costs a full copy, and it is
-/// there for the screenshot gates and nothing else.
+/// The renderer a Latte page draws with: handles, never pixels, and never a
+/// frame read back. Ownership and the surface: docs/notes.md.
 pub class CanvasKitRenderer implements paint.Renderer {
-    /// Scratch for the out-parameters. One buffer, owned here, rather than an
-    /// allocation per measurement: `paragraph.size()` is called once per
-    /// control per layout pass and a buffer per call would be the hot path's
-    /// allocation.
+    /// Scratch for the out-parameters, owned here: `paragraph.size()` runs
+    /// once per control per layout pass and would allocate on every one.
     reals: RawPtr<f64> = RawPtr.null()
     wholes: RawPtr<i32> = RawPtr.null()
     frame_open: bool = false
@@ -43,9 +31,8 @@ pub class CanvasKitRenderer implements paint.Renderer {
         unsafe { return self.reals.offset(index).read() }
     }
 
-    /// Whether the page has a surface at all. Asked before a frame, so a
-    /// renderer whose canvas has not been attached refuses by name instead of
-    /// drawing into nothing.
+    /// Whether the page has a surface at all, asked before a frame: an
+    /// unattached canvas refuses by name rather than drawing into nothing.
     pub fn ready() -> bool {
         unsafe { return latte_js_ck_ready() == 1 }
     }
@@ -58,14 +45,8 @@ pub class CanvasKitRenderer implements paint.Renderer {
         unsafe { return latte_js_ck_software() == 1 }
     }
 
-    /// Pins one font file as the family every later paragraph uses.
-    ///
-    /// Fetching it is asynchronous and this does not wait — a WebAssembly call
-    /// cannot. It answers whether the file is *already* the family: false
-    /// means loading, and `font_ready()` is what a caller polls. A screenshot
-    /// gate must wait for true before it measures anything, because the same
-    /// text in a fallback face is a different width and the comparison would
-    /// be against the wrong layout.
+    /// Pins one font file as the family later paragraphs use. Answers whether
+    /// it is already loaded; a gate polls `font_ready()` before it measures.
     pub fn use_font(path: string) -> Result<bool> {
         let bytes: Bytes = Bytes.from(path)
         unsafe {
@@ -150,9 +131,8 @@ pub class CanvasKitRenderer implements paint.Renderer {
         return self.offsets(text, "find the word boundaries", false)
     }
 
-    /// Both boundary questions have the same shape: ask the count, then fill a
-    /// buffer that size. Written once, because two copies of a two-call
-    /// protocol is two chances to trust the first length.
+    /// Both boundary questions ask the count, then fill a buffer that size.
+    /// Written once: two copies is two chances to trust the first length.
     fn offsets(text: string, attempt: string, graphemes: bool) -> Result<List<int>> {
         let bytes: Bytes = Bytes.from(text)
         var needed: int = 0
@@ -240,11 +220,8 @@ fn pointer_of(buffer: Bytes) -> RawPtr<i8> {
     unsafe { return RawPtr.from_address(buffer.as_ptr().address()) }
 }
 
-/// A shaped paragraph, by handle.
-///
-/// Measurements are asked for once and kept: a paragraph is immutable once
-/// shaped, and `size()` is called for every control on every layout pass. The
-/// handle is released in `deinit`, so Skia's copy goes when this does.
+/// A shaped paragraph, by handle. Immutable once shaped, so measurements are
+/// kept; the handle is released in `deinit`, and Skia's copy goes with it.
 pub class CkParagraph implements paint.Paragraph {
     owner: CanvasKitRenderer
     pub handle: int
@@ -379,12 +356,8 @@ pub class CkImage implements paint.ImageResource {
     fn deinit() { self.release() }
 }
 
-/// The canvas a frame is drawn onto.
-///
-/// It holds no state of its own: the page keeps the current canvas between
-/// `begin` and `end`, because CanvasKit's canvas is owned by its surface and a
-/// handle to it would be a handle to something the surface may replace. So a
-/// `CkCanvas` is a permission to draw, valid for one frame.
+/// The canvas a frame is drawn onto: a permission to draw, valid for one
+/// frame, because CanvasKit's canvas belongs to a surface that may be replaced.
 pub class CkCanvas implements paint.Canvas {
     owner: CanvasKitRenderer
     /// Thirteen numbers, the layout `latte_js_ck_visual` reads a VisualStyle
@@ -497,10 +470,8 @@ pub class CkCanvas implements paint.Canvas {
             }
             some(picture) => {
                 if picture.state() == 0 {
-                    // Still decoding. Drawing nothing is right: stretching an
-                    // empty picture over the box would flash, and refusing
-                    // would fail a frame for something that will be there in a
-                    // moment. The scene repaints when it arrives.
+                    // Still decoding, so nothing is drawn: the scene repaints
+                    // when it arrives, and an empty picture would flash.
                     return ok(false)
                 }
                 if picture.failed() {

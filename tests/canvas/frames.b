@@ -1,15 +1,5 @@
-// Who gets told about a frame.
-//
-// A page has one `requestAnimationFrame` and two things that want it: the
-// scene, which advances its own transitions, and `motion.FrameClock`, which is
-// what a program uses to move something of its own. Wiring one and not the
-// other is the kind of fault that reads as "animation does not work on the
-// web" — everything built into a control moves, and nothing an application
-// wrote does.
-//
-// `platform.HeadlessHost` is the clock here: `advance(seconds)` runs whatever
-// asked for a frame and nothing else, so the question is answerable with no
-// browser at all.
+// Who gets told about a frame: a page has one `requestAnimationFrame` and two
+// things that want it. `HeadlessHost.advance` is the clock here.
 package main
 
 import std.io
@@ -70,11 +60,8 @@ pub extern "C" fn run() -> i32 as "latte_frames_run" {
 
     rule("4b — two different things can each want the same frame")
 
-    // A page has one requestAnimationFrame and more than one thing that wants
-    // it: the scene advancing its own transitions, and a clock moving
-    // something a program wrote. A host that kept one handler would deliver to
-    // whichever asked last, and the other would wait forever — which reads as
-    // "animation works for controls and not for anything I write".
+    // A host that kept one handler would deliver to whichever asked last, and
+    // the other would wait forever — controls move, an application's do not.
     var scene_side: int = 0
     clock_host.request_frame(fn(seconds: f64) { scene_side = scene_side + 1 }).expect("ask")
     let both_before: int = ticks + other

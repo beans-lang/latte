@@ -1,10 +1,5 @@
-// The virtual table: does it really only read what it shows?
-//
-// A table with ten thousand rows is a claim about *work*, not about pixels.
-// The claim is that drawing twenty rows costs twenty cell reads and not ten
-// thousand, that scrolling by a fraction of a row costs none at all, and that
-// one editor is open at a time. Each of those is a number this file asserts
-// rather than a property somebody checked once by eye.
+// The virtual table: does it really only read what it shows? Twenty rows is
+// twenty cell reads, a part-row scroll is none, and one editor is open.
 package main
 
 import std.io
@@ -124,9 +119,8 @@ pub extern "C" fn run() -> i32 as "latte_table_run" {
 
     rule("2 — a second frame with nothing changed reads nothing")
 
-    // The visible-row cache. A table that re-read its source every frame would
-    // make a 60 Hz scroll 60 source reads a second per visible cell, and a
-    // source backed by a database would feel it.
+    // The visible-row cache: re-reading the source every frame is 60 reads a
+    // second per visible cell, which a database-backed source would feel.
     page.refresh().expect("refresh")
     io.println("reads after an idle frame: {orders.rows.reads - first}")
 
@@ -143,11 +137,8 @@ pub extern "C" fn run() -> i32 as "latte_table_run" {
     rule("4 — scrolling a whole page reads about a page")
 
     let before_page: int = orders.rows.reads
-    // Down the content is a **positive** delta, and that is the direction a
-    // browser's `deltaY` already has. Negating it — which looks right, since a
-    // wheel turn moves the content the other way — scrolls every list
-    // backwards, and a list already at the top does not move at all, so it
-    // reads as "the wheel does nothing".
+    // Down the content is a positive delta, which is what `deltaY` already is.
+    // Negating it scrolls backwards, and a list at the top just sits still.
     page.scroll(geometry.Point.at(100.0, 100.0), 0.0, 600.0).expect("scroll")
     io.println("offset after scrolling down 600: {table.scroll_offset()}")
     let paged: int = orders.rows.reads - before_page

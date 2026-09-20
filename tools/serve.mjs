@@ -1,18 +1,11 @@
-// A static server for the browser gates and the showcase.
-//
-// `python3 -m http.server` would do for a page, but not for this: a
-// WebAssembly module has to arrive as `application/wasm` for
-// `instantiateStreaming` to take it, and an ES module has to arrive as
-// `text/javascript` or the browser refuses the import outright. Both are
-// exactly the kind of thing that works on one machine and not the next.
+// A static server for the browser gates and the showcase. Its reason to exist
+// is the media types: `application/wasm`, and `text/javascript` for a module.
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 
-// The directory served, and the port. Read from the environment rather than
-// from argv, because this file is imported by tools that have argv of their
-// own — `tools/shoot.mjs` passes an output path as its second argument, and a
-// server that took it as its root answered 404 for everything.
+// Read from the environment, not argv: this file is imported by tools with
+// argv of their own, and one of them passed an output path as the root.
 const ROOT = resolve(process.env.LATTE_SERVE_ROOT || ".");
 const PORT = Number(process.env.LATTE_SERVE_PORT || 8731);
 
@@ -45,9 +38,8 @@ const server = createServer(async (request, response) => {
         response.writeHead(200, {
             "content-type": TYPES[extname(file)] || "application/octet-stream",
             "cache-control": "no-store",
-            // SharedArrayBuffer is not used, but a CanvasKit build that wants
-            // threads needs these two and a page that gets them late is a page
-            // that has to be reloaded.
+            // Not used, but a threaded CanvasKit build needs both, and a page
+            // that gets them late has to be reloaded.
             "cross-origin-opener-policy": "same-origin",
             "cross-origin-embedder-policy": "require-corp",
             "cross-origin-resource-policy": "cross-origin",
@@ -58,9 +50,8 @@ const server = createServer(async (request, response) => {
     }
 });
 
-// Listening only when this file is the program. The browser gate imports it
-// for the server object and chooses its own port; a module that listened on
-// import would take the default port away from a serve running beside it.
+// Listening only when this file is the program: the browser gate imports it
+// and picks its own port, and an import that listened would take the default.
 if (process.argv[1] && import.meta.url === `file://${resolve(process.argv[1])}`) {
     const port = Number(process.argv[2] || PORT);
     server.listen(port, "127.0.0.1", () => {
@@ -68,13 +59,8 @@ if (process.argv[1] && import.meta.url === `file://${resolve(process.argv[1])}`)
     });
 }
 
-/// Starts the server on a free port and answers it.
-///
-/// Port 0 rather than a number each gate picked for itself: two gates running
-/// at once — a `./test.sh --canvas` and a hand-run gate, which is exactly what
-/// happens while working — collided on a fixed port, and the second died with
-/// EADDRINUSE. A gate that fails because another gate is running is a gate
-/// nobody can trust the red of.
+/// Starts the server on a free port. Port 0 rather than a fixed one: two
+/// gates at once collided, and a gate that fails that way cannot be trusted.
 export async function listenOnAFreePort(wanted = 0) {
     await new Promise((done, fail) => {
         server.once("error", fail);

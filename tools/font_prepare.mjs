@@ -1,20 +1,5 @@
-// Turns a WOFF file back into the TrueType file CanvasKit can read.
-//
-// CanvasKit has no fonts of its own and no access to the system's — a browser
-// will not hand a page glyph data. So Latte has to supply a font file, and the
-// font packages on npm ship WOFF and WOFF2. Skia reads neither.
-//
-// WOFF2 needs Brotli plus a glyph-table transform and is a real decoder.
-// **WOFF1 is not**: it is the same sfnt tables, each one zlib-compressed, with
-// a different directory in front. Rebuilding the sfnt is this file, it needs
-// nothing but node's own zlib, and the output is a byte-for-byte ordinary
-// .ttf that Skia loads.
-//
-//     node tools/font_prepare.mjs
-//
-// It writes build/fonts/, which is what the showcase and the screenshot gates
-// load. The fonts are not committed: they come from a package, and a binary in
-// git that a package already provides is a second copy to keep in step.
+// Turns a WOFF file back into the TrueType CanvasKit can read, into
+// build/fonts/. Not committed: they come from a package. See docs/browser.md.
 import { inflateSync } from "node:zlib";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -58,9 +43,8 @@ export function woffToSfnt(woff) {
     // searches. WOFF's own order is not required to be.
     tables.sort((a, b) => a.tag - b.tag);
 
-    // searchRange, entrySelector and rangeShift describe the binary search over
-    // the directory. Every reader computes its own, and a wrong one is
-    // rejected by some, so they are computed rather than zeroed.
+    // searchRange, entrySelector and rangeShift describe the directory's
+    // binary search: some readers reject a wrong one, so they are computed.
     let power = 1;
     let selector = 0;
     while (power * 2 <= tables.length) { power *= 2; selector++; }

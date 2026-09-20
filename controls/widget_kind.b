@@ -250,15 +250,8 @@ pub enum WidgetKind {
         return err("this platform has no {self.name()} control", "no_such_control")
     }
 
-    /// Every kind, in the order they are declared above.
-    ///
-    /// Hand-written, because Beans has no way to enumerate an enum's cases —
-    /// and hand-written lists drift, so `tools/check_vocabulary.sh` holds this
-    /// one to the declarations above. That gate is not decoration: before it
-    /// existed, `canvas` was added to this enum and never reached
-    /// `tests/enabled.b`, which walks the kinds by hand. The golden lost a
-    /// line and stayed green, because a list that is one short looks exactly
-    /// like a list.
+    /// Every kind, in declaration order. Hand-written, because Beans cannot
+    /// enumerate an enum; `tools/check_vocabulary.sh` holds it to the cases.
     pub static fn all() -> List<WidgetKind> {
         var every: List<WidgetKind> = []
         every.push(WidgetKind.container)

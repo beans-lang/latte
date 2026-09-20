@@ -1,17 +1,5 @@
-// Every import a Latte module can have, in one module.
-//
-// Scratch to the suite loop (a leading underscore), and a build target to
-// `tools/wasm_abi.sh`. Its job is to *reference* each import so the linker
-// keeps it: an unreferenced `extern "C"` is not in the import table, so a
-// module that happened to use only half of them would let the other half drift
-// away from the JavaScript loader unnoticed.
-//
-// It is never run. Calling these outside a browser would reach functions that
-// do not exist.
-//
-// Both halves of the boundary are here: the page's own services, and the
-// drawing surface. They are separate Beans packages and one WebAssembly import
-// table, so one file has to name them all.
+// Every import a Latte module can have, referenced so the linker keeps it in
+// the import table for `tools/wasm_abi.sh`. Never run: they need a browser.
 package main
 
 import latte.browser

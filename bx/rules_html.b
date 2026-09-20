@@ -1,14 +1,8 @@
 // What a `.bx` file means when it compiles into DOM.
 package bx
 
-/// The html target's rules.
-///
-/// Every answer here is HTML's own, and every one of them was already written
-/// somewhere in `html.b`, `events.b` or `parse.b` — this is where they are
-/// collected so the parser can ask a target rather than know the target.
-/// Nothing about the behaviour changed; the generated Beans for every existing
-/// `.bx` file is byte for byte what it was, which `tests/w2_equiv.b` and the
-/// checked-in generated files hold it to.
+/// The html target's rules, collected so the parser can ask a target rather
+/// than know one. `tests/w2_equiv.b` holds the output byte for byte.
 pub class HtmlRules implements TargetRules {
     pub fn init() {}
 
@@ -20,9 +14,8 @@ pub class HtmlRules implements TargetRules {
     pub fn is_raw_text_element(tag: string) -> bool { return is_raw_text_element(tag) }
     pub fn preserves_whitespace(tag: string) -> bool { return preserves_whitespace(tag) }
 
-    /// HTML is open: an element name latte does not know is an element the
-    /// browser might, and a custom element is a real thing. Nothing is refused
-    /// by name here.
+    /// HTML is open: a name latte does not know may be one the browser does,
+    /// and a custom element is a real thing. Nothing is refused by name.
     pub fn tag_refusal(tag: string) -> string { return "" }
 
     pub fn doctype_refusal(text: string) -> string { return "" }
@@ -35,16 +28,14 @@ pub class HtmlRules implements TargetRules {
         return "{name} uses an attribute namespace latte does not have — latte has two, on: for a DOM event and bind: for a two-way binding, beside the XML namespaces xlink:, xml: and xmlns:"
     }
 
-    /// Open, for the same reason tags are: `data-`, `aria-`, a framework's own
-    /// attribute and a custom element's property are all legitimate, and a
-    /// table that refused them would have to grow forever.
+    /// Open, for the same reason tags are: `data-`, `aria-` and a custom
+    /// element's property are all legitimate, and a table would grow forever.
     pub fn attribute_refusal(tag: string, name: string) -> string { return "" }
 
     pub fn resolve_literal(value: string) -> string { return resolve_references(value) }
 
-    /// `ref=` hands back what a tag built. On an element that is a DOM node,
-    /// on a component tag it is the instance — both are things a render owns,
-    /// so neither is refused.
+    /// `ref=` hands back what a tag built: a DOM node on an element, the
+    /// instance on a component tag. Both are a render's, so neither is refused.
     pub fn ref_refusal(tag: string, component: bool) -> string { return "" }
 
     pub fn inline_handler_refusal(name: string) -> string {

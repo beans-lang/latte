@@ -3,19 +3,11 @@ package browser
 
 import latte.platform
 
-/// `platform.Host` over a browser page.
-///
-/// Every method is one import away from the DOM, and every refusal is the
-/// page's own: a clipboard write outside a user gesture, an input method on a
-/// host with no editing element, an accessibility tree with nowhere to publish
-/// to. They arrive as a negative number and leave as a `Result` naming what
-/// was being attempted — never as a quiet no-op, which is what a missing
-/// paste looks like when nothing reports it.
+/// `platform.Host` over a browser page. Every refusal is the page's own and
+/// leaves as a `Result` naming the attempt, never as a quiet no-op.
 pub class BrowserHost implements platform.Host {
     /// Every handler waiting for the next frame. A list, because a page has
-    /// one `requestAnimationFrame` and more than one thing that wants it; the
-    /// page's own handle is JavaScript's business and this side only has to
-    /// know whether it has asked.
+    /// one `requestAnimationFrame` and more than one thing that wants it.
     pending: List<fn(f64)> = []
 
     pub fn init() {}
@@ -24,10 +16,8 @@ pub class BrowserHost implements platform.Host {
         unsafe { return latte_js_can(BrowserHost.code(what) as i32) == 1 }
     }
 
-    /// The wire number for a capability. Stated here rather than derived from
-    /// the enum's declaration order, because a member inserted in the middle
-    /// would otherwise silently renumber every one after it and the page would
-    /// answer the wrong question.
+    /// The wire number for a capability, stated rather than derived from the
+    /// enum's order: an inserted member would renumber every one after it.
     static fn code(what: platform.Capability) -> int {
         return match what {
             frame_clock => 1,
@@ -106,15 +96,11 @@ pub class BrowserHost implements platform.Host {
         return ok(had)
     }
 
-    /// The page calling back.
-    ///
-    /// The list is taken before the walk, so a handler that asks for another
-    /// frame from inside this one is waiting for the *next* frame rather than
-    /// being cleared by the emptying afterwards.
+    /// The page calling back. The list is taken before the walk, so a handler
+    /// that asks for another frame is waiting for the *next* one.
     pub fn deliver_frame(seconds: f64) {
-        // Copied rather than moved: a field cannot be moved out of yet, and
-        // the copy is the point anyway — a handler that asks for another frame
-        // from inside this one is waiting for the next, not running twice.
+        // Copied, not moved: a field cannot be moved out of yet, and a handler
+        // that asks for a frame from inside this one waits for the next.
         var waiting: List<fn(f64)> = []
         for handler: fn(f64) in self.pending { waiting.push(handler) }
         self.pending = []
@@ -178,12 +164,8 @@ pub class BrowserHost implements platform.Host {
     }
 }
 
-/// The one host a page has, kept here so the frame callback can reach it.
-///
-/// `platform.HostDesk` holds it as a `Host`, and a frame arriving from
-/// JavaScript needs the `BrowserHost` behind that interface. Storing it twice
-/// would let the two disagree, so this is the one place that owns it and
-/// `install` is what puts it in both.
+/// The one host a page has, so a frame arriving from JavaScript can reach the
+/// `BrowserHost` behind `platform.HostDesk`'s interface. `install` sets both.
 pub singleton class PageHost {
     current: Option<BrowserHost> = none
 

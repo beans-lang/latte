@@ -1,15 +1,5 @@
-// What a canvas application says to a server, and what it may assume.
-//
-// The split this file exists to pin down: **the browser owns the interface and
-// the server owns the truth.** A control's state, the caret, the selection,
-// the scroll offset and anything mid-animation are local and never wait for a
-// network. What crosses is a request for data or an action, and an action is
-// never a permission — the server decides again, because a browser is the
-// user's machine and nothing it sends is evidence of anything.
-//
-// Nothing here talks to a network. `link.LocalLink` is the whole point: a
-// component's behaviour is testable without one, which is only true because
-// the boundary is messages rather than calls.
+// What a canvas application says to a server: the browser owns the interface
+// and the server owns the truth. Nothing here talks to a network.
 package main
 
 import std.io
@@ -20,9 +10,8 @@ import latte.input
 import latte.link
 import latte.stage
 
-/// A screen that asks a server for rows and sends an action when one is
-/// edited. It holds no connection, no URL and no credential: it holds a
-/// `Link`, and what that is behind is the page's business.
+/// A screen that asks for rows and sends an action when one is edited. It
+/// holds a `Link` and no connection, URL or credential.
 pub class Orders extends compose.Component {
     pub rows: List<string> = []
     pub status: string = "nothing asked for yet"
@@ -152,9 +141,8 @@ pub extern "C" fn run() -> i32 as "latte_link_run" {
 
     channel.close()
     io.println("link ready: {channel.ready()}")
-    // Scrolling, typing and drawing are local. A closed link changes none of
-    // them — which is the property that makes a canvas application usable on a
-    // train.
+    // Scrolling, typing and drawing are local, so a closed link changes none
+    // of them.
     page.pointer(input.EventKind.pointer_down, geometry.Point.at(40.0, 100.0), 1, 1, 0)
         .expect("press")
     page.pointer(input.EventKind.pointer_up, geometry.Point.at(40.0, 100.0), 1, 1, 0)

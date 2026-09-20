@@ -83,10 +83,8 @@ pub class MetricRenderer implements paint.Renderer {
 
     /// Grapheme boundaries, as byte offsets, first and last included.
     ///
-    /// UTF-8 lead bytes, plus the two joins a caret must never land inside: a
-    /// combining mark and a zero-width joiner. It is not the full Unicode
-    /// segmentation table — a real renderer's is — and the cases it gets wrong
-    /// are recorded in `tests/text_boundaries.b` rather than assumed away.
+    /// UTF-8 lead bytes, plus the two joins a caret must never land inside.
+    /// Not the full table: `tests/canvas/browser_text.b` records what it misses.
     pub fn graphemes(text: string) -> Result<List<int>> {
         var out: List<int> = [0]
         var index: int = 1

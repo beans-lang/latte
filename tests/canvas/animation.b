@@ -1,14 +1,5 @@
-// A transition, frame by frame, by value.
-//
-// `tests/canvas/idle.b` counts the frames a fade paints and asserts the clock
-// stops afterwards. That is a check on the *schedule* — it would pass for an
-// animation that jumped straight to the end and then idled for a quarter of a
-// second.
-//
-// This asks what the value was on the way. `Scene.advance(seconds)` is a
-// deterministic clock, so a fade can be stepped and read at each frame, and
-// the numbers below are the ones an eased curve really produces: slow, fast,
-// slow, and exactly at the destination on the last frame and not before.
+// A transition frame by frame, by value: `idle.b` checks the schedule, which
+// a jump to the end would also pass. `Scene.advance` is a deterministic clock.
 package main
 
 import std.io
@@ -32,9 +23,8 @@ pub class Fade extends compose.Component {
         b.number("width", 120.0)
         b.number("height", 48.0)
         b.open("Rectangle")
-        // A corner radius rather than a colour: one number to follow, and a
-        // colour would be four interleaved tweens printed as one packed
-        // integer.
+        // A corner radius rather than a colour: one number to follow, where a
+        // colour is four tweens printed as one packed integer.
         b.number("clip_radius", if self.lit { 24.0 } else { 0.0 })
         b.number("transition_seconds", 0.25)
         b.word("transition_easing", if self.straight { "linear" } else { "ease_in_out" })
@@ -142,10 +132,8 @@ pub extern "C" fn run() -> i32 as "latte_animation_run" {
 
     rule("5 — a control's own template animates, driven by a real click")
 
-    // The transitions above are written in this file's markup. A switch's is
-    // written in `templates/switch_template.bx` and nothing in an application
-    // asks for it — which is the claim a shipped theme makes and the one worth
-    // checking with a click rather than with a property write.
+    // The transitions above are this file's. A switch's is in
+    // `templates/switch_template.bx`, so a click is what has to show it.
     let toggle_page: stage.Scene = new stage.Scene(new headless.MetricRenderer(),
                                                    geometry.Size.of(200.0, 100.0))
     let toggle: Toggle = new Toggle()

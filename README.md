@@ -53,7 +53,8 @@ circuit sends edits. Nothing about it changed.
 the layout, the state, the editing, the focus and the accessibility tree
 compiled to WebAssembly. `docs/browser.md` is how to build and run it,
 `docs/migration.md` is what changed for an existing application (nothing, unless
-you ask), and `docs/unfinished.md` is what does not work yet.
+you ask), `docs/notes.md` is the reasoning behind the decisions that are too
+long to sit in a comment, and `docs/unfinished.md` is what does not work yet.
 
 ```sh
 npm install && node tools/font_prepare.mjs

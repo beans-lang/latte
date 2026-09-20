@@ -1,19 +1,8 @@
 // The two things a `.bx` file can compile into, and what differs between them.
 package bx
 
-/// What a `.bx` file is compiled for.
-///
-/// Latte draws interfaces two ways. `html` produces a DOM component — the
-/// server-rendered pages and the circuit have always meant this, and it is the
-/// default so that no existing file changes meaning. `canvas` produces a
-/// component for the browser runtime, which draws its own controls.
-///
-/// **The two are not two dialects.** One lexer, one AST, one parser, one set
-/// of source positions, one diagnostic type. A `$for` is a `$for`, `bind:` is
-/// `bind:`, and an expression's boundaries are found the same way. What a
-/// target decides is what a *tag* means, what an attribute may be, which
-/// events exist, and which forms have nothing to compile into — and each of
-/// those is a method on `TargetRules` rather than a branch inside the parser.
+/// What a `.bx` file is compiled for. Not two dialects: one lexer, one AST,
+/// one parser. A target decides only what a tag and an attribute mean.
 pub enum Target {
     html
     canvas
@@ -36,21 +25,15 @@ pub enum Target {
     }
 }
 
-/// Everything about a `.bx` file that depends on what it compiles into.
-///
-/// Every method answers for one target. A refusal comes back as a message
-/// rather than a boolean wherever the message is the useful part: a reader
-/// whose `$html` was refused needs to know there is nothing for it to write
-/// into, not that a flag was false.
+/// Everything about a `.bx` file that depends on what it compiles into. A
+/// refusal comes back as a message wherever the message is the useful part.
 pub interface TargetRules {
     fn target() -> Target
 
     // ---- tags ----
 
-    /// Whether a capitalised tag names a component the author wrote, rather
-    /// than something the target has of its own. HTML has no tags of its own
-    /// with a capital letter, so there every one is a component; a canvas
-    /// target's controls are capitalised too and are not.
+    /// Whether a capitalised tag is the author's component. In HTML every one
+    /// is; on the canvas the controls are capitalised too, and are not.
     fn names_a_component(tag: string) -> bool
 
     /// A tag that closes itself and takes no children: `<br>`, `<img>`.
@@ -79,18 +62,11 @@ pub interface TargetRules {
 
     // ---- attributes ----
 
-    /// Empty when the attribute is one `tag` takes; otherwise the refusal.
-    ///
-    /// The html target passes an unknown attribute through — HTML is open and
-    /// an author may write `data-`, `aria-` or a framework's own. The canvas
-    /// target refuses one: its controls have a closed set of properties, so a
-    /// misspelling is a mistake and not an extension point, and a silent no-op
-    /// is the most common way an interface ends up not matching the markup
-    /// that describes it.
+    /// Empty when `tag` takes the attribute, otherwise the refusal. HTML is
+    /// open and passes one through; the canvas set is closed and refuses.
     fn attribute_refusal(tag: string, name: string) -> string
     /// Character references resolved on the way in, because the value is
-    /// re-escaped on the way out and resolving twice would double-encode.
-    /// The canvas target has no escaping and leaves a value alone.
+    /// re-escaped on the way out. The canvas target leaves a value alone.
     fn resolve_literal(value: string) -> string
     /// Empty when `ref=` belongs on this tag; otherwise the refusal.
     fn ref_refusal(tag: string, component: bool) -> string

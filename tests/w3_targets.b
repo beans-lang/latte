@@ -1,20 +1,5 @@
-// One parser, two targets.
-//
-// Stage 5's claim is that latte-bx has **one** front end. That is easy to say
-// and easy to be wrong about: two emitters behind one `if` is not a shared
-// foundation, it is two compilers that happen to live in one file. So this
-// asks the question the claim actually makes.
-//
-// § 1 — the same markup, parsed for both targets, produces the same tree with
-//       the same spans. If the two disagreed about where a `$for` ends or
-//       which byte an expression starts at, an error message in one target
-//       would point somewhere else in the other.
-// § 2 — a form each target has and the other does not is refused by name, with
-//       a message about the *program* rather than about a missing case.
-// § 3 — the bindings, events and attributes each target really has.
-// § 4 — the html target's output has not changed. `tests/markup.b` and the
-//       checked-in generated files hold most of that; this holds the part that
-//       a target abstraction could most easily break — the default.
+// One parser, two targets — two emitters behind one `if` would not be that.
+// § 1 one tree, § 2 each target's refusals, § 3 tags, § 4 the html default.
 package main
 
 import std.io
@@ -25,15 +10,8 @@ fn rule(title: string) {
     io.println("== {title} ==")
 }
 
-/// Every node in a tree, as one line each — the shape and the positions, and
-/// nothing about what it compiles into.
-///
-/// A tag's *meaning* is deliberately left out. `<Label>` is one of Latte's own
-/// controls on the canvas and an author's component in HTML, and that is a
-/// target's business — it is the thing a target is for. What has to be
-/// identical is everything else: where a node starts, how deep it is, which
-/// attributes it carries and of what kind. § 3 is where the two targets are
-/// asked what a tag means, and there they answer differently on purpose.
+/// Every node as one line: the shape and the positions, never the meaning.
+/// What a tag means is a target's business, and § 3 asks them that.
 fn syntax_only(line: string) -> string {
     return line.replace(" component @", " @").replace(" element @", " @")
 }
@@ -117,9 +95,8 @@ fn tag_meaning(tag: string) {
 fn main() {
     rule("1 — the shared syntax parses identically for both targets")
 
-    // Every form the two targets share, in one file: an element with a
-    // literal, an expression and an event; a keyed loop; a conditional with an
-    // else; a match; an interpolation; and a component tag with a parameter.
+    // Every form the two targets share, in one file: elements, attributes,
+    // events, a keyed loop, a conditional, a match and a component tag.
     let shared_lines: List<string> = [
         "<Panel title=\"Orders\" width=\{self.width\} on:click=\{fn(e) \{ self.open() \}\}>",
         "  $for row in self.rows \{",
@@ -136,9 +113,8 @@ fn main() {
     let shared: string = shared_lines.join("\n")
     same_tree("a screen with every shared form", shared)
 
-    // The expression scanner is the part most easily broken by a fork: it has
-    // to find the end of a Beans expression through nested braces, strings and
-    // comments.
+    // The expression scanner is what a fork breaks first: it has to find the
+    // end of a Beans expression through braces, strings and comments.
     let tricky: string = "<Row label=\{self.name(\"x\")\} note=\{ /* c */ self.note \} />\n"
     same_tree("expressions with braces inside them", tricky)
 

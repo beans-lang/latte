@@ -8,9 +8,8 @@ import latte.visual
 
 /// Builds the control an `Element` describes, and everything under it.
 ///
-/// The one place in latte that maps a `WidgetKind` onto a constructor.
-/// Adding a widget means adding a case here and a tag to `Vocabulary`, and
-/// `tests/roles.out` then carries it on every platform.
+/// The one place that maps a `WidgetKind` onto a constructor. A new widget is
+/// a case here and a tag in `Vocabulary`; `tests/w3_vocabulary.b` § 2 pairs them.
 ///
 /// Children are built and attached depth first, so a container is complete
 /// before it is handed to its own parent. That ordering is not free: a
@@ -66,15 +65,9 @@ pub class WidgetMaker {
 
     /// An empty control of one kind, with no element behind it.
     ///
-    /// The one exhaustive `match` over `WidgetKind` in Latte, and the reason
-    /// it is public: a kind added to the enum is a **compile error here**, not
-    /// a missing line in a golden somewhere. `tests/enabled.b` walks
-    /// `WidgetKind.all()` through this, so the suite grows a row for a new
-    /// kind whether or not anybody remembered to add one.
-    ///
-    /// A kind with no renderer is refused by name here, before anything is
-    /// built, so `<Spinner />` in markup is a message about the control rather
-    /// than a dead widget whose first attribute write complains about a node.
+    /// The one exhaustive `match` over `WidgetKind`, so a new kind is a
+    /// compile error here rather than a missing line in a golden. A kind with
+    /// no renderer is refused by name, before anything is built.
     pub static fn of_kind(kind: controls.WidgetKind,
                           context: scene.UiContext) -> Result<controls.Widget> {
         match kind {

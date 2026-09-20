@@ -1,14 +1,5 @@
-// The header's `#define`s, restated.
-//
-// `beansc bindgen` reads declarations, not the preprocessor, so every constant
-// in a C header is invisible to a generated binding and had to live
-// here. Hand-copied values go stale silently, so `tools/check_constants.sh`
-// reads both files and fails the build when a number here stops matching the
-// header.
-//
-// These are the raw ABI numbers. Nothing outside this package should name
-// them: the widget kinds surface as `controls.WidgetKind`, the statuses as
-// `HostStatus`, and the capabilities as `Capability`.
+// The raw ABI numbers, and the page writes some of them again in JavaScript.
+// `tools/check_constants.sh` fails the build when the two stop matching.
 package platform
 
 pub const ABI_VERSION: int = 34

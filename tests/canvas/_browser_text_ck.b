@@ -1,16 +1,5 @@
-// The same text questions, asked of the browser's own segmenter.
-//
-// A browser-only suite: it imports `latte.canvaskit`, whose every entry is an
-// undefined symbol outside a WebAssembly module, so there is no interpreter
-// leg and no native one. `test.sh` builds a `_browser_`-named suite for the
-// page and nothing else.
-//
-// Its golden is deliberately **not** `browser_text.out`. That one is what
-// `headless.MetricRenderer` answers, and the difference between the two is the
-// point: the measuring renderer carries the joins a caret must not split, and
-// a real one carries the whole Unicode table. A flag is one grapheme here and
-// two there, and a reader should be able to see exactly that rather than find
-// it later in a caret that lands in the middle of a flag.
+// The same text questions, asked of the browser's own segmenter. Browser-only,
+// and its golden differs from `browser_text.out` on purpose: see that file.
 package main
 
 import std.io

@@ -1,14 +1,5 @@
-// Text editing: what a caret does, and what it must never do.
-//
-// Everything here runs in Beans. The browser supplies keystrokes and an input
-// method's composition; where the caret lands, what a word is, what a
-// selection covers and what a delete removes are decided in `scene/`, which is
-// why this file can ask about them with no browser at all.
-//
-// The cases are the ones that break a naive editor: a caret inside a family
-// emoji, a selection that cuts a combining accent off its letter, a word
-// boundary in a right-to-left run, and a secure field that must not hand back
-// what it is holding.
+// What a caret does and what it must never do. All of it is decided in
+// `scene/`, so this asks with no browser: emoji, accents, RTL, secure fields.
 package main
 
 import std.io
@@ -98,13 +89,8 @@ pub extern "C" fn run() -> i32 as "latte_editing_run" {
     io.println("Zoe with an accent: {boundaries(renderer, "Zoë")}")
     // A family emoji is one grapheme made of seven code points and 25 bytes.
     io.println("a family emoji: {boundaries(renderer, "👩‍👩‍👧‍👦")}")
-    // A flag is a pair of regional indicators and **one** grapheme. This
-    // renderer says two, and that is a stated limit rather than a bug to
-    // find later: `MetricRenderer` carries the joins a caret must not split —
-    // combining marks, the zero-width joiner, the emoji presentation selector
-    // — and not the whole Unicode table. `latte.canvaskit` asks
-    // `Intl.Segmenter` and answers one; `tests/canvas/browser_text.b` is where
-    // the two are compared.
+    // A flag is one grapheme and this renderer says two: a stated limit, not a
+    // bug. `browser_text.b` compares it with `Intl.Segmenter`'s answer.
     io.println("a flag, which this renderer splits: {boundaries(renderer, "🇯🇵")}")
     io.println("an Arabic word: {boundaries(renderer, "مرحبا")}")
 
@@ -166,9 +152,8 @@ pub extern "C" fn run() -> i32 as "latte_editing_run" {
             secure.editor().set_text("hunter2").expect("set")
             secure.set_text("hunter2").expect("set")
             io.println("it holds {secure.editing_text().len()} bytes")
-            // What it *draws* is dots. A secure field that returned its own
-            // text to the painter would put a password on screen, and a
-            // screenshot would carry it.
+            // What it *draws* is dots: a secure field that handed its text to
+            // the painter would put a password in every screenshot.
             io.println("what it draws: \"{secure.visible_text()}\"")
             io.println("the two are different: {secure.visible_text() != secure.editing_text()}")
         }

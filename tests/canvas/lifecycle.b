@@ -1,17 +1,5 @@
-// Stage 2's proof: a component with state, a handler and a layout pass, mounted
-// and unmounted over and over.
-//
-// It is deliberately written in Beans rather than in `.bx`. The markup compiler
-// is a separate thing that can be wrong on its own, and this file exists to say
-// whether the *runtime* works — so it uses the Builder calls a generated
-// component would produce and nothing else.
-//
-// One file, three backends. `main` is what the interpreter and the native
-// binary run; `latte_stage2_run` is the same body, exported so a browser can
-// call it out of a WebAssembly module. The three outputs are diffed against
-// one golden, which is the only way to find out that a backend disagrees —
-// and one backend disagreeing with another is what nearly every real fault in
-// this workspace has turned out to be.
+// A component with state, a handler and a layout pass, mounted and unmounted
+// over and over. Written in Beans, not `.bx`: this asks about the runtime.
 package main
 
 import std.io
@@ -104,10 +92,8 @@ pub extern "C" fn run() -> i32 as "latte_stage2_run" {
     io.println("handlers after close: {page.context().router().registered()}")
     io.println("closed: {page.is_closed()}")
 
-    // Mount and unmount many times. What this asserts is that nothing is kept:
-    // a scene that held on to its controls would show a rising handler count
-    // on the next one, because the router is per scene and a leaked one would
-    // still be subscribed.
+    // Mount and unmount many times: a scene that held on to its controls shows
+    // a rising handler count, because a leaked router is still subscribed.
     var last: int = 0
     for round: int in 0..25 {
         let again: stage.Scene = new stage.Scene(new headless.MetricRenderer(),

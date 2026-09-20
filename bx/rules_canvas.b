@@ -1,16 +1,8 @@
 // What a `.bx` file means when it compiles into drawn controls.
 package bx
 
-/// The canvas target's rules.
-///
-/// The shape of the answers differs from the html target's in one way that is
-/// worth naming up front: **this target is closed and that one is open.** HTML
-/// is a language a browser parses, so an element or an attribute latte has
-/// never heard of may still be meaningful. A canvas component is a tree of
-/// Latte controls with a fixed set of properties, so a name nobody wrote a
-/// renderer for is a misspelling — and a misspelling that compiled to a silent
-/// no-op is the most common way an interface stops matching the markup that
-/// describes it.
+/// The canvas target's rules. This target is closed where the html one is
+/// open: a name nobody wrote a renderer for is a misspelling, not an extension.
 pub class CanvasRules implements TargetRules {
     pub fn init() {}
 
@@ -18,9 +10,8 @@ pub class CanvasRules implements TargetRules {
 
     pub fn names_a_component(tag: string) -> bool { return canvas_names_a_component(tag) }
 
-    /// There are none. Every control is written self-closed or with a body,
-    /// and a body is always markup — there is no `<script>` here whose
-    /// contents are not the language.
+    /// There are none: every control is self-closed or has a body, and a body
+    /// is always markup. Nothing here holds text that is not the language.
     pub fn is_void_element(tag: string) -> bool { return false }
     pub fn is_raw_text_element(tag: string) -> bool { return false }
     pub fn preserves_whitespace(tag: string) -> bool { return false }
@@ -29,19 +20,16 @@ pub class CanvasRules implements TargetRules {
         if canvas_tag_is_drawn(tag) { return "" }
         let retired: string = canvas_retired_tag(tag)
         if retired != "" { return retired }
-        // A name the markup language knows and the renderer has not got yet.
-        // Refused here, where the message can name the file and the line,
-        // rather than at mount where it names a kind.
+        // A name the markup knows and the renderer has not got yet, refused
+        // here where the message names the file and the line.
         if canvas_is_widget_tag(tag) {
             return "<{tag}> is a control latte has no renderer for yet — the ones it draws are {canvas_drawn_list()}"
         }
         // A capitalised name is the author's own component, and this rule has
         // nothing to say about it.
         if canvas_names_a_component(tag) { return "" }
-        // Lower case and unknown. HTML's element names are the mistake this
-        // catches: a page copied from the html target would compile every one
-        // of its `<div>`s into nothing, and this says so rather than drawing
-        // an empty screen.
+        // Lower case and unknown — HTML element names are what this catches,
+        // so a page copied from the html target says so rather than drawing.
         return "<{tag}> is not a control latte draws — a canvas component is built from {canvas_drawn_list()}"
     }
 
@@ -80,10 +68,8 @@ pub class CanvasRules implements TargetRules {
         return "<{tag}> has no attribute called {name} — did you mean {near}?"
     }
 
-    /// Nothing to resolve. A character reference is HTML's spelling for a
-    /// character, and this value never becomes HTML — it becomes a Beans
-    /// string that a renderer draws, so `&amp;` is an ampersand, an a, an m, a
-    /// p and a semicolon, exactly as written.
+    /// Nothing to resolve: this value becomes a Beans string a renderer draws,
+    /// so `&amp;` is the five characters it is written as.
     pub fn resolve_literal(value: string) -> string { return value }
 
     pub fn ref_refusal(tag: string, component: bool) -> string {
@@ -91,9 +77,8 @@ pub class CanvasRules implements TargetRules {
         return "ref=\{ \} hands back the component instance a tag built, and <{tag}> is a control — a control is made and owned by the mount, not by the render that described it. Name it with key=\"...\" and reach it once it exists: Stage.control(key) for its handle, Stage.widget(key) for the control itself, both from on_mount"
     }
 
-    /// Nothing here is an inline script handler: there is no script. An
-    /// attribute beginning `on` is just an attribute, and the closed table
-    /// above will refuse it if it is not one.
+    /// Nothing here is an inline script handler: there is no script, and the
+    /// closed table above refuses an `on` attribute that is not an event.
     pub fn inline_handler_refusal(name: string) -> string { return "" }
 
     pub fn is_event(event: string) -> bool { return canvas_event_family(event) != "" }

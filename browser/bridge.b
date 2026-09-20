@@ -1,21 +1,8 @@
 // The functions the page supplies, and how text crosses to them.
 package browser
 
-/// Every import a Latte WebAssembly module has.
-///
-/// They are `extern "C"` with no body, so the linker leaves them undefined and
-/// `--import-undefined` turns each into a WebAssembly import in the `env`
-/// module. `js/latte-runtime.js` is the other half; the two lists have to match
-/// exactly, and `tests/wasm_abi.sh` diffs the module's real import table
-/// against the names below rather than trusting that they do.
-///
-/// **Nothing here takes or returns a pointer into JavaScript's memory.** A
-/// CanvasKit build is its own WebAssembly module with its own linear memory, so
-/// an address from this module means nothing inside it. Text crosses as an
-/// offset into *this* module's memory plus a byte count; JavaScript decodes it
-/// against the memory this module exports, and hands CanvasKit a JavaScript
-/// string. A pointer that travelled would be read against the wrong heap and
-/// would usually decode to something, which is the worst way for it to fail.
+/// Every import a Latte WebAssembly module has. `js/latte-runtime.js` is the
+/// other half and `tools/wasm_abi.sh` pairs them; no pointer ever travels.
 
 /// 1 is standard output, 2 is standard error — the same two the runtime's
 /// write hook uses.
@@ -26,9 +13,8 @@ pub extern "C" fn latte_js_exit(code: i32)
 /// only differences are used, so its origin does not matter.
 pub extern "C" fn latte_js_now() -> f64
 
-/// Whether the page can do something. The codes are `platform.Capability`'s
-/// order, and `js/latte-runtime.js` answers from feature detection rather than
-/// from a browser name.
+/// Whether the page can do something. `js/latte-runtime.js` answers from
+/// feature detection rather than from a browser name.
 pub extern "C" fn latte_js_can(capability: i32) -> i32
 
 /// 1 dark, 0 light — `prefers-color-scheme`.
@@ -45,9 +31,8 @@ pub extern "C" fn latte_js_request_frame() -> i32
 pub extern "C" fn latte_js_cancel_frame() -> i32
 
 pub extern "C" fn latte_js_clipboard_write(bytes: RawPtr<i8>, len: i32) -> i32
-/// The two-call shape: a null buffer and a zero capacity answers the length,
-/// then a buffer that size is filled. A negative answer is a refusal, never a
-/// length.
+/// The two-call shape: a null buffer answers the length, then one that size is
+/// filled. A negative answer is a refusal, never a length.
 pub extern "C" fn latte_js_clipboard_read(out: RawPtr<i8>, cap: i32) -> i32
 
 /// Where text is being edited, so an input method can place its candidate
@@ -65,26 +50,11 @@ pub extern "C" fn latte_js_semantics_node(id: u64,
                                           enabled: i32, focused: i32) -> i32
 pub extern "C" fn latte_js_semantics_end() -> i32
 
-/// Moving text across the boundary.
-///
-/// Two rules, and this is where they live.
-///
-/// Text is never NUL-terminated: every entry point takes a pointer and a byte
-/// count, so the page reads exactly that many bytes and never scans for a
-/// terminator. A string with a zero byte in it is still refused here, before it
-/// travels, because `TextDecoder` will happily decode one into a JavaScript
-/// string containing U+0000 and the DOM will then truncate it somewhere the
-/// caller cannot see.
-///
-/// Text is copied at the boundary, immediately. After a call returns, no Beans
-/// value points into memory JavaScript holds, and no JavaScript value points
-/// into memory this module may move when it grows.
+/// Moving text across the boundary: never NUL-terminated, always a pointer and
+/// a count, and copied immediately. A zero byte is refused before it travels.
 pub class Text {
-    /// The UTF-8 bytes of `text`, ready to pass as (pointer, length).
-    ///
-    /// The returned `Bytes` must stay alive for the duration of the call it
-    /// feeds; hold it in a local, do not inline it into a longer expression
-    /// that might drop it first.
+    /// The UTF-8 bytes of `text` as (pointer, length). Hold the `Bytes` in a
+    /// local for the whole call: inlined, it may be dropped first.
     pub static fn encode(text: string, attempt: string) -> Result<Bytes> {
         if text.contains("\u{0}") {
             return err("could not {attempt}: the text has a NUL byte in it, and it would be cut there on the way through the page",
@@ -99,15 +69,8 @@ pub class Text {
         unsafe { return RawPtr.from_address(buffer.as_ptr().address()) }
     }
 
-    /// Copies text the page handed over with an explicit length.
-    ///
-    /// Used for the text on an event, where the page wrote the bytes into this
-    /// module's memory just before the call. Copying here rather than keeping
-    /// the pointer is the point: the module may grow its memory during the
-    /// handler that follows, and growing moves everything.
-    ///
-    /// A null pointer or a non-positive length answers "", which is what an
-    /// event that carries no text has.
+    /// Copies text the page wrote into this module's memory. Copied, not kept:
+    /// the handler that follows may grow the memory, which moves everything.
     pub static fn copy_in(pointer: RawPtr<i8>, length: int) -> string {
         if pointer.is_null() || length <= 0 { return "" }
         unsafe {
@@ -129,9 +92,8 @@ pub class Text {
         if written < 0 {
             return err("could not {attempt}: the page refused", "platform_refused")
         }
-        // A page that answers a longer length the second time changed the text
-        // between the two calls. Trusting the first length would read whatever
-        // the buffer happened to hold past the copy.
+        // A longer length the second time means the text changed between the
+        // calls; the first length would read past what was copied.
         if written != needed {
             return err("could not {attempt}: the text changed while it was being read",
                        "host_raced")
@@ -140,14 +102,8 @@ pub class Text {
     }
 }
 
-/// Writes `text` into a caller-supplied buffer, and answers the bytes it
-/// needed.
-///
-/// The two-call shape the page uses everywhere: a null buffer, or one too
-/// small, answers the length and writes nothing. Here rather than in each
-/// module's exports because every `latte_*` that answers a string does the
-/// same thing, and three copies of a length protocol is three chances to trust
-/// the first answer.
+/// Writes `text` into a caller's buffer and answers the bytes it needed, the
+/// two-call shape. Written once: three copies is three chances to get it wrong.
 pub fn write_text(text: string, out: RawPtr<i8>, cap: int) -> int {
     let bytes: Bytes = Bytes.from(text)
     if out.is_null() || cap <= 0 { return bytes.len() }

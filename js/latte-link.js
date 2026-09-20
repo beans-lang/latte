@@ -1,24 +1,5 @@
-// The channel between a Latte canvas application and a server.
-//
-// **What is on which side, and why.** The browser owns the interface: the
-// state a control is in, where the caret is, what is selected, what is
-// scrolled, what is mid-animation. None of that is the server's business and
-// none of it waits for a network — a keystroke that needed a round trip would
-// be a keystroke you can feel.
-//
-// The server owns everything that has to be true: who the user is, what they
-// may do, what the data actually says, and every secret. A message from here
-// is a *request* and never a permission — a browser is the user's machine,
-// its code can be edited in the devtools, and nothing it sends is evidence of
-// anything. The server authenticates and authorizes each one again.
-//
-// ## Shape
-//
-// Two verbs, both one-way. `send(action, payload)` asks the server to do
-// something; whatever comes back arrives later as a message with a topic the
-// server chose. A WebAssembly call cannot wait for a promise, so there is no
-// third verb that returns an answer — and that constraint is the useful part,
-// because it makes a blocking round trip inside a click impossible to write.
+// The channel to a server. Two one-way verbs, because a WebAssembly call
+// cannot wait for a promise. Which side owns what: docs/notes.md.
 
 /// A link over `fetch`. One POST per action, and replies queued for the
 /// module to collect at its next frame.
@@ -32,10 +13,8 @@ export class FetchLink {
         this.online = true;
         this.headers = options.headers || {};
         this.onError = options.onError || ((message) => console.error(message));
-        // Credentials are the browser's to attach — a cookie or an
-        // Authorization header the page already has. Nothing here mints one,
-        // and no secret is ever compiled into a module: a WebAssembly module
-        // is a file anybody can download and read.
+        // Credentials are the browser's to attach. Nothing here mints one: a
+        // WebAssembly module is a file anybody can download and read.
         this.credentials = options.credentials || "same-origin";
     }
 
@@ -59,9 +38,8 @@ export class FetchLink {
                 }
             })
             .catch((error) => {
-                // A failure is a message too. A component that asked for
-                // something and heard nothing at all cannot tell a slow
-                // network from a broken one.
+                // A failure is a message too: a component that heard nothing
+                // cannot tell a slow network from a broken one.
                 this.deliver("error", JSON.stringify({ action, reason: String(error) }));
                 this.onError(`${action}: ${error}`);
             })
@@ -143,9 +121,8 @@ export function linkImports(runtime, link) {
         },
         latte_js_link_receive(out, cap) {
             if (!link) return 0;
-            // The two-call shape, and the queue is only popped on the second.
-            // Popping on the first would lose a message whose buffer the
-            // module then failed to allocate.
+            // The queue is popped on the second call only: popping on the
+            // first loses a message the module then failed to allocate for.
             const next = link.queue.length ? link.queue[0] : "";
             if (!next) return 0;
             const bytes = new TextEncoder().encode(next);

@@ -1,17 +1,5 @@
-// Latte's browser showcase.
-//
-// Everything a page can do is one export below, and every one of them is a
-// line in `browser.PageApp`. They are written here rather than in the library
-// because wasm-ld exports only the names it can see in the module being
-// linked, and `PageApp` lives in a package.
-//
-//     bash tools/wasm_build.sh examples/showcase/main.b build/browser/showcase.wasm
-//     node tools/serve.mjs 8731
-//     open http://127.0.0.1:8731/examples/showcase/index.html
-//
-// The screens are `.bx` under `site/`, generated into `generated/site/`. There
-// is no painting code here and none in them: the showcase uses the same public
-// API an application would, which is the only way it is evidence of anything.
+// Latte's browser showcase. Every export below is one line of
+// `browser.PageApp`; the screens are `.bx` under `site/`. See docs/browser.md.
 package main
 
 import latte.browser
@@ -69,9 +57,8 @@ pub extern "C" fn software() -> i32 as "latte_software" {
     return if browser.PageApp.instance.software() { 1 } else { 0 }
 }
 
-/// Frames delivered, frames that painted, frames asked for. Three numbers
-/// rather than one: "it drew" and "it asked to draw" are the two halves of the
-/// idle question, and a gate needs both.
+/// Frames delivered, painted, and asked for. Three numbers, because "it drew"
+/// and "it asked to draw" are the two halves of the idle question.
 pub extern "C" fn frames() -> i32 as "latte_frames" {
     return browser.PageApp.instance.frames as i32
 }

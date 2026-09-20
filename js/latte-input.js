@@ -1,31 +1,5 @@
-// Browser events, forwarded to Latte.
-//
-// Everything here is translation. Which control a click lands on, what a key
-// does, where the caret goes, whether a drag is a drag — all of that is Beans'
-// and is decided inside the module. This file turns a DOM event into the four
-// numbers the module's pointer entry takes, and gets out of the way.
-//
-// ## The one real decision: not sending the same thing twice
-//
-// A browser reports typing through four overlapping mechanisms, and a naive
-// forwarder sends one keystroke as four events:
-//
-//   keydown       — every key, including the ones that type nothing
-//   beforeinput   — what is *about* to be inserted, including a paste and an
-//                   input method's commit
-//   input         — what was inserted
-//   composition*  — an input method's session, wrapping several of the above
-//
-// Latte takes typing through one road: text arrives as `text_input`, and keys
-// that move or delete arrive as `key_down`. So the rule here is:
-//
-//   * A key that produces text is **not** forwarded as a key. `beforeinput`
-//     carries it, with its range, and that is the one that goes.
-//   * A key that produces no text — arrows, Tab, Escape, Backspace, a
-//     shortcut — is forwarded as a key and `beforeinput` for it is ignored.
-//   * While an input method is composing, `beforeinput` is ignored entirely
-//     and the composition events carry the text. Sending both is how a
-//     Japanese sentence ends up doubled.
+// Browser events, forwarded to Latte. Everything here is translation; what a
+// click or a key means is Beans'. Not sending typing twice: docs/notes.md.
 
 /// Latte's event kinds. The numbers are `platform.EV_*`, which is the one
 /// place they are declared; a copy that drifts sends a click as a key.
@@ -46,9 +20,8 @@ export const MOD = { SHIFT: 1, CONTROL: 2, ALT: 4, COMMAND: 8 };
 /// `platform.BTN_*`.
 const BUTTON = { 0: 1, 2: 2, 1: 3 };
 
-/// `platform.KEY_*`. Everything that types nothing and means the same on every
-/// keyboard. A key that is not here is `character`, and its text is what the
-/// browser said it produced.
+/// `platform.KEY_*`: everything that types nothing and means the same on every
+/// keyboard. A key that is not here is `character`, with the text it produced.
 const KEYS = {
     Escape: 2, Tab: 3, Enter: 4, NumpadEnter: 4, " ": 5, Backspace: 6, Delete: 7,
     ArrowLeft: 8, ArrowRight: 9, ArrowUp: 10, ArrowDown: 11,
@@ -67,12 +40,8 @@ export function modifiersOf(event) {
     return bits;
 }
 
-/// Whether a key event is one Latte should hear about as a *key*.
-///
-/// A printable character with no command or control held is text, and
-/// `beforeinput` is what carries it. Everything else is a key: the named ones
-/// above, and any character pressed with a shortcut modifier — Cmd-A is a
-/// shortcut, not the letter A.
+/// Whether a key event is one Latte hears as a *key*. A bare printable is
+/// text and rides `beforeinput`; Cmd-A is a shortcut, not the letter A.
 function keyCodeOf(event) {
     if (KEYS[event.key] !== undefined && event.key !== " ") return KEYS[event.key];
     if (event.key === " ") return KEYS[" "];
@@ -84,12 +53,8 @@ function keyCodeOf(event) {
     return null;
 }
 
-/// Attaches every listener one canvas needs, and answers the function that
-/// takes them all off again.
-///
-/// The returned function is not optional. A page that mounted and unmounted
-/// without calling it would leave a pointermove listener per mount on an
-/// element that is still in the document, and the handlers hold the module.
+/// Attaches every listener a canvas needs and answers the one that removes
+/// them. Not optional: the handlers hold the module, one set per mount.
 export function attachInput(element, handlers) {
     const listeners = [];
     const on = (target, type, handler, options) => {
@@ -97,9 +62,8 @@ export function attachInput(element, handlers) {
         listeners.push(() => target.removeEventListener(type, handler, options));
     };
 
-    // A canvas takes the keyboard only if something makes it focusable, and a
-    // focus ring around the whole canvas would be wrong — Latte draws its own,
-    // around the control that has focus inside it.
+    // A canvas takes the keyboard only once something makes it focusable, and
+    // the browser's ring is off: Latte draws its own, around the control.
     if (!element.hasAttribute("tabindex")) element.tabIndex = 0;
     element.style.outline = "none";
     element.style.touchAction = "none";
@@ -113,17 +77,8 @@ export function attachInput(element, handlers) {
     let captured = null;
 
     on(element, "pointerdown", (event) => {
-        // Capture, so a drag that leaves the canvas keeps arriving. Without it
-        // a slider dragged past its own edge stops moving and never hears the
-        // release, so it stays stuck down.
-        //
-        // In a try, and the catch is not defensive padding. Firefox throws
-        // NotFoundError for a pointer id it has no active pointer for — which
-        // a synthetic event has, and a real one can have if the pointer was
-        // released between the event and this line. The throw would abort the
-        // rest of this handler, so the *click* would be lost: the control
-        // would never hear the press, and the only sign would be a console
-        // error nobody was reading.
+        // Capture, so a drag that leaves the canvas keeps arriving. In a try:
+        // Firefox throws for an unknown pointer id, which would lose the click.
         try {
             element.setPointerCapture?.(event.pointerId);
             captured = event.pointerId;
@@ -155,24 +110,17 @@ export function attachInput(element, handlers) {
                          modifiersOf(event));
     };
     on(element, "pointerup", release);
-    // A cancel is a release that the browser decided for us — a system gesture
-    // took over, or the element went away mid-drag. Latte has to hear it, or
-    // the control stays pressed forever.
+    // A cancel is a release the browser decided for us. Latte has to hear it,
+    // or the control stays pressed forever.
     on(element, "pointercancel", release);
 
     on(element, "wheel", (event) => {
         const [x, y] = pointAt(event);
         // deltaMode 1 is lines and 2 is pages. Firefox reports lines for a
-        // mouse wheel, so a page that treated every delta as pixels scrolls
-        // about a fortieth as far there as it does in Chrome.
+        // mouse wheel, so pixels-for-everything scrolls a fortieth as far.
         const lines = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 800 : 1;
-        // The sign goes through unchanged, and that is worth stating because
-        // it looks like it should be flipped. A positive `deltaY` means the
-        // reader asked to go *down* the content; Latte's scroll offset is how
-        // far down the content the viewport has moved, so it goes up too.
-        // Negating here scrolled every list the wrong way — and a list that is
-        // already at the top does not move at all, so it read as "the wheel
-        // does nothing" rather than as a reversed direction.
+        // The sign goes through unchanged: `deltaY` and Latte's scroll offset
+        // both mean further down the content. Negating scrolled backwards.
         handlers.scroll(x, y, event.deltaX * lines, event.deltaY * lines);
         event.preventDefault();
     }, { passive: false });
@@ -183,9 +131,8 @@ export function attachInput(element, handlers) {
         if (code === null) return;
         const text = event.key.length === 1 ? event.key : "";
         handlers.key(EVENT.KEY_DOWN, code, text, modifiersOf(event));
-        // Tab would move focus out of the canvas and arrow keys would scroll
-        // the page. Latte has its own focus order and its own scrolling, so
-        // the browser's are refused for the keys it handles.
+        // Tab would move focus out and the arrows would scroll the page.
+        // Latte has its own focus order and scrolling, so both are refused.
         if (code !== KEY_CHARACTER || event.metaKey || event.ctrlKey) {
             if (event.key !== "F5" && event.key !== "F12") event.preventDefault();
         }
@@ -198,16 +145,8 @@ export function attachInput(element, handlers) {
         handlers.key(EVENT.KEY_UP, code, "", modifiersOf(event));
     });
 
-    // The editing element is where text really arrives. It is a hidden
-    // contenteditable placed under the caret, so an input method's candidate
-    // window appears in the right place; `latte-editing.js` owns it.
-    // Text goes through the *text* entry, never through the key one.
-    //
-    // They are two entries because a text event carries a replacement range
-    // and a key event carries a key code, and the two share a field on the
-    // wire. Sending text as a key set the range to the key code — 0 — so a
-    // field read every character as "replace bytes 0..0" and typing "Zoe"
-    // produced "eoZ". `-1, -1` is "no range: replace whatever is selected".
+    // Text arrives at the editing element `latte-editing.js` owns and goes
+    // through the *text* entry, never the key one. Why: docs/notes.md.
     if (handlers.editing) {
         handlers.editing.attach({
             onBeforeInput(event) {
@@ -235,15 +174,13 @@ export function attachInput(element, handlers) {
         handlers.clipboard?.(text);
     });
     on(element, "copy", (event) => {
-        // Latte already wrote its selection to `clipboardText`; this is the
-        // page's own copy shortcut reaching the element, and letting the
-        // browser copy an empty canvas selection over it would clear it.
+        // Latte already wrote its selection to `clipboardText`; letting the
+        // browser copy the element's empty selection over it would clear it.
         event.preventDefault();
     });
 
-    // Focus leaving the page is not the same as focus leaving a control, and
-    // Latte has to know: a text field that keeps its caret blinking while the
-    // window is behind another one looks broken.
+    // Focus leaving the page is not focus leaving a control, and Latte has to
+    // know: a caret still blinking behind another window looks broken.
     on(window, "blur", () => handlers.text(EVENT.COMPOSITION_CANCEL, "", -1, -1));
     on(document, "visibilitychange", () => {
         if (document.hidden) handlers.text(EVENT.COMPOSITION_CANCEL, "", -1, -1);

@@ -93,16 +93,8 @@ pub struct LayoutSpec {
 
     /// A child pinned to one height, with no opinion about its width.
     ///
-    /// This exists because the obvious way to ask for it does not work and
-    /// does not say so. `fixed(0.0, 96.0)` reads like "96 tall, whatever
-    /// wide"; `-1.0` is what means *no opinion* here, so what it actually
-    /// asks for is a box zero points across, and `Align.stretch` does not
-    /// override it — a spec's bounds are folded into the constraint before
-    /// the run ever places anything. The control then lays out, reports no
-    /// error, and is invisible. `examples/panes.b` shipped that way.
-    ///
-    /// A text area, a toolbar strip, a status row: every one of them is a
-    /// height and a shrug, and that is common enough to name.
+    /// `fixed(0.0, 96.0)` reads like "96 tall, any width" and is not: `0.0`
+    /// is a box no points across, and the control lays out invisible.
     pub static fn tall(height: f64) -> LayoutSpec {
         return LayoutSpec { min_height: height, max_height: height,
                             shrink: 0.0 }

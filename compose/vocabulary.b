@@ -95,7 +95,7 @@ pub class Vocabulary {
     }
 
     /// The sentence for a container tag that no longer exists, or `""`.
-    /// Mirrors `bx.retired_tag`; `tools/check_vocabulary.sh` holds them together.
+    /// Mirrors `bx.canvas_retired_tag`; `tools/check_vocabulary.sh` pairs them.
     pub static fn retired(tag: string) -> string {
         if tag == "VFlex" { return "<VFlex> is retired: every <VStack> shares out its leftover by grow and shrink now — write <VStack>" }
         if tag == "HFlex" { return "<HFlex> is retired: every <HStack> shares out its leftover by grow and shrink now — write <HStack>" }
@@ -286,8 +286,8 @@ pub class Vocabulary {
     /// reaches the platform as a property, which is why they are separated
     /// here and not discovered by the applier finding no property id.
     ///
-    /// The per-edge insets are written out one by one because
-    /// `tools/check_vocabulary.sh` reads this list and holds `bx/controls.b` to it.
+    /// `bx.canvas_is_placement_attribute` is the compiler's copy of the
+    /// placement half, and `tests/w3_vocabulary.b` § 6 pairs the two.
     pub static fn is_layout_name(name: string) -> bool {
         return name == "spacing" || name == "line_spacing" || name == "padding" || name == "justify" ||
                name == "align" || name == "grow" || name == "shrink" ||

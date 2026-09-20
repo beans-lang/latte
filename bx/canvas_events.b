@@ -1,17 +1,5 @@
-// canvas_events.b — what `on:` may name.
-//
-// One table, and one reason for it: **an event the Builder cannot deliver must
-// be refused here.** Generating a subscription for an event latte does not
-// raise would produce a control that silently never fires, which is the worst
-// possible failure for a handler — it looks exactly like a handler whose
-// condition was never met.
-//
-// Unlike latte's, this table has one event *family*. Every latte handler
-// receives a `UiEvent`, because the platform delivers one flat record and the
-// fields a given kind fills are documented on the kind rather than split
-// across five classes. So the generated closure's parameter type is always the
-// same, and an author copying a handler from one control to another never has
-// to change it.
+// canvas_events.b — what `on:` may name. An event the Builder cannot deliver
+// is refused here: subscribed, it would be a handler that never fires.
 
 package bx
 
@@ -50,12 +38,8 @@ pub fn canvas_event_list() -> string {
     return canvas_event_names().join(", ")
 }
 
-/// The nearest event to `event` by edit distance, or `""` when nothing is
-/// close enough to be worth suggesting.
-///
-/// Only within two edits, so `on:clcik` says "did you mean click?" and
-/// `on:wheel` does not say "did you mean key_up?". A wrong suggestion is worse
-/// than none: it sends the reader to fix the wrong thing.
+/// The nearest event by edit distance, within two, or `""`. A wrong suggestion
+/// is worse than none: it sends the reader to fix the wrong thing.
 pub fn canvas_nearest_event(event: string) -> string {
     return canvas_nearest_of(event, canvas_event_names())
 }

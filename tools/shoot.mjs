@@ -1,11 +1,5 @@
-// Takes a picture of a Latte page.
-//
-// Used by hand while working, and by `tools/screenshot_gate.mjs` to record and
-// compare. Everything that would make a picture different from one run to the
-// next is pinned here: the viewport, the device pixel ratio, and the font —
-// because the same text in a fallback face is a different width, and a
-// screenshot compared against one taken with a different font is a comparison
-// of two different layouts.
+// Takes a picture of a Latte page, by hand or for `tools/shot_gate.mjs`. The
+// viewport, the ratio and the font are pinned: a fallback face is a relayout.
 import { chromium, firefox, webkit } from "playwright";
 import { server, listenOnAFreePort } from "./serve.mjs";
 import { resolve } from "node:path";

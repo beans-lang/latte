@@ -30,11 +30,8 @@ pub enum(u8) Curve {
 
     /// The header's own number for this curve.
     ///
-    /// Written out rather than cast. `enum(u8)` fixes the layout in memory and
-    /// nothing else: the language is explicit that there is no conversion to
-    /// or from an integer and that a sized enum is still not a C ABI type. So
-    /// the translation is a `match`, the way `controls.WidgetKind` does it, and
-    /// `tools/check_constants.sh` holds the numbers to the header.
+    /// Written out rather than cast: `enum(u8)` fixes the layout in memory
+    /// and nothing else — there is no conversion to or from an integer.
     pub fn code() -> int {
         return match self {
             linear => platform.CURVE_LINEAR,

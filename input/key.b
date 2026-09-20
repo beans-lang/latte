@@ -56,11 +56,8 @@ pub enum(u8) Key {
     f11
     f12
 
-    /// The number the header gives this key. Beans has no implicit conversion
-    /// between an `enum(u8)` and an integer, and an `enum(u8)` is not a C ABI
-    /// type either, so the crossing is written out — the same shape
-    /// `WidgetKind` and `SystemIcon` use, and held to the header by
-    /// `tools/check_constants.sh`.
+    /// The number this key crosses as, written out because Beans has no
+    /// `enum(u8)`-to-int conversion. `tools/check_constants.sh` pairs them.
     pub fn code() -> int {
         return match self {
             unknown => platform.KEY_UNKNOWN,

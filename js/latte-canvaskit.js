@@ -1,34 +1,5 @@
-// The drawing half of the page: CanvasKit behind Latte's paint interface.
-//
-// Latte decides what to draw. This decides nothing — it takes each command as
-// it arrives and issues the CanvasKit call for it. There is no layout here, no
-// text measurement policy, no control behaviour; putting any of those here
-// would put them somewhere the Beans gates cannot see.
-//
-// ## Two modules, two memories
-//
-// Latte is a WebAssembly module with its own linear memory. CanvasKit is a
-// *different* WebAssembly module with its own. A pointer from one means
-// nothing in the other, and — worse — it usually means *something*: it lands
-// on a live byte of the wrong heap and reads a plausible value. So every
-// string crossing from Latte is decoded here, against Latte's memory, into a
-// JavaScript string, and only the string goes on to CanvasKit. Nothing in this
-// file ever passes an address through.
-//
-// ## Handles
-//
-// Paragraphs and images are numbers, issued here and held by Beans. A released
-// handle is deleted from the table, so a stale one answers a refusal instead of
-// reaching a deleted Skia object. `resourceCount()` is what the teardown gates
-// read: a scene that closed and left a paragraph behind shows up as a number
-// that did not return to zero.
-//
-// ## The surface
-//
-// The surface is the page's own GPU surface, made from the `<canvas>` element.
-// `end()` flushes it and the browser composites it — nothing is read back. The
-// one thing that does read pixels is `snapshot()`, it costs a full copy, and it
-// exists for the screenshot gates.
+// CanvasKit behind Latte's paint interface. It decides nothing: each command
+// arrives and is issued. Two memories, handles, the surface: docs/notes.md.
 
 const SHAPE = { RECTANGLE: 0, ELLIPSE: 1, PATH: 2, RESOURCE_IMAGE: 3 };
 
@@ -42,9 +13,8 @@ const WEIGHTS = [400, 300, 400, 500, 600, 700, 900];
 const ALIGNS = ["Left", "Center", "Right"];
 
 export class CanvasKitSurface {
-    /// `canvasKit` is a loaded CanvasKit module; `element` is the `<canvas>`
-    /// to draw into. Both are the page's, not this object's: a surface that
-    /// created its own canvas would have nowhere to put it.
+    /// `canvasKit` is a loaded module and `element` the `<canvas>` to draw
+    /// into. Both are the page's: a surface has nowhere to put its own canvas.
     constructor(canvasKit, element, options = {}) {
         this.ck = canvasKit;
         this.element = element;
@@ -69,13 +39,8 @@ export class CanvasKitSurface {
         this.lastError = "";
         this.commands = 0;
         this.frames = 0;
-        // How many times the frame has been copied back through the CPU.
-        // **It should be zero for every frame a reader ever sees.** A desktop
-        // renderer that presents by reading pixels into a native canvas pays a
-        // full copy per frame; a page does not have to, because the surface
-        // Skia draws into is the one the browser composites. The counter is
-        // here so that is a number a gate can read rather than a claim in a
-        // comment.
+        // Frames copied back through the CPU, which should be zero for every
+        // frame a reader sees. A number a gate reads, not a claim in a comment.
         this.readbacks = 0;
         // The paint objects. Two, reused: a Paint is a Skia object and one per
         // command would be an allocation and a delete per rectangle.
@@ -88,12 +53,8 @@ export class CanvasKitSurface {
 
     // ---- the surface -----------------------------------------------------
 
-    /// Makes a surface for the element at its current backing size.
-    ///
-    /// GPU first, and the CPU one only if that fails. A browser that refused a
-    /// WebGL context — a lost context, a blocked GPU, too many contexts on one
-    /// page — still draws, slower, and `isSoftware` says so rather than the
-    /// page silently becoming sluggish with no way to find out why.
+    /// A surface for the element at its current backing size. GPU first, CPU
+    /// only if that fails, and `isSoftware` says which rather than nothing.
     ensureSurface() {
         const backingWidth = Math.max(1, Math.round(this.width * this.scale));
         const backingHeight = Math.max(1, Math.round(this.height * this.scale));
@@ -142,10 +103,8 @@ export class CanvasKitSurface {
         this.canvas = null;
     }
 
-    /// The page telling us the context went away. The next frame makes a new
-    /// surface, and the revision it bumps is what makes Latte repaint
-    /// everything rather than the dirty part — a new surface holds none of the
-    /// old one's pixels.
+    /// The page telling us the context went away. The revision it bumps makes
+    /// Latte repaint everything: a new surface holds none of the old pixels.
     noteContextLost() {
         this.dropSurface();
         this.revision++;
@@ -162,24 +121,8 @@ export class CanvasKitSurface {
 
     // ---- fonts -----------------------------------------------------------
 
-    /// Starts loading the font files a page draws text with.
-    ///
-    /// **CanvasKit has no fonts.** It cannot read the system's — a browser will
-    /// not hand a page glyph data — and it ships none of its own. A page that
-    /// registers nothing shapes every paragraph to nothing, silently: the
-    /// controls appear, the text does not, and there is no error anywhere. So
-    /// text with no font is a refusal here, and this is the call that fixes it.
-    ///
-    /// `source` is one URL, or several separated by spaces. Several are
-    /// registered under **one family name**, which is what lets Skia pick the
-    /// bold face for a bold text style: a family is a set of weights, and a
-    /// family with one face answers that face for every weight and draws a
-    /// faux-bold.
-    ///
-    /// The load is a fetch and a WebAssembly call cannot wait for one, so this
-    /// only starts it. `fontState` is how a caller finds out, and a screenshot
-    /// gate has to see 2 before it measures anything — the same text in a
-    /// different face is a different width.
+    /// Starts loading the fonts a page draws text with — CanvasKit ships none
+    /// and cannot read the system's. See docs/notes.md; `fontState` reports.
     useFont(source) {
         if (!source) {
             this.fontFaces = [];
@@ -199,10 +142,8 @@ export class CanvasKitSurface {
             })))
             .then((buffers) => {
                 const faces = buffers.map((buffer) => new Uint8Array(buffer));
-                // The family name comes from the first file, and every face is
-                // registered under it. Registering each under its own name
-                // would make "Roboto Medium" a different family from "Roboto",
-                // and a medium text style would fall back rather than match.
+                // One family name for every face, from the first file: under
+                // its own name a weight would fall back rather than match.
                 const manager = this.ck.FontMgr.FromData(faces[0]);
                 if (!manager) throw new Error("CanvasKit could not read the first font file");
                 this.fontFamily = manager.getFamilyName(0);
@@ -223,17 +164,15 @@ export class CanvasKitSurface {
     bumpFontCollection() {
         if (this.fontCollection) { this.fontCollection.delete(); this.fontCollection = null; }
         this.fontCollectionFor = null;
-        // A new set of faces means every shaped paragraph measured against the
-        // old ones is wrong, so the surface's revision moves and the scene
-        // repaints — the same mechanism a lost GPU context uses.
+        // New faces means every shaped paragraph is measured wrong, so the
+        // revision moves and the scene repaints, as a lost context does.
         this.revision++;
     }
 
     // ---- colours ---------------------------------------------------------
 
-    /// Latte packs a colour as RGBA with red in the high byte. CanvasKit wants
-    /// four floats. `>>> 0` first because a 32-bit colour with the top bit set
-    /// arrives from WebAssembly as a negative i32.
+    /// Latte packs RGBA with red high; CanvasKit wants four floats. `>>> 0`
+    /// first, because a colour with the top bit set arrives as a negative i32.
     color(packed) {
         const value = packed >>> 0;
         return this.ck.Color4f(
@@ -256,9 +195,8 @@ export class CanvasKitSurface {
         if (!this.ensureSurface()) return -1;
         this.canvas = this.surface.getCanvas();
         this.canvas.save();
-        // Everything Latte draws is in logical points; the surface is in
-        // device pixels. One scale here rather than a multiplication at every
-        // command, which is also what keeps a rounded corner round.
+        // Latte draws in logical points and the surface is device pixels. One
+        // scale here, not a multiply per command, keeps a round corner round.
         this.canvas.scale(scale, scale);
         if (this.visible(background)) {
             this.canvas.clear(this.color(background));
@@ -370,11 +308,8 @@ export class CanvasKitSurface {
         };
 
         try {
-            // The shadow first, under everything, as a blurred copy of the
-            // same geometry. A mask filter rather than a drop-shadow image
-            // filter: the filter version forces a saveLayer, and a layer per
-            // shadowed control is the difference between a smooth list and a
-            // stuttering one.
+            // The shadow first, as a blurred copy. A mask filter, not a
+            // drop-shadow one: that forces a saveLayer per shadowed control.
             if (shadowBlur > 0 && this.visible(shadowColor)) {
                 const shadow = new this.ck.Paint();
                 shadow.setAntiAlias(true);
@@ -412,11 +347,8 @@ export class CanvasKitSurface {
 
     // ---- paragraphs ------------------------------------------------------
 
-    /// The font collection every paragraph is built against.
-    ///
-    /// Remade whenever the pinned font changes, and cached otherwise: building
-    /// one per paragraph is the single most expensive mistake available here,
-    /// and text is shaped once per control per layout pass.
+    /// The font collection every paragraph is built against, remade only when
+    /// the pinned font changes: one per paragraph is the expensive mistake.
     fonts() {
         if (this.fontCollection && this.fontCollectionFor === this.fontState) {
             return this.fontCollection;
@@ -432,10 +364,8 @@ export class CanvasKitSurface {
     }
 
     makeParagraph(text, size, weight, tracking, align, width, color) {
-        // Refused, not shaped to nothing. CanvasKit with no registered font
-        // lays every paragraph out as zero glyphs and reports no error at all;
-        // the page then shows every control in the right place with no words
-        // in any of them, and nothing anywhere says why.
+        // Refused, not shaped to nothing: with no font CanvasKit lays out
+        // zero glyphs and reports nothing, so every control comes up wordless.
         if (this.fontState !== 2 || !this.fontFamily) {
             this.lastError = this.fontState === 1
                 ? "the font is still loading"
@@ -466,10 +396,8 @@ export class CanvasKitSurface {
         builder.addText(text);
         const paragraph = builder.build();
         builder.delete();
-        // A width of zero means "do not wrap". Skia needs a number, and
-        // Infinity is not one it takes, so this is the largest finite layout
-        // width — a paragraph that genuinely wants more than 2^24 points has
-        // problems this is not one of.
+        // A width of zero means do not wrap. Skia will not take Infinity, so
+        // this is the largest finite layout width it does take.
         paragraph.layout(width > 0 ? width : 16777216);
         const handle = this.nextHandle++;
         this.paragraphs.set(handle, { paragraph, text, wrapped: width > 0 });
@@ -502,10 +430,8 @@ export class CanvasKitSurface {
             .then((buffer) => {
                 const image = this.ck.MakeImageFromEncoded(new Uint8Array(buffer));
                 if (!image) throw new Error("CanvasKit could not decode it");
-                // The handle may have been released while the fetch was in
-                // flight. Deleting the image here rather than storing it is
-                // what keeps that from leaking one decoded bitmap per
-                // cancelled load.
+                // The handle may have been released mid-fetch. Deleting here
+                // rather than storing is what keeps a cancelled load from leaking.
                 if (!this.images.has(handle)) { image.delete(); return; }
                 entry.image = image;
                 entry.state = 1;
@@ -549,9 +475,8 @@ export class CanvasKitSurface {
         }
     }
 
-    /// Paragraphs and images still held. The teardown gates read it: a scene
-    /// that closed and left one behind shows as a number that did not come
-    /// back to zero.
+    /// Paragraphs and images still held. A scene that closed and left one
+    /// behind shows here as a number that did not come back to zero.
     resourceCount() { return this.paragraphs.size + this.images.size; }
 
     close() {
@@ -564,11 +489,8 @@ export class CanvasKitSurface {
     }
 }
 
-/// The imports a Latte module's drawing half needs, bound to one surface.
-///
-/// `runtime` is the `LatteRuntime` that owns the memory every pointer here is
-/// an offset into. Decoding against it — and never against CanvasKit's — is
-/// the rule this whole file exists to keep.
+/// The drawing imports, bound to one surface. `runtime` owns the memory every
+/// pointer here is an offset into, and is the only thing decoded against.
 export function canvasKitImports(runtime, surface) {
     const read = (pointer, length) => runtime.text(pointer, length);
     const writeReals = (pointer, values) => {
@@ -647,9 +569,8 @@ export function canvasKitImports(runtime, surface) {
         latte_js_ck_paragraph_size: (handle, out) => {
             const paragraph = surface.paragraphAt(handle);
             if (!paragraph) return -1;
-            // `getMaxIntrinsicWidth` is the unwrapped width and
-            // `getMaxWidth` is the layout width it was given. An unwrapped
-            // paragraph asked for the second would answer 16777216.
+            // `getMaxIntrinsicWidth` is the unwrapped width; `getMaxWidth` is
+            // the layout width, which for an unwrapped paragraph is 16777216.
             const entry = surface.paragraphs.get(handle);
             const width = entry.wrapped
                 ? Math.min(paragraph.getMaxWidth(), paragraph.getMaxIntrinsicWidth())
@@ -679,9 +600,8 @@ export function canvasKitImports(runtime, surface) {
             if (!paragraph) return -1;
             const entry = surface.paragraphs.get(handle);
             const total = entry.text.length;
-            // A caret at the end of the text has no glyph after it, so the
-            // box is the one before it, moved to its right edge. Asking for a
-            // range of zero width answers nothing at all.
+            // A caret at the end has no glyph after it, so the box is the one
+            // before it moved to its right edge; a zero range answers nothing.
             const at = Math.max(0, Math.min(byteOffset, total));
             if (at >= total && total > 0) {
                 const boxes = paragraph.getRectsForRange(total - 1, total,
@@ -755,18 +675,12 @@ export function canvasKitImports(runtime, surface) {
     };
 }
 
-/// Grapheme or word boundaries, as **byte** offsets into the UTF-8 text.
-///
-/// `Intl.Segmenter` answers UTF-16 code-unit indices and Beans counts bytes, so
-/// every index is converted. Doing it the other way — counting bytes in Beans
-/// and hoping they line up — is how an emoji or an accented vowel puts a caret
-/// inside a character.
+/// Grapheme or word boundaries, as **byte** offsets into the UTF-8 text:
+/// `Intl.Segmenter` answers UTF-16 indices and Beans counts bytes.
 function boundaries(surface, text, granularity, out, cap, runtime) {
     if (!surface.segmenter) {
-        // No Intl.Segmenter. Every code point is its own grapheme, which is
-        // wrong for emoji and for combining marks — and it is reported rather
-        // than hidden, because a caret that lands inside a family emoji is a
-        // visible bug and this says why.
+        // No Intl.Segmenter: every code point is its own grapheme, which is
+        // wrong for emoji and combining marks. Reported rather than hidden.
         surface.lastError = "this browser has no Intl.Segmenter; boundaries are per code point";
     }
     const encoder = new TextEncoder();
@@ -776,8 +690,7 @@ function boundaries(surface, text, granularity, out, cap, runtime) {
         for (const piece of surface.segmenter[granularity].segment(text)) {
             if (granularity === "word" && !piece.isWordLike && offsets.length > 1) {
                 // A run of spaces or punctuation is its own piece, and its
-                // start is a boundary too: a double-click on a space selects
-                // the space.
+                // start is a boundary: a double-click on a space selects it.
             }
             bytes += encoder.encode(piece.segment).length;
             offsets.push(bytes);

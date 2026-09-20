@@ -427,16 +427,9 @@ pub class Mount implements Composer {
                             }
                         }
                     }
-                    // And the controls themselves. Until this was here, `close`
-                    // let go of the component tree and the router table and
-                    // left every native control alive — because the layout
-                    // sheet below holds a Widget per node, so the last Beans
-                    // reference did not go until the whole Mount did. A screen
-                    // closed and reopened twenty times held twenty screens'
-                    // worth of AppKit objects, and `tests/leaks.b` is the gate
-                    // that says so.
-                    //
-                    // Only what really came out. Releasing a control still
+                    // And the controls themselves: the layout sheet holds a
+                    // Widget per node, so closing the tree alone leaks them.
+                    // Only what really came out — releasing a control still
                     // parented leaves the parent holding a handle already gone.
                     if detached {
                         match leaving {

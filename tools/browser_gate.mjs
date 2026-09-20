@@ -1,16 +1,5 @@
-// The browser leg: every suite, in every engine that is installed.
-//
-// What it is for. A Beans suite that passes under the interpreter and the
-// native backend says the *runtime* is right; it says nothing about whether
-// the same bytes work through a browser's WebAssembly engine, its
-// `requestAnimationFrame`, its pointer events or its text decoding. Those have
-// been where the surprises are, so this runs the same programs there and
-// compares the output with the same golden files.
-//
-// **A missing engine is reported as a missing engine, loudly.** It does not
-// pass. A gate that goes green because it found nothing to run is the failure
-// this workspace has been bitten by before, so the summary names every engine
-// that was skipped and the process exits non-zero unless at least one ran.
+// Every suite, in every installed engine, against the same goldens. A missing
+// engine is named and does not pass: a green gate that ran nothing is a lie.
 import { chromium, firefox, webkit } from "playwright";
 import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -25,13 +14,8 @@ const ENGINES = { chromium, firefox, webkit };
 const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const wantEngines = (process.env.LATTE_ENGINES || "chromium,firefox,webkit").split(",");
 
-/// Every `<name>.wasm` in build/browser that has a golden beside it.
-///
-/// A suite whose name starts `browser_` is built from `_browser_<name>.b` and
-/// runs here and nowhere else: it imports the drawing half, whose entries are
-/// undefined symbols outside a WebAssembly module. Its golden is its own, and
-/// deliberately not the measuring renderer's — the difference between the two
-/// is what those suites are for.
+/// Every `<name>.wasm` in build/browser with a golden beside it. A `browser_`
+/// suite runs only here: it imports the drawing half, and has its own golden.
 async function suites() {
     const built = await readdir(join(ROOT, "build/browser")).catch(() => []);
     const golden = await readdir(join(ROOT, "tests/canvas/golden")).catch(() => []);
@@ -50,9 +34,8 @@ async function suites() {
 async function runSuite(page, name) {
     const url = `http://127.0.0.1:${PORT}/tools/runner.html?module=${encodeURIComponent(name)}`;
     await page.goto(url, { waitUntil: "load" });
-    // The page sets `__latteRun` when the module has finished. A timeout here
-    // is a real failure — a module that hangs is a module that would hang in
-    // somebody's tab — so it is not caught and turned into a skip.
+    // The page sets `__latteRun` when the module finishes. A timeout is a real
+    // failure: a module that hangs here hangs in somebody's tab.
     await page.waitForFunction(() => window.__latteRun !== undefined, null, { timeout: 30000 });
     return page.evaluate(() => window.__latteRun);
 }

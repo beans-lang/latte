@@ -10,19 +10,8 @@ import latte.platform
 import latte.scene
 import latte.templates
 
-/// One canvas, one component tree, one renderer.
-///
-/// A `Scene` owns the whole standing arrangement: the render tree, the layout
-/// solver's answers, focus, the event router, the theme, and the mount that
-/// keeps a `Component` and that tree in step. Everything a host does — a
-/// click, a key, a resize, a frame — arrives as one call here, and every one
-/// of them ends by settling the tree and drawing if anything changed.
-///
-/// It takes a `paint.Renderer` rather than making one. That is what lets the
-/// same scene run against CanvasKit in a page and against
-/// `headless.MetricRenderer` in a gate, with the same layout arithmetic and
-/// the same goldens — and it is the seam a lost GPU context is repaired
-/// behind, since a renderer that came back on the CPU is still this renderer.
+/// One canvas, one component tree, one renderer. It takes a `paint.Renderer`
+/// rather than making one, which is what lets a gate run the same scene.
 pub class Scene {
     renderer_value: paint.Renderer
     context_value: scene.UiContext
@@ -36,9 +25,8 @@ pub class Scene {
     theme_version: int = -1
     renderer_revision: int = -1
 
-    /// `namespace` separates one scene's handles from another's on a page that
-    /// has more than one. Two scenes sharing a number would let a control
-    /// built for one be added to the other.
+    /// `namespace` separates one scene's handles from another's: two scenes
+    /// sharing a number would let one's control be added to the other.
     pub fn init(renderer: paint.Renderer, size: geometry.Size, namespace: int = 1) {
         self.renderer_value = renderer
         self.size_value = size
@@ -102,12 +90,8 @@ pub class Scene {
         return self.refresh()
     }
 
-    /// Settles the retained geometry before hit testing, without painting.
-    ///
-    /// Input has to land on where a control **is**, and where it is may be a
-    /// render behind: a handler that changed some state queued a layout that
-    /// nothing has run yet. Hit testing against the stale tree is how a click
-    /// lands on the button that used to be there.
+    /// Settles the geometry before hit testing, without painting: against a
+    /// stale tree a click lands on the button that used to be there.
     pub fn prepare_input() -> Result<bool> {
         self.demand_open("prepare a scene for input")?
         self.mount.refresh_if_needed()?
@@ -122,11 +106,8 @@ pub class Scene {
         return ok(true)
     }
 
-    /// Settles and draws, and answers whether anything was painted.
-    ///
-    /// **False is the useful answer.** A scene that painted nothing is a scene
-    /// whose frame can be skipped, which is what lets an idle page stop asking
-    /// for frames at all.
+    /// Settles and draws, and answers whether anything was painted. False is
+    /// the useful answer: it is what lets an idle page stop asking for frames.
     pub fn refresh() -> Result<bool> {
         self.prepare_input()?
         // A renderer that replaced its surface holds none of the old pixels,
@@ -140,10 +121,8 @@ pub class Scene {
                                       self.size_value, self.scale_value) {
             ok(changed) => { painted = changed }
             err(problem) => {
-                // A GPU surface that failed mid-frame is replaced by the
-                // renderer with a software one. The retained tree is still
-                // good, so it is replayed once onto the replacement — and only
-                // once, because a second failure is not a lost context.
+                // A surface that failed mid-frame is replaced, and the tree
+                // replayed onto it once: a second failure is not a lost context.
                 if was_software || !self.renderer_value.software() {
                     return err(problem.msg, problem.kind)
                 }
@@ -195,18 +174,15 @@ pub class Scene {
         return self.refresh()
     }
 
-    /// Applies wheel input without drawing, for a host that will draw at its
-    /// next frame anyway. Keeping the two apart is what stops a burst of wheel
-    /// events from painting once each.
+    /// Applies wheel input without drawing, for a host that draws at its next
+    /// frame: keeping the two apart is one draw per frame, not per event.
     pub fn apply_scroll(point: geometry.Point, dx: f64, dy: f64) -> Result<bool> {
         self.demand_open("scroll a scene")?
         return self.context_value.scroll(self.root_value.render_object()?, point, dx, dy)
     }
 
-    /// Text from an input method, aimed at whatever has the keyboard.
-    ///
-    /// `index` and `token` carry the composition's selection as byte offsets,
-    /// or -1 when there is none.
+    /// Text from an input method, aimed at whatever has the keyboard. `index`
+    /// and `token` are the composition's selection in bytes, or -1 for none.
     pub fn text_input(kind: input.EventKind, text: string, index: int = -1,
                       token: int = -1) -> Result<bool> {
         self.demand_open("send text input")?
@@ -238,10 +214,8 @@ pub class Scene {
 
     // ---- accessibility ----
 
-    /// The semantics tree, in paint order.
-    ///
-    /// Built fresh rather than kept: it is read when something changed, and a
-    /// cached copy would be a second tree to keep in step with the first.
+    /// The semantics tree, in paint order, built fresh: a cached copy would be
+    /// a second tree to keep in step with the first.
     pub fn semantics() -> List<scene.SemanticsNode> {
         var nodes: List<scene.SemanticsNode> = []
         match self.root_value.render_object() {
@@ -303,13 +277,7 @@ pub class Scene {
     // ---- teardown ----
 
     /// Drops everything this scene owns, in the order that keeps each drop
-    /// legal: templates before the mount that made them, the mount before the
-    /// controls it holds handles to, and the renderer last, because a control
-    /// releasing a paragraph reaches it.
-    ///
-    /// Safe to call twice, and called from `deinit`, so a scene that goes out
-    /// of scope releases its graphics resources whether or not anybody
-    /// remembered to close it.
+    /// legal, and the renderer last. Safe twice, and called from `deinit`.
     pub fn close() {
         if self.closed { return }
         self.closed = true

@@ -1,31 +1,5 @@
-// Screenshot comparison, against references that are committed.
-//
-// **What a picture can and cannot say.** It cannot say a control behaves; the
-// Beans suites and `tools/ui_gate.mjs` say that. What it says is the thing no
-// other gate can: that a change to the layout solver, the theme, a template or
-// the renderer moved something on screen that nobody meant to move.
-//
-// So everything that could make one run differ from the next is pinned: the
-// viewport, the device pixel ratio, the locale, the timezone, reduced motion,
-// and the font — the last one especially, because the same text in a fallback
-// face is a different width and every box around it is a different size.
-//
-// ## The tolerance, and why it is not zero
-//
-// It is not zero because a GPU is allowed to round a blend differently and two
-// machines are allowed to disagree about the last bit of an anti-aliased edge.
-// It is **per pixel** rather than an average: an average lets one control move
-// a long way as long as the rest of the screen holds still, which is exactly
-// the change worth catching. A pixel is different when a channel differs by
-// more than `CHANNEL`, and the gate fails when more than `SHARE` of the
-// picture is different.
-//
-//     node tools/shot_gate.mjs            compare
-//     node tools/shot_gate.mjs --record   write the references
-//
-// A recorded reference is committed. Recording to make a red gate go green is
-// the one thing this must not be used for, which is why recording is a
-// separate word rather than a fallback.
+// Screenshot comparison against committed references, with everything that
+// could differ between runs pinned. `--record` writes them; see docs/browser.md.
 import { chromium, firefox, webkit } from "playwright";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -42,8 +16,7 @@ const CHANNEL = 8;
 /// And this share of the picture may be different before the shot fails.
 const SHARE = 0.002;
 
-/// The screens, and how to get to each one. A page is navigated once and each
-/// screen reached by clicking the nav button named — the same road a reader
+/// The screens, and the nav button that reaches each: the same road a reader
 /// takes, so a screen that cannot be reached is a failure too.
 const SHOTS = [
     { name: "controls", go: null },
@@ -53,10 +26,8 @@ const SHOTS = [
     { name: "panes", go: "Panes" },
 ];
 
-/// Only chromium by default. Three engines rasterize text differently enough
-/// that one reference cannot serve all three, and three sets of references is
-/// three things to re-record for every intentional change. The other two are
-/// covered by `tools/ui_gate.mjs`, which asks about behaviour.
+/// Only chromium: three engines rasterize text differently enough to need
+/// three sets of references. `tools/ui_gate.mjs` covers the other two.
 const engineName = process.env.LATTE_SHOT_ENGINE || "chromium";
 const recording = process.argv.includes("--record");
 

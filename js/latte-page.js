@@ -1,15 +1,5 @@
-// Putting a Latte module on a page.
-//
-// Three things have to meet: the Beans module (the controls, the layout, the
-// state), CanvasKit (the drawing), and the DOM (the events, the accessibility
-// tree, the editing element). This is where they meet, and it is the only file
-// that knows about all three.
-//
-// It decides nothing about the interface. Every event is forwarded as it
-// arrives and every answer comes back out of the module; there is no control
-// behaviour here, no hit testing, no focus policy. Those belong to Beans, and
-// a copy of any of them here would be a second implementation that the Beans
-// gates could not see.
+// Where the Beans module, CanvasKit and the DOM meet — the only file that
+// knows all three. It decides nothing about the interface; Beans does.
 
 import { LatteRuntime } from "./latte-runtime.js";
 import { CanvasKitSurface, canvasKitImports } from "./latte-canvaskit.js";
@@ -92,9 +82,8 @@ export class LattePage {
                         page.call("latte_text_input", kind, pointer, length, anchor, caret)),
               });
 
-        // The drawing imports need the module's memory, which does not exist
-        // until it is instantiated — so they are built from the runtime, by
-        // the runtime, at the moment it wires its import object up.
+        // The drawing imports need a memory that does not exist until the
+        // module is instantiated, so the runtime builds them as it wires up.
         page.runtime = await LatteRuntime.load(options.module, {
             stdout: page.stdout,
             stderr: (line) => page.onError(line),
@@ -109,10 +98,8 @@ export class LattePage {
         // A frame the module asked for lands here and goes straight back in.
         page.runtime.onFrame = null;
 
-        // The fonts, before anything is mounted. CanvasKit has none of its
-        // own, so a page that mounted first would shape its first frame with
-        // nothing and lay every control out around empty text. `mount()` waits
-        // for them.
+        // The fonts before anything mounts: CanvasKit has none, so a first
+        // frame without them lays every control out around empty text.
         if (options.fonts && options.fonts.length) {
             page.surface.useFont(options.fonts.join(" "));
         }
@@ -133,11 +120,8 @@ export class LattePage {
         }
     }
 
-    /// Waits for the fonts to arrive, or answers why they did not.
-    ///
-    /// A caller that skips this gets a first frame with no text in it and a
-    /// layout measured around nothing. `mount()` is async for that reason
-    /// alone.
+    /// Waits for the fonts, or answers why they did not arrive. `mount()` is
+    /// async for this reason alone.
     async fontsReady(timeoutMs = 10000) {
         const until = Date.now() + timeoutMs;
         while (this.surface.fontState === 1 && Date.now() < until) {
@@ -173,8 +157,7 @@ export class LattePage {
         });
 
         // The element's own size, not the window's: a Latte canvas can be one
-        // panel on a page, and a window resize is not the only way its box
-        // changes.
+        // panel, and a window resize is not the only way its box changes.
         if (typeof ResizeObserver === "function") {
             this.resizeObserver = new ResizeObserver(() => this.resized());
             this.resizeObserver.observe(this.element);
@@ -183,9 +166,8 @@ export class LattePage {
             window.addEventListener("resize", this.onResize);
         }
 
-        // Browser zoom changes devicePixelRatio and raises no resize event of
-        // its own. A media query at the current ratio does fire, and it is
-        // re-armed each time because the ratio it watches has moved.
+        // Zoom changes devicePixelRatio and raises no resize event. A media
+        // query at the current ratio does, and is re-armed as the ratio moves.
         this.watchScale();
     }
 
@@ -195,8 +177,7 @@ export class LattePage {
         this.scaleWatch = matchMedia(`(resolution: ${ratio}dppx)`);
         const onChange = () => { this.resized(); this.watchScale(); };
         // `addEventListener` on a MediaQueryList is the modern spelling and
-        // `addListener` is what older WebKit has; both are tried because the
-        // gate runs on both.
+        // `addListener` is older WebKit's; the gate runs on both.
         if (this.scaleWatch.addEventListener) {
             this.scaleWatch.addEventListener("change", onChange, { once: true });
         } else if (this.scaleWatch.addListener) {
@@ -211,8 +192,7 @@ export class LattePage {
     }
 
     /// Tells the page the GPU context went away. The next frame makes a new
-    /// surface — a software one if WebGL still refuses — and repaints
-    /// everything, because a new surface holds none of the old pixels.
+    /// surface and repaints everything: it holds none of the old pixels.
     contextLost() {
         this.surface.noteContextLost();
         // Named rather than spread: `measure()` answers an object, and a
@@ -221,10 +201,8 @@ export class LattePage {
         this.call("latte_resize", size.width, size.height, size.scale);
     }
 
-    /// Everything goes: the input listeners, the accessibility elements, the
-    /// editing element, the scene, and every Skia object the module's handles
-    /// named. `surface.resourceCount()` is zero afterwards, which is what the
-    /// teardown gate asserts.
+    /// Everything goes: listeners, accessibility elements, editing element,
+    /// scene, Skia objects. `surface.resourceCount()` is zero afterwards.
     unmount() {
         if (!this.mounted) return;
         this.mounted = false;

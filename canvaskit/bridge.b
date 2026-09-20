@@ -1,22 +1,8 @@
 // What a page's drawing surface offers, as WebAssembly imports.
 package canvaskit
 
-/// The drawing half of the boundary.
-///
-/// Everything here is a plain scalar or a `(pointer, length)` into **this**
-/// module's memory. That is not a style choice. A CanvasKit build is its own
-/// WebAssembly module with its own linear memory; handing it an address from
-/// here would have it read its own heap at that offset, which is a value
-/// rather than a fault, so the mistake would show up as wrong pixels and not
-/// as an error. `js/latte-canvaskit.js` decodes every string on this side of
-/// the fence and hands CanvasKit JavaScript values.
-///
-/// Resources — paragraphs and images — are **opaque handles**, small positive
-/// integers issued by the page. Beans never sees a pointer to one and cannot
-/// dereference one; a handle that has been released answers a refusal rather
-/// than reaching a deleted Skia object. Every one is released explicitly, from
-/// a `deinit`, so a paragraph that goes out of scope in Beans frees its Skia
-/// memory in the same breath.
+/// The drawing half of the boundary: plain scalars, offsets into *this*
+/// module's memory, and opaque handles. Why: docs/notes.md.
 
 /// 1 when a surface exists and is ready to draw into.
 pub extern "C" fn latte_js_ck_ready() -> i32
@@ -26,17 +12,14 @@ pub extern "C" fn latte_js_ck_revision() -> i32
 /// 1 when the current surface is a CPU one.
 pub extern "C" fn latte_js_ck_software() -> i32
 
-/// Registers one font file as the family every later paragraph uses. An empty
-/// path returns to the page's own UI font. Fetching is asynchronous, so this
-/// only starts it; `latte_js_ck_font_state` says how it went.
+/// Registers one font file as the family later paragraphs use; an empty path
+/// returns to the page's UI font. `latte_js_ck_font_state` says how it went.
 pub extern "C" fn latte_js_ck_use_font(source: RawPtr<i8>, len: i32) -> i32
 /// 0 none asked for, 1 loading, 2 ready, -1 failed.
 pub extern "C" fn latte_js_ck_font_state() -> i32
 
-/// Starts a frame. The size is in logical points and `scale` is device pixels
-/// per point; the page owns the multiplication, because the backing store's
-/// size is the page's business and a rounding difference between the two would
-/// show as a half-pixel seam.
+/// Starts a frame, in logical points, with `scale` device pixels per point.
+/// The page owns the multiplication, or a rounding split shows as a seam.
 pub extern "C" fn latte_js_ck_begin(width: f64, height: f64, scale: f64,
                                     background: i32) -> i32
 /// Ends it and puts it on screen. No pixels are read back: the surface is the
@@ -56,10 +39,8 @@ pub extern "C" fn latte_js_ck_ellipse(x: f64, y: f64, width: f64, height: f64,
                                       fill: i32, outline: i32, stroke: f64) -> i32
 pub extern "C" fn latte_js_ck_path(data: RawPtr<i8>, len: i32, fill: i32,
                                    outline: i32, stroke: f64) -> i32
-/// A shape with a full `paint.VisualStyle` behind it. The style travels as
-/// thirteen numbers in a caller-owned buffer rather than as thirteen
-/// arguments: it grows, and a call that took them one by one would have to be
-/// renumbered on both sides every time it did.
+/// A shape with a full `paint.VisualStyle`, which travels as numbers in a
+/// caller-owned buffer: as arguments it would be renumbered every time it grew.
 pub extern "C" fn latte_js_ck_visual(kind: i32, x: f64, y: f64, width: f64,
                                      height: f64, data: RawPtr<i8>, len: i32,
                                      style: RawPtr<f64>) -> i32
@@ -92,9 +73,8 @@ pub extern "C" fn latte_js_ck_graphemes(text: RawPtr<i8>, len: i32,
 pub extern "C" fn latte_js_ck_words(text: RawPtr<i8>, len: i32,
                                     out: RawPtr<i32>, cap: i32) -> i32
 
-/// Starts loading an image and answers its handle. Decoding is asynchronous;
-/// the handle is valid at once and `latte_js_ck_image_state` says whether
-/// there are pixels behind it yet.
+/// Starts loading an image and answers its handle, which is valid at once;
+/// `latte_js_ck_image_state` says whether there are pixels behind it yet.
 pub extern "C" fn latte_js_ck_image_load(source: RawPtr<i8>, len: i32) -> i32
 /// 0 loading, 1 ready, -1 failed.
 pub extern "C" fn latte_js_ck_image_state(handle: i32) -> i32

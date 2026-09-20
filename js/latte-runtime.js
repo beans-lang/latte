@@ -1,27 +1,5 @@
-// The page half of a Latte WebAssembly module.
-//
-// Latte's canvas runtime is Beans compiled to WebAssembly. It owns the
-// controls, the layout, the state, the editing, the focus and the
-// accessibility semantics. This file owns nothing of the sort: it is an
-// adapter, and every function in it either hands the module something only a
-// page can answer, or takes something the module drew and puts it on screen.
-//
-// ## The memory rule
-//
-// The module exports its own linear memory. Every `(pointer, length)` pair
-// that crosses is an offset into *that* memory and is decoded against it here.
-// Pointers never go the other way, and they are never passed on to another
-// WebAssembly module: CanvasKit is its own module with its own memory, so an
-// address from Latte means something entirely different inside it — and it
-// usually means *something*, which is the worst way for a mistake like that to
-// fail. Text reaching CanvasKit is decoded to a JavaScript string here first.
-//
-// ## The import list
-//
-// It is exactly the `extern "C"` declarations in `browser/bridge.b`, and
-// `tests/wasm_abi.sh` diffs the built module's real import table against that
-// file. A name added on one side and not the other fails the gate rather than
-// failing at instantiation in somebody's browser.
+// The page half of a Latte WebAssembly module: an adapter, owning none of the
+// interface. The import list is `browser/bridge.b`; `tools/wasm_abi.sh` pairs.
 
 import { floatImports } from "./latte-floats.js";
 
@@ -50,9 +28,8 @@ export class LatteRuntime {
         this.frameHandle = 0;
         this.stdout = options.stdout || ((line) => console.log(line));
         this.stderr = options.stderr || ((line) => console.error(line));
-        // Output arrives a write at a time, not a line at a time, so it is
-        // buffered until a newline. A console.log per fragment would break one
-        // println into several lines and make a golden comparison impossible.
+        // Output arrives a write at a time, so it is buffered to a newline: a
+        // console.log per fragment breaks one println across several lines.
         this.pending = { 1: "", 2: "" };
         this.clipboardText = "";
         this.semanticsHost = options.semanticsHost || null;
@@ -60,15 +37,8 @@ export class LatteRuntime {
         this.renderer = options.renderer || null;
         this.exited = null;
         this.onFrame = options.onFrame || null;
-        // Imports beyond the core list — the drawing half, when a page has
-        // one. They are merged into `env` rather than given a module of their
-        // own because wasm-ld puts every undefined symbol in `env` and there
-        // is no way to ask it for a second.
-        //
-        // A function, not an object, and that is what makes the drawing
-        // imports possible: they decode pointers against this module's memory,
-        // and that memory does not exist until the module is instantiated. So
-        // they are built from the runtime, once, at the moment they are needed.
+        // Merged into `env`, where wasm-ld puts every undefined symbol. A
+        // function: the memory they decode against does not exist yet.
         this.buildImports = typeof options.imports === "function"
             ? options.imports
             : (options.imports ? () => options.imports : null);
@@ -106,21 +76,15 @@ export class LatteRuntime {
         }
     }
 
-    /// The bytes of a `(pointer, length)` pair, as a JavaScript string.
-    ///
-    /// A fresh view every time rather than one kept: the module grows its
-    /// memory with `memory.grow`, and growing detaches every existing
-    /// `ArrayBuffer` view. A cached `Uint8Array` would read as empty from the
-    /// first allocation that crossed a page boundary — silently, because a
-    /// detached view is zero length rather than an error.
+    /// A `(pointer, length)` pair as a JavaScript string. A fresh view every
+    /// time: `memory.grow` detaches every existing one, silently and to zero.
     text(pointer, length) {
         if (!pointer || length <= 0) return "";
         return this.decoder.decode(new Uint8Array(this.memory.buffer, pointer, length));
     }
 
-    /// Writes a JavaScript string into a caller-supplied buffer, and answers
-    /// how many bytes it needed. The two-call shape: a null buffer asks the
-    /// length, and a buffer that size takes the copy.
+    /// Writes a string into a caller's buffer and answers the bytes it needed:
+    /// a null buffer asks the length, and one that size takes the copy.
     writeInto(value, pointer, capacity) {
         const bytes = this.encoder.encode(value);
         if (!pointer || capacity <= 0) return bytes.length;
@@ -194,19 +158,15 @@ export class LatteRuntime {
                 const text = self.text(pointer, length);
                 self.clipboardText = text;
                 if (typeof navigator === "undefined" || !navigator.clipboard) return -1;
-                // Fire and forget: the module cannot wait for a promise,
-                // and the page's own clipboard is already updated above so
-                // a paste inside the same document works either way.
+                // Fire and forget: the module cannot wait for a promise, and
+                // the page's own copy is updated above for a same-document paste.
                 navigator.clipboard.writeText(text).catch(() => {});
                 return 0;
             },
 
             latte_js_clipboard_read(pointer, capacity) {
-                // The system clipboard is only readable from a promise, and
-                // a WebAssembly call cannot wait for one. What is readable
-                // synchronously is the last text this document copied, plus
-                // whatever a paste event handed over — `noteClipboard` is
-                // how the page supplies that.
+                // The system clipboard reads only from a promise, which this
+                // cannot wait for; `noteClipboard` is what the page supplies.
                 return self.writeInto(self.clipboardText, pointer, capacity);
             },
 
@@ -248,10 +208,8 @@ export class LatteRuntime {
                 return 0;
             },
         };
-        // Floating-point text. Part of the core rather than an option: a
-        // program that puts a float into a string panics without it, and
-        // "printing a number" is not a capability a page should have to opt
-        // into.
+        // Floating-point text, part of the core rather than an option: a
+        // program that puts a float into a string panics without it.
         Object.assign(core, floatImports(this));
         if (this.buildImports && !this.extraImports) {
             this.extraImports = this.buildImports(this);
@@ -298,10 +256,8 @@ export class LatteRuntime {
         if (!response.ok) {
             throw new Error(`could not fetch ${url}: ${response.status} ${response.statusText}`);
         }
-        // Streaming instantiation where the server sent the right type, and a
-        // buffered fallback where it did not — a file server that answers
-        // application/octet-stream is common enough that refusing would make
-        // this unusable locally.
+        // Streaming where the server sent the right type, buffered where it
+        // did not: application/octet-stream is what a file server often sends.
         let result;
         const imports = runtime.imports();
         if (WebAssembly.instantiateStreaming &&
@@ -316,12 +272,8 @@ export class LatteRuntime {
         if (!runtime.memory) {
             throw new Error(`${url} did not export its linear memory`);
         }
-        // The module's own startup. A library has no `main`, so nothing has
-        // run its reflection registry, its static field initializers or its
-        // singletons — and none of that fails, it is simply absent: every
-        // reflective lookup answers "no such type", every annotation is
-        // missing, and a singleton's fields are zeroed memory. Calling it is
-        // not optional, and it is idempotent.
+        // The module's own startup, which a library has no `main` to run. It
+        // does not fail without this; reflection is simply absent. Idempotent.
         if (typeof runtime.exports.beans_module_start === "function") {
             runtime.exports.beans_module_start();
         } else {

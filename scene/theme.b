@@ -1,12 +1,7 @@
 package scene
 
-/// Per-window design resources. No process-wide mutable theme.
-///
-/// Every number and colour here was read off real AppKit controls on
-/// macOS 26.5 (25F71) by `tools/reference/capture.sh`, in sRGB, at 4x, in both
-/// appearances. `build/reference/` holds the captures and the measurements;
-/// `tools/reference/README.md` says what is pinned. Nothing here was eyeballed,
-/// and nothing here is a guess about a different macOS release.
+/// Per-window design resources, and no process-wide mutable theme. Every
+/// number was measured, not eyeballed — `docs/source-copy.md` says where.
 pub class Theme {
     dark_mode: bool = false
     accent_value: int = -1
@@ -391,17 +386,8 @@ pub class Theme {
 
     pub fn menu_check_column() -> f64 { return 8.0 }
     pub fn menu_indent_step() -> f64 { return 12.0 }
-    /// Where the mark column starts, and where the title starts after it.
-    ///
-    /// AppKit gives the sum — a menu is its title plus 32, and 8 more once any
-    /// item carries a mark — but not the split between the two sides. These
-    /// three add up to that sum and are the only numbers in this file that are
-    /// not read off a capture: a menu window is drawn outside the process, so
-    /// it cannot be captured offscreen. See tools/reference/README.md.
-    /// The mark's own advance is 11.18 points at 13, with 8.72 of ink in it —
-    /// CTLineGetImageBounds on the menu font's check. A leading margin of ten
-    /// plus that advance puts the title at 21, which is where the measured
-    /// width says it goes.
+    /// Where the mark column starts, and the title after it. The only numbers
+    /// here not read off a capture: a menu is drawn outside the process.
     pub fn menu_mark_inset() -> f64 { return 10.0 + self.menu_font_size() * 0.098 }
     pub fn menu_mark_width() -> f64 { return self.menu_font_size() * 0.671 }
     pub fn menu_mark_height() -> f64 { return self.menu_font_size() * 0.661 }
@@ -430,21 +416,13 @@ pub class Theme {
     pub fn menu_gap() -> f64 { return 0.0 }
 
     // -------------------------------------------------------------- the motion
-    /// Recorded off real clicks on real controls; see tools/reference/motion.sh.
     /// A switch slides and fades over about a sixth of a second. A segmented
-    /// control, a tab, a check box and a button press do not animate at all,
-    /// so there is no token for them: instant is the native answer.
+    /// control, a tab, a check box and a button press do not animate at all.
     pub fn motion_switch() -> f64 { return if self.reduced_motion { 0.0 } else { 0.15 } }
     /// Clicking a slider's track walks the knob to the click; dragging does not.
     pub fn motion_slider() -> f64 { return if self.reduced_motion { 0.0 } else { 0.23 } }
-    /// A segmented control's pill sliding between segments.
-    ///
-    /// **Not measured.** Three attempts at recording AppKit's own segmented
-    /// control produced a grey layer render, an appearance-less draw and a
-    /// control stuck in its pressed state; none of them is evidence. The
-    /// duration is the switch's, which was recorded, and the fact that it
-    /// moves at all is an observation of a real Mac rather than a capture.
-    /// See tools/reference/README.md.
+    /// A segmented control's pill sliding between segments. **Not measured**
+    /// — the duration is the switch's, which was.
     pub fn motion_selection() -> f64 { return if self.reduced_motion { 0.0 } else { 0.15 } }
     /// 0 linear, 1 ease-in-out. The recorded switch curve is a smoothstep.
     pub fn motion_curve() -> int { return 1 }

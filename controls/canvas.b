@@ -11,10 +11,8 @@ import latte.scene
 /// nothing else. A chart with fifty thousand points, a waveform, a map, a
 /// game: none of those is a tree of controls, and a canvas is where they go.
 ///
-/// It is a control on every host, laid out by the same solver and named in
-/// `tests/roles.out` like any other. On a host with no GPU it is an empty
-/// area rather than a missing one, which is the right shape for a control
-/// whose contents were never the platform's to draw.
+/// A control like any other, laid out by the same solver. With no renderer
+/// behind it, it is an empty area rather than a missing one.
 ///
 /// A `VisualWidget` is what fills it: a canvas with no shape draws nothing,
 /// which is why `WidgetMaker` refuses a bare `<Canvas />` and names the

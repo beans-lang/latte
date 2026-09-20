@@ -76,11 +76,8 @@ pub class Document {
 /// Parse a whole `.bx` source.
 /// Parses one file for one target.
 ///
-/// The target changes what a tag means, what an attribute may be and which
-/// forms have something to compile into. It changes nothing about the syntax:
-/// the same lexer runs, the same nodes come out, the same spans point at the
-/// same bytes, and `tests/w3_shared_syntax.b` runs one fixture through both
-/// targets and asserts the trees are identical.
+/// A target changes what a tag means, never the syntax: same lexer, same
+/// nodes, same spans. `tests/w3_targets.b` § 1 runs one fixture through both.
 pub fn parse_document(source: string) -> Document {
     return parse_document_for(source, Target.html)
 }

@@ -1,16 +1,5 @@
-// Does a float print the same in a browser as it does natively?
-//
-// A freestanding WebAssembly module has no libc, so the Beans runtime asks its
-// host to turn a double into text. In a browser that host is JavaScript, and
-// JavaScript's spelling is not C's: it keeps trailing zeros, it reaches for
-// exponent notation at a different magnitude, and it writes `e+5` where C
-// writes `e+05`. `js/latte-floats.js` builds C's shape on top of JavaScript's
-// correctly-rounded digits, and this is what holds it to that claim.
-//
-// It is not a test of the formatter's cleverness. It is a diff: the same
-// program on three backends, one golden. A difference here is a browser
-// showing a different number from the one the server logged, which is the
-// worst kind of wrong because both look right on their own.
+// Does a float print the same in a browser as it does natively? One program,
+// three backends, one golden. Why the spellings differ: docs/notes.md.
 package main
 
 import std.io
@@ -37,9 +26,8 @@ pub extern "C" fn run() -> i32 as "latte_floats_run" {
     show("ten to the twenty", 100000000000000000000.0)
     show("ten to the twenty one", 1000000000000000000000.0)
 
-    // Values whose shortest round-trip needs every one of the seventeen
-    // digits. A formatter that stopped early prints a number that reads back
-    // as something else.
+    // Values whose shortest round-trip needs all seventeen digits: stopping
+    // early prints a number that reads back as something else.
     show("a tenth", 0.1)
     show("two tenths", 0.2)
     show("a tenth plus two tenths", 0.1 + 0.2)

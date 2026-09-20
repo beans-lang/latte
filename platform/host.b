@@ -143,9 +143,8 @@ pub class HeadlessHost implements Host {
     /// running twice in this one.
     pub fn advance(seconds: f64) -> bool {
         self.nanos = self.nanos + (seconds * 1000000000.0) as int
-        // Copied rather than moved: a field cannot be moved out of yet, and
-        // the copy is the point anyway — a handler that asks for another frame
-        // from inside this one is waiting for the next, not running twice.
+        // Copied, not moved: a field cannot be moved out of yet, and a handler
+        // that asks for a frame from inside this one waits for the next.
         var waiting: List<fn(f64)> = []
         for handler: fn(f64) in self.pending { waiting.push(handler) }
         self.pending = []

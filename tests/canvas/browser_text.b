@@ -1,17 +1,5 @@
-// The text questions a real renderer answers differently.
-//
-// `headless.MetricRenderer` measures from a stated advance and carries the
-// joins a caret must not split; it does not carry the whole Unicode
-// segmentation table. `latte.canvaskit` asks the browser's `Intl.Segmenter`,
-// which does. Both are right for what they are for, and the difference is
-// something a reader has to be able to see — so this file prints the same
-// questions and the browser leg answers them.
-//
-// It runs on three backends. Under the interpreter and natively there is no
-// browser, so `MetricRenderer` answers and its limits show; in a page the same
-// program reaches CanvasKit. **The two goldens are different on purpose**, and
-// `tools/browser_gate.mjs` knows it: this suite's browser golden is
-// `browser_text.browser.out`.
+// The text questions a real renderer answers differently, and the two goldens
+// differ on purpose: the browser's is `browser_text.browser.out`.
 package main
 
 import std.io

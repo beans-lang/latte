@@ -1,12 +1,5 @@
-// Does a still screen stop drawing?
-//
-// The question a browser makes urgent. A page that repaints sixty times a
-// second while nothing moves keeps a laptop's fan on and a phone's battery
-// draining, and it is invisible: the screen looks exactly the same either way.
-//
-// Three numbers say it. `refresh` answers whether it painted, the animation
-// queue says whether anything is still moving, and `ClockDesk` says whether a
-// frame has been asked for. A scene at rest must answer false to all three.
+// Does a still screen stop drawing? A page that repaints while nothing moves
+// is invisible and costly. A scene at rest answers false to all three numbers.
 package main
 
 import std.io

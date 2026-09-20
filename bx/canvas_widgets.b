@@ -1,30 +1,12 @@
-// canvas_widgets.b — the vocabulary latte markup is written in.
-//
-// The counterpart of latte's `html.b`, and much smaller for a reason worth
-// stating: HTML is a language with a hundred elements, a void-element list, a
-// raw-text list, an entity table, a URL scheme allowlist and an escaping
-// discipline, because HTML is text that a browser parses. latte markup names
-// **controls**. There is nothing to escape into, no document to inject into,
-// and the set of tags is closed — so the only tables here are the ones that
-// say what a name means.
-//
-// **This table and `latte.component.Vocabulary` are one contract.** That one
-// answers at run time, for hand-written components; this one answers at
-// compile time, for generated ones. They must agree, and
-// `tools/check_vocabulary.sh` fails the build when they do not. Two tables is
-// one more than anybody wants, and the reason for it is that this package must
-// build on a machine with no host: `latte.component` reaches
-// `latte.host`'s foreign declarations, and a markup compiler that could only
-// be built on macOS would be a markup compiler nobody on Windows could run.
+// canvas_widgets.b — the closed set of tags and attributes canvas markup has.
+// The runtime's copy is `compose.Vocabulary`; `tests/w3_vocabulary.b` pairs them.
 
 package bx
 
 import latte.visual
 
-/// Whether `tag` names a control latte knows.
-///
-/// The closed set. Anything else that starts with a capital letter is taken to
-/// be a component; anything else that does not is refused by name.
+/// Whether `tag` names a control latte knows: the closed set. Anything else
+/// capitalised is a component; anything else is refused by name.
 pub fn canvas_is_widget_tag(tag: string) -> bool {
     if visual.is_tag(tag) { return true }
     if tag == "VStack" { return true }
@@ -65,26 +47,8 @@ pub fn canvas_is_widget_tag(tag: string) -> bool {
     return false
 }
 
-/// Whether `tag` names another component rather than a control.
-///
-/// The rule differs from latte's, and it has to. There, an element is
-/// lowercase and a component is capitalized, because HTML's own elements are
-/// lowercase. Here every control is capitalized too — `<Button>` is a control,
-/// `<OrderRow>` is a component — so the test is membership of the closed set
-/// above, not spelling.
-///
-/// The consequence is worth being exact about, because it is a real cost.
-/// `<Buton>` is a typo, but latte-bx cannot know that — it becomes a
-/// component tag, and the refusal comes from **beansc**, as
-/// `unknown type 'Buton'`, pointing at the *generated* file rather than at the
-/// `.bx`. The generated line carries a `// checkout.bx:16` trace comment, so
-/// the way back is one line up, but it is a hop the author should not have to
-/// make.
-///
-/// A lowercase tag is refused here, with a suggestion, because a lowercase
-/// name can never be a component. Closing the gap for a capitalised one would
-/// mean refusing any tag within two edits of a control name, which would also
-/// refuse a component somebody legitimately called `Lable`.
+/// Whether `tag` names a component rather than a control: membership of the
+/// closed set, not case. `<Buton>` becomes one, and beansc names the type.
 pub fn canvas_names_a_component(tag: string) -> bool {
     if tag.len() == 0 { return false }
     if canvas_is_widget_tag(tag) { return false }
@@ -120,44 +84,20 @@ pub fn canvas_is_boolean_attribute(name: string) -> bool {
     return false
 }
 
-/// The prefixes an attribute may carry before a colon.
-///
-/// Two, and both mean something: `on:` subscribes to an event, `bind:` binds a
-/// control's value to a field in both directions. An unknown prefix is refused
-/// rather than passed through as part of the name, because `onclick=` — the
-/// prefix left off by mistake — should say so.
+/// The two prefixes an attribute may carry: `on:` subscribes, `bind:` binds
+/// both ways. An unknown one is refused, so `onclick=` says what is wrong.
 pub fn canvas_is_xml_namespace(prefix: string) -> bool {
     return prefix == "on" || prefix == "bind"
 }
 
-/// An attribute the framework reads, rather than one the control carries.
-///
-/// Two, and `Parser.classify` routes both through `classify_reserved` — so
-/// this list and the behaviour cannot drift apart, and
-/// `vocabulary.reserved_attributes()`, which is what an editor offers, mirrors
-/// exactly these names.
-///
-/// The cost of reserving a name is real and worth stating: a component with a
-/// field of its own called `key` or `ref` cannot have it set from markup. That
-/// is the trade every framework attribute makes, and two is as many as latte
-/// takes.
+/// An attribute the framework reads rather than one the control carries. The
+/// cost: a component field called `key` or `ref` cannot be set from markup.
 pub fn canvas_is_reserved_attribute(name: string) -> bool {
     return name == "key" || name == "ref"
 }
 
-/// Why an attribute that only means something in an HTML document is refused,
-/// or `""` for every other name.
-///
-/// Both of these are real attributes in the markup language latte's grew out
-/// of, and neither has anything here to act on. They are answered by name
-/// rather than left to fall through to "there is no attribute called attrs",
-/// because that message sends the author looking for a spelling mistake when
-/// what they have is a concept latte has not got.
-///
-/// Reserving them costs the same thing `is_reserved_attribute` costs: a
-/// component whose own field is called `attrs` or `preserve` cannot have it
-/// set from markup. That is the price of answering the question the author
-/// actually asked, and these are the only two names it is charged on.
+/// Why an attribute that only means something in an HTML document is refused.
+/// By name, so the author is not sent looking for a spelling mistake.
 pub fn canvas_html_only_attribute(name: string) -> string {
     if name == "attrs" {
         return "attrs= spreads a bag of pass-through attributes onto an element, which means something only where an element carries arbitrary attributes. A latte control has a closed set of typed properties and a component takes its parameters by their Beans names, so there is no bag here and nothing to spread into — write the parameters you mean"
@@ -168,13 +108,8 @@ pub fn canvas_html_only_attribute(name: string) -> string {
     return ""
 }
 
-/// Which `Builder` method an attribute becomes, or `""` when the name is not
-/// one latte knows.
-///
-/// This is the whole of the compile-time half of the contract. `text` is the
-/// control's own text, `flag` a true/false property, `number` anything
-/// measured — a real property or one of the layout numbers — and `word` a
-/// named choice out of a fixed set.
+/// Which `Builder` method an attribute becomes: `text`, `flag`, `number` for
+/// anything measured, and `word` for a choice out of a fixed set.
 pub fn canvas_attribute_call(name: string) -> string {
     if name == "items" { return "items" }
     if name == "labels" { return "labels" }
@@ -309,27 +244,14 @@ pub fn canvas_widget_tags() -> List<string> {
     return move tags
 }
 
-/// Whether a tag names a drawing shape rather than a control.
-///
-/// `<Rectangle>` and its three siblings become a `visual.Kind` on a canvas
-/// node, not a `WidgetKind`, so a comparison against the kind table has to
-/// step over them.
+/// Whether a tag names a drawing shape rather than a control: `<Rectangle>`
+/// and its siblings are a `visual.Kind`, so the kind table steps over them.
 pub fn canvas_is_drawing_tag(tag: string) -> bool {
     return visual.kind_of(tag) != none
 }
 
-/// Whether Latte has a renderer that can draw this tag.
-///
-/// Seven of the tags above are vocabulary without an implementation: they are
-/// names the markup language knows, and `compose.WidgetMaker` refuses each one
-/// by name when a scene tries to build it. **The refusal is better here**, at
-/// compile time, where it names the file and the line — so this is the list
-/// and `WidgetMaker`'s match is the backstop for a tree built in Beans rather
-/// than in markup.
-///
-/// A tag added to the renderer is deleted from this list, and the two suites
-/// that walk it — `tests/w3_targets.b` here and `tests/enabled.b` there — both
-/// move together.
+/// Whether Latte has a renderer for this tag. Refused here, at compile time,
+/// where it names the line; `tests/w3_vocabulary.b` § 3 pairs it with the kinds.
 pub fn canvas_tag_is_drawn(tag: string) -> bool {
     if tag == "ColorWell" { return false }
     if tag == "DatePicker" { return false }
@@ -350,13 +272,8 @@ pub fn canvas_drawn_list() -> string {
     return drawn.join(", ")
 }
 
-/// Whether a control tag carries an attribute.
-///
-/// A written copy of `ctd_rule_carries`, because this package must build with
-/// no host. `tests/attributes.b` holds the two together, pair by pair.
-///
-/// A name that is not a control property answers `true`: layout names belong
-/// to the parent's layout, and an unknown name is `is_attribute`'s refusal.
+/// Whether a control tag carries an attribute; a layout name answers `true`,
+/// because it belongs to the parent. `tests/w3_vocabulary.b` § 5 pairs it.
 pub fn canvas_tag_carries(tag: string, name: string) -> bool {
     if name == "a11y_label" { return canvas_is_widget_tag(tag) }
     match visual.kind_of(tag) {
@@ -392,10 +309,8 @@ pub fn canvas_tag_carries(tag: string, name: string) -> bool {
     // The same five as `alignment`, and for the same reason: each is a plain
     // text view on all four hosts, so one name means one thing.
     if name == "text_color" { return canvas_is_typed_into(tag) || tag == "Label" }
-    // A table, an outline, a group box, a disclosure and a tab view all show
-    // words, and none of them is here: those words are a title or a cell
-    // rather than the control's own text, and one name meaning both would be
-    // worse than no name at all.
+    // A table, an outline, a group box, a disclosure and a tab view show words
+    // that are a title or a cell, not the control's own text.
     if name == "font_size" || name == "font_role" || name == "font_weight" ||
        name == "baseline" {
         return canvas_one_of(tag, ["Label", "Button", "TextField",
@@ -448,12 +363,8 @@ fn canvas_one_of(tag: string, tags: List<string>) -> bool {
     return false
 }
 
-/// Whether a tag is spelled like an identifier.
-///
-/// Not a security question here — there is no document to inject into — but a
-/// correctness one: a tag becomes a type name or a table lookup in generated
-/// Beans, and one that is not an identifier produces a generated file that
-/// does not parse, with the error landing on a line the author never wrote.
+/// Whether a tag is spelled like an identifier. A correctness question, not a
+/// security one: a bad one makes a generated file that does not parse.
 pub fn canvas_tag_name_is_safe(tag: string) -> bool {
     return canvas_is_identifier(tag)
 }
@@ -482,12 +393,8 @@ fn canvas_is_identifier(text: string) -> bool {
 
 // --------------------------------------------------- embedding in Beans source
 
-/// Escape `value` so it can be written inside a Beans double-quoted string.
-///
-/// Carried over from latte's `html.b` unchanged, because the job is identical:
-/// whatever the markup said has to survive being written into a generated
-/// source file. Braces are escaped as well as quotes and backslashes, since a
-/// Beans string interpolates.
+/// Escape `value` for a Beans double-quoted string. Braces too, not only
+/// quotes and backslashes, because a Beans string interpolates.
 pub fn canvas_escape_beans_string(value: string) -> string {
     let parts: List<string> = []
     var run: int = 0
@@ -545,10 +452,8 @@ pub fn canvas_nearest_attribute(name: string) -> string {
     return canvas_nearest_of(name, canvas_attribute_names())
 }
 
-/// The nearest of `candidates` to `name` within two edits.
-///
-/// Two, and not more: a suggestion that is wrong sends the reader to fix the
-/// wrong thing, which costs more than no suggestion at all.
+/// The nearest of `candidates` within two edits, and not more: a wrong
+/// suggestion sends the reader to fix the wrong thing.
 pub fn canvas_nearest_of(name: string, candidates: List<string>) -> string {
     var best: string = ""
     var best_distance: int = 3
@@ -562,11 +467,8 @@ pub fn canvas_nearest_of(name: string, candidates: List<string>) -> string {
     return best
 }
 
-/// Levenshtein distance between two short ASCII names.
-///
-/// Two rows rather than a matrix: the names here are at most eleven bytes and
-/// the tables are twenty long, so this runs once per bad name and never on a
-/// path anyone measures.
+/// Levenshtein distance between two short ASCII names, two rows rather than a
+/// matrix: it runs once per bad name and never on a measured path.
 pub fn canvas_edit_distance(from: string, to: string) -> int {
     let width: int = to.len() + 1
     var previous: List<int> = []

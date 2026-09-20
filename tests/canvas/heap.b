@@ -1,19 +1,5 @@
-// Does mounting a scene and dropping it give everything back?
-//
-// The question a browser has to answer and a desktop mostly does not: a tab
-// stays open for days, and a runtime that keeps one scene per mount turns "the
-// user opened this panel forty times" into a reload.
-//
-// It counts objects rather than bytes, and that is the stronger question. A
-// byte count can settle while a graph of dead objects sits in a cycle the
-// collector has not walked; a `deinit` that never runs is the thing that
-// actually leaks a callback, a paragraph or a GPU handle. So every component
-// this file mounts is counted in and counted out, and the claim is that the
-// count returns to where it started.
-//
-// The WebAssembly leg additionally reads `latte_heap_live` from the allocator
-// in `wasm/latte_wasm_host.c`, which is the only place a browser's answer can
-// differ from a native one.
+// Does mounting a scene and dropping it give everything back? Counted in
+// objects, not bytes: a `deinit` that never runs is what actually leaks.
 package main
 
 import std.io
@@ -56,9 +42,8 @@ pub class Panel extends compose.Component {
             b.close()
             b.open("Button")
             b.text("edit {row}")
-            // A closure over `self`, which is the shape that makes a leak
-            // possible: the handler holds the component, the router holds the
-            // handler, and the scene holds the router.
+            // A closure over `self`, the shape that makes a leak possible:
+            // handler holds component, router holds handler, scene holds router.
             b.on("click", fn(e: input.UiEvent) { self.clicks = self.clicks + 1 })
             b.close()
             b.close()
@@ -67,9 +52,8 @@ pub class Panel extends compose.Component {
     }
 }
 
-/// Builds a scene, drives it, and drops it. Everything it makes is local, so
-/// the only way anything survives the call is if something else kept hold —
-/// which is exactly what this is looking for.
+/// Builds a scene, drives it, drops it. Everything is local, so anything that
+/// survives the call was kept by something else — which is the question.
 fn one_round() {
     let page: stage.Scene = new stage.Scene(new headless.MetricRenderer(),
                                             geometry.Size.of(400.0, 600.0))

@@ -1,15 +1,5 @@
-// The browser half that a Beans suite cannot reach.
-//
-// `tests/canvas/*.b` run the same program on three backends and diff one
-// golden; that says the runtime is right. It says nothing about a pointer
-// event, an input method, a resize, a lost GPU context, or whether closing a
-// page really gives its Skia objects back — all of which are the page's, and
-// all of which have to be driven with real DOM events to mean anything.
-//
-// So this drives the showcase in every installed engine and asks the module
-// what happened. It asserts against the module's own state rather than against
-// pixels: a pixel comparison would fail for a font, and what is in question
-// here is behaviour.
+// The browser half a Beans suite cannot reach: pointers, input methods,
+// resizes, a lost context, teardown. It asserts state, never pixels.
 import { chromium, firefox, webkit } from "playwright";
 import { server, listenOnAFreePort } from "./serve.mjs";
 
@@ -17,10 +7,8 @@ const ENGINES = { chromium, firefox, webkit };
 let PORT = 0;
 const wanted = (process.env.LATTE_ENGINES || "chromium,firefox,webkit").split(",");
 
-/// Where a node with this accessible name is, in canvas coordinates. The
-/// accessibility tree is the only map of the canvas a page has, which is a
-/// useful property in itself: a control a test cannot find is a control a
-/// screen reader cannot find.
+/// Where a node with this accessible name is, in canvas coordinates: a control
+/// this test cannot find is a control a screen reader cannot find either.
 function nodeAt(label) {
     const page = window.__lattePage;
     const element = [...page.semantics.root.children]
@@ -135,9 +123,8 @@ async function run(engineName, engine) {
             .filter((e) => e.getAttribute("role") === "textbox")
             .map((e) => e.getAttribute("aria-valuetext"))[0] || "";
     });
-    // The composition commits its final text and none of the intermediate
-    // states survive — which is the whole reason `beforeinput` is ignored
-    // while an input method is composing.
+    // The composition commits its final text and no intermediate state
+    // survives, which is why `beforeinput` is ignored while it composes.
     check(results, "a composition commits once", composed === "Zoe日本", JSON.stringify(composed));
 
     // --- an accessibility action -----------------------------------------
@@ -158,12 +145,8 @@ async function run(engineName, engine) {
     check(results, "a screen reader's activate reaches the control",
         activated.before !== activated.after, JSON.stringify(activated));
 
-    // --- nothing is copied back ------------------------------------------
-    //
-    // The surface Skia draws into is the one the browser composites, so a
-    // frame costs no CPU copy. A desktop renderer that presents by reading
-    // pixels into a native canvas pays one per frame, and the whole reason
-    // this port draws onto a page's own GPU surface is not to.
+    // Nothing is copied back: the surface Skia draws into is the one the
+    // browser composites, so a frame costs no CPU copy.
     const drawn = await page.evaluate(() => ({
         frames: window.__lattePage.surface.frames,
         readbacks: window.__lattePage.surface.readbacks,
@@ -235,9 +218,8 @@ async function main() {
                 skipped.push(`${name} (not installed)`);
                 continue;
             }
-            // A throw is a failure and not a skip. Counting it as a skip and
-            // then reporting "every engine was skipped" is how a gate reports
-            // a crash as an absence.
+            // A throw is a failure, not a skip: counting it as one is how a
+            // gate reports a crash as an absence.
             console.error(`FAIL ${name}: ${String(error).split("\n")[0]}`);
             failures++;
             ran++;
