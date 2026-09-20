@@ -1,0 +1,21 @@
+
+== 1 — a clock with no listener asks for nothing ==
+pending: false
+
+== 2 — one listener asks once, and is told once per frame ==
+pending after joining: true
+ticks: 3
+frames: #1 token 7, #2 token 7, #3 token 7
+still pending: true
+
+== 3 — a second listener shares the same frame ==
+the first heard 1 more, the second 1
+
+== 4 — the token is each listener's own ==
+the first listener's frames carry its own token: true
+
+== 5 — when the last listener leaves, nothing is asked for ==
+pending with one left: true
+pending with none: false
+listeners: 0
+ticks after everyone left: 0

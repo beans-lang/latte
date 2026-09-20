@@ -343,6 +343,12 @@ void *beans_host_realloc(void *block, u64 size) {
     if (!block) return beans_host_alloc(size, LATTE_ALIGN);
     Block *header = latte_block_of(block);
     u32 wanted = latte_round(size);
+    /* An over-aligned block cannot be grown here without quietly giving up
+     * the alignment it was asked for, and a caller that wanted 64 bytes of
+     * alignment wanted it for a reason. The runtime never does this — an
+     * over-aligned block comes from beans_raw_alloc and goes to
+     * beans_raw_free — so this is a refusal rather than a case to handle. */
+    if (header->shift != 0) return 0;
     if (header->shift == 0 && header->size >= wanted) {
         latte_split(header, wanted);
         return block;
@@ -370,6 +376,9 @@ void *beans_host_realloc(void *block, u64 size) {
 
     void *moved = beans_host_alloc(size, LATTE_ALIGN);
     if (!moved) return 0;
+    /* The smaller of the two payloads. `header->size` is the block, which is
+     * the old payload exactly, because an over-aligned block was refused
+     * above. */
     u64 keep = header->size < wanted ? header->size : wanted;
     memcpy(moved, block, (unsigned long)keep);
     beans_host_free(block);

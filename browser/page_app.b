@@ -135,6 +135,13 @@ pub singleton class PageApp {
     pub fn frame(seconds: f64) -> int {
         self.frame_asked = false
         self.frames = self.frames + 1
+        // Whatever else asked the host for this frame runs first. A
+        // `motion.FrameClock` — what a program uses to move something of its
+        // own — goes through `platform.Host.request_frame` and would otherwise
+        // never tick in a page, because the page's own callback lands here and
+        // stops. Two frame mechanisms with one of them wired is the kind of
+        // thing that looks like "animation does not work on the web".
+        PageHost.instance.deliver_frame(seconds)
         match self.with_scene("draw a frame") {
             err(problem) => { self.fail(problem.msg); return -1 }
             ok(page) => {
