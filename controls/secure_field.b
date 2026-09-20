@@ -52,7 +52,7 @@ pub class SecureField extends Widget {
     /// What the field shows while it is empty.
     ///
     /// Every single-line field carries one — `ctd_kind_has_hint` in
-    /// `src/cortado_rules.h` names exactly the three — and this wrapper was
+    /// `controls.KindRules` names exactly the three — and this wrapper was
     /// missing for two of them, so the property was reachable through
     /// `set_string` and through no method.
     pub fn set_hint(hint: string) -> Result<bool> {

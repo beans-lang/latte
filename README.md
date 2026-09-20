@@ -42,6 +42,26 @@ pub partial class Counter extends Component {
 A click runs the handler on the server, the framework re-renders that one
 component, diffs it against the previous frame, and sends only what changed.
 
+## Two targets
+
+Latte renders a component two ways, from one markup language and one compiler.
+
+**HTML** is what it has always been: the server renders a page and a WebSocket
+circuit sends edits. Nothing about it changed.
+
+**Canvas** draws the interface itself — on a `<canvas>`, through CanvasKit, with
+the layout, the state, the editing, the focus and the accessibility tree
+compiled to WebAssembly. `docs/browser.md` is how to build and run it,
+`docs/migration.md` is what changed for an existing application (nothing, unless
+you ask), and `docs/unfinished.md` is what does not work yet.
+
+```sh
+npm install && node tools/font_prepare.mjs
+bash tools/generate.sh
+bash tools/wasm_build.sh examples/showcase/main.b build/browser/showcase.wasm
+node tools/serve.mjs 8731   # then open /examples/showcase/index.html
+```
+
 ## Contents
 
 - [Requirements](#requirements) · [Try it](#try-it) · [Commands](#commands)

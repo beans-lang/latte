@@ -1,7 +1,7 @@
 // The header's `#define`s, restated.
 //
 // `beansc bindgen` reads declarations, not the preprocessor, so every constant
-// in cortado_host.h is invisible to the generated binding and has to live
+// in a C header is invisible to a generated binding and had to live
 // here. Hand-copied values go stale silently, so `tools/check_constants.sh`
 // reads both files and fails the build when a number here stops matching the
 // header.
@@ -196,14 +196,15 @@ pub const A11Y_IMAGE: int = 2
 pub const A11Y_GROUP: int = 3
 
 // What an outline's source is being asked. See "outlines" in
-// src/cortado_host.h.
+// `controls.KindRules`.
 pub const OUTLINE_ROOT: int = 0
 pub const OUTLINE_CHILDREN: int = 0
 pub const OUTLINE_CHILD: int = 1
 pub const OUTLINE_EXPANDS: int = 2
 pub const OUTLINE_ICON: int = 3
 
-// The system icon roles. See "icons" in src/cortado_host.h.
+// The system icon roles. No renderer draws one yet; the numbers are here so
+// a kind can be named.
 pub const ICON_NONE: int = 0
 pub const ICON_REFRESH: int = 1
 pub const ICON_ADD: int = 2

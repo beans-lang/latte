@@ -3,7 +3,7 @@ package platform
 
 /// The result of a host call.
 ///
-/// Every entry point in `cortado_host.h` answers one of these rather than a
+/// Every call that can be refused answers one of these rather than a
 /// boolean, because "it did not work" is not actionable: the difference
 /// between `unsupported` and `stale` decides whether the caller has a bug or
 /// the platform does.

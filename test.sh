@@ -1515,6 +1515,9 @@ run_canvas_leg() {
 # reported by name and counted as a SKIP, because a browser gate that quietly
 # passes when it ran nothing is worse than no browser gate.
 run_browser_leg() {
+    # The isolated check runs here rather than in its own leg because it needs
+    # a built compiler and nothing else, and this is where the heavyweight
+    # checks already live.
     if ! command -v node >/dev/null 2>&1; then
         echo "SKIP browser: node is not installed — no browser engine was tested"
         skipped=$((skipped + 1))
@@ -1553,6 +1556,15 @@ run_browser_leg() {
         echo "--- browser FAILED: nothing was built for the browser ---" >&2
         failed=1
         return 0
+    fi
+
+    if ! (cd "$ROOT" && bash tools/check_isolated.sh) >"$tmp/isolated.log" 2>&1; then
+        echo "--- isolated FAILED ---" >&2
+        cat "$tmp/isolated.log" >&2
+        failed=1
+    else
+        sed 's/^/  /' "$tmp/isolated.log"
+        legs=$((legs + 1))
     fi
 
     if ! (cd "$ROOT" && bash tools/wasm_abi.sh) >"$tmp/abi.log" 2>&1; then

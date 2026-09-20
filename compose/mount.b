@@ -99,7 +99,7 @@ pub class Mount implements Composer {
     ///
     /// Optional. Without one, such a type is built through its own
     /// zero-argument initializer, which is every component that takes nothing
-    /// through its constructor. With one — `cortado_app.Container` — the
+    /// through its constructor. With one — an application's own container — the
     /// initializer's parameters are resolved from the container, so a
     /// component with constructor dependencies works from markup too.
     pub fn use_activator(who: Activator) {

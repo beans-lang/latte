@@ -6,7 +6,8 @@ import std.reflect
 /// Answers for a service a component asked for.
 ///
 /// An interface over `std.reflect` and nothing else, so `latte.compose`
-/// needs no dependency on any particular container. `cortado_app` implements it
+/// needs no dependency on any particular container. An application's own
+/// composition root implements it
 /// over barista; an application with its own idea of where services come from
 /// implements it over that. The component layer never learns what a service
 /// collection is.
