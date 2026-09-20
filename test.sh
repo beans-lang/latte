@@ -1609,6 +1609,23 @@ run_browser_leg() {
         cat "$tmp/ui.log" >&2
         failed=1
     fi
+
+    # And the pictures. One engine, because three rasterize text differently
+    # enough that one reference cannot serve all three; the other two are
+    # covered by the gate above, which asks about behaviour.
+    if (cd "$ROOT" && node tools/shot_gate.mjs) >"$tmp/shots.log" 2>&1; then
+        sed 's/^/  /' "$tmp/shots.log"
+        legs=$((legs + 1))
+    else
+        if grep -q "^SKIP" "$tmp/shots.log"; then
+            sed 's/^/  /' "$tmp/shots.log"
+            skipped=$((skipped + 1))
+        else
+            echo "--- shots FAILED ---" >&2
+            cat "$tmp/shots.log" >&2
+            failed=1
+        fi
+    fi
 }
 
 # --- the generated-file leg --------------------------------------------

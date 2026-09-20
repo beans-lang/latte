@@ -26,6 +26,22 @@ class MountPlan {
 
     fn init() {}
 
+    /// The plan for a type, built once for the whole program.
+    ///
+    /// **Per process, not per mount.** It used to be a map on `Mount`, which
+    /// is right for a screen and wrong for everything else: a control with a
+    /// `.bx` template gets a `Mount` of its own, so every button on a screen
+    /// built a fresh cache and paid the whole scan again. One button cost
+    /// 120 ms, of which 109 ms was asking 146 fields for annotations and
+    /// finding none — twelve of them took a second and a half.
+    ///
+    /// Sound because a plan is a fact about a *type*: its fields and their
+    /// annotations cannot change while a program runs, so an answer computed
+    /// once is correct forever.
+    static fn for_type(described: reflect.Type) -> MountPlan {
+        return PlanDesk.instance.plan(described)
+    }
+
     /// Reads one component type and records everything the framework will do
     /// to instances of it.
     static fn of(described: reflect.Type) -> MountPlan {
@@ -61,4 +77,34 @@ class MountPlan {
         }
         return plan
     }
+}
+
+/// Every plan this program has worked out.
+///
+/// A singleton because reflection is a fact about the program rather than
+/// about any one screen, and because the cost it exists to avoid is paid per
+/// *mount* — and a templated control is a mount.
+pub singleton class PlanDesk {
+    plans: Map<string, MountPlan> = {}
+
+    fn init() {}
+
+    fn plan(described: reflect.Type) -> MountPlan {
+        let key: string = described.qualified_name()
+        match self.plans.get(key) {
+            some(found) => { return found }
+            none => {}
+        }
+        let made: MountPlan = MountPlan.of(described)
+        self.plans[key] = made
+        return made
+    }
+
+    /// How many types have been scanned. A test reads it to say that a second
+    /// mount of the same type scanned nothing.
+    pub fn scanned() -> int { return self.plans.len() }
+
+    /// Forgets everything. Teardown in a test; nothing else should need it,
+    /// because a type's fields do not change.
+    pub fn reset() { self.plans = {} }
 }

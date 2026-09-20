@@ -1,0 +1,15 @@
+
+== 1 — the first screen scans the types it uses ==
+types scanned by one button: true
+
+== 2 — a second button of the same type scans nothing ==
+after a second screen: 0
+
+== 3 — and neither do sixteen ==
+after sixteen buttons: 0
+
+== 4 — nor thirty screens ==
+after thirty more screens: 0
+
+== 5 — a type nobody has used yet is scanned when it is ==
+a new control scanned more: true

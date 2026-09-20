@@ -43,10 +43,6 @@ pub class Mount implements Composer {
     services: Option<ServiceSource> = none
     builder_of_types: Option<Activator> = none
 
-    /// The plan per component type, worked out on that type's first mount and
-    /// kept for the life of the application.
-    plans: Map<string, MountPlan> = {}
-
     /// Child components this mount has already prepared, by the key their
     /// parent gave them.
     prepared: Map<string, Component> = {}
@@ -692,14 +688,7 @@ pub class Mount implements Composer {
     }
 
     fn plan_for(described: reflect.Type) -> MountPlan {
-        let key: string = described.qualified_name()
-        match self.plans.get(key) {
-            some(found) => { return found }
-            none => {}
-        }
-        let made: MountPlan = MountPlan.of(described)
-        self.plans[key] = made
-        return made
+        return MountPlan.for_type(described)
     }
 
     fn settle_all() {

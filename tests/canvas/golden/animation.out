@@ -1,0 +1,19 @@
+
+== 1 — the first value is the one it was given, not the one it is going to ==
+at rest: 0.00
+animating: false
+
+== 2 — an eased fade is slow, fast, slow ==
+frames: 0.00 0.31 1.17 2.50 4.21 6.22 8.45 10.80 13.20 15.55 17.78 19.79 21.50 22.83 23.69 24.00 24.00
+at the end: 24.00
+still animating: false
+
+== 3 — a linear fade is a straight line ==
+frames: 24.00 22.40 20.80 19.20 17.60 16.00 14.40 12.80 11.20 9.60 8.00 6.40 4.80 3.20 1.60 0.00 0.00
+at the end: 0.00
+
+== 4 — a change mid-flight starts from where it is, not from where it began ==
+caught halfway at 11.20
+after turning round, still at 11.20
+it did not jump: true
+frames back down: 11.20 10.45 9.71 8.96 8.21 7.47 6.72 5.97 5.23 4.48 3.73 2.99 2.24 1.49 0.75 0.00 0.00
