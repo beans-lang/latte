@@ -1,4 +1,4 @@
-// Takes a picture of a Latte page, by hand or for `tools/shot_gate.mjs`. The
+// Takes a picture of a Latte page, by hand or for `tools/shot_check.mjs`. The
 // viewport, the ratio and the font are pinned: a fallback face is a relayout.
 import { chromium, firefox, webkit } from "playwright";
 import { server, listenOnAFreePort } from "./serve.mjs";

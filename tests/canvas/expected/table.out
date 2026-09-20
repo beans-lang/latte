@@ -1,0 +1,133 @@
+
+== 1 — drawing twenty rows costs twenty rows, not ten thousand ==
+rows in the source: 10000
+cell reads under a hundred: true
+cell reads over zero: true
+
+== 2 — a second frame with nothing changed reads nothing ==
+reads after an idle frame: 0
+
+== 3 — scrolling by less than a row reads nothing new ==
+offset moved to 4
+reads after a four-point scroll: 0
+
+== 4 — scrolling a whole page reads about a page ==
+offset after scrolling down 600: 604
+reads after a 600-point scroll are under two hundred: true
+and over zero: true
+
+== 4b — and scrolling back up is the other sign ==
+offset after scrolling back: 4
+
+== 5 — one editor at a time ==
+editing row 0 column 1
+after a second edit: row 3 column 1
+
+== 6 — Return commits and Escape cancels ==
+committed: row 5 column 1: Espresso
+the source kept it: Espresso
+editor after commit: row -1
+editor after cancel: row -1
+row six is unchanged: Cup 0
+
+== 7 — a column the policy refuses cannot be edited ==
+column 0 editable: false
+column 1 editable: true
+
+== 8 — a wide table reads the columns it shows, not the ones it has ==
+columns in the table: 200
+rows in the source: 10000000
+cells read to draw it: under a quarter of one row per column: true
+and it really drew rows: true
+reads per row are near the columns on screen: true
+
+== 9 — ten million rows, and nothing draws at ten million points ==
+first visible row: 0
+template reaches under a viewport and a row: true
+scrolled to 239999728
+first visible row is near the last: true
+template still reaches under a viewport and a row: true
+the last row is the last: Order 9999999
+
+== 10 — a scroll of less than a row is a transform, not a render ==
+offset moved by ten: 10
+cells read: 0
+times the cells were rebuilt: 0
+
+== 11 — crossing a row boundary reads the row that entered, and no more ==
+rows moved by one: 1
+cells read is one row of what is on screen: true
+times the cells were rebuilt: 1
+
+== 12 — scrolling sideways reads the columns that entered, and no more ==
+moved sideways by one column: 60
+cells read is about one column of rows: true
+and not a whole screen of them: true
+
+== 13 — a click lands on the row and column under it, after both scrolls ==
+selected row: 1002
+selected column: 4
+
+== 14 — one editor, at the logical cell, however far the table has moved ==
+editing row 1001 column 1
+committed: row 1001 column 1: Latte
+editor after commit: row -1
+
+== 15 — the keyboard moves through a million rows ==
+selected row five million is on screen: true
+template reaches under a viewport and a row: true
+down moved the selection to 5000001
+right moved the column to 2
+
+== 16 — a click that arrives before the frame the scroll asked for ==
+three rows down from row 1000, clicked the top row: 1003
+
+== 17 — a resize and a denser theme move the rows with them ==
+a wider window rebuilt the cells: true
+and read the columns that came into view: true
+the rows still reach no further than the table: false
+row height moved to 18
+the denser appearance rebuilt the cells: true
+the first row sits at 20 under a 20 point header
+three rows, and the header is 28 points again
+the cells were rebuilt for the row height alone: true
+the first of three rows sits at 28
+
+== 18 — a table that cannot scroll further says so, and the page scrolls ==
+up at the top: false
+down at the top: true
+down at the bottom: false
+left at the left edge: false
+and a sideways wheel that can move does: true
+
+== 19 — a reader is told the whole table, not the dozen rows on screen ==
+the table says it has 10000000 rows and 200 columns
+rows in the tree: 14, and they are not ten million: true
+cells in the tree: 224, which is the window and not the table: true
+the first cell is at row 5001, column 1
+which is one-based against the first visible row: true
+
+== 20 — the scrollbars, and what dragging one does ==
+three rows show a row bar: false
+ten million rows show one: true
+and two hundred columns show the other: true
+its track is the body less the inset: 268
+the thumb is short but takeable: 28
+and it starts at the top: 0
+a hundred points down a 240 point run landed on row 4166661
+which is the share of ten million it should be: true
+the thumb went with it: true
+and a press on a bar selects nothing: -1
+the rows still reach no further than the table: true
+a press at the end of the track lands at the end: true
+a 818 point run, 11106 points of content, 1356 scrolled
+the share dragged and the share scrolled agree: true
+and the first visible column went with it: 22
+
+== 21 — the bounds, said in full ==
+a 4097th column: a table takes up to 4096 columns, not 4097
+too many rows: out_of_range
+
+== 22 — closing a scrolled table lets go of everything ==
+the table is released: true
+the tree is released: true

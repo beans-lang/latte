@@ -14,7 +14,7 @@ examples/*/tests/_examples_cover.b
 node_modules/
 package-lock.json
 
-# What the browser gate builds and what playwright leaves behind.
+# What the browser check builds and what playwright leaves behind.
 build/browser/
 .playwright-mcp/
 test-results/

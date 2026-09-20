@@ -50,7 +50,7 @@ generate_tree() {
     local files=("$ROOT/$sources"/*.bx)
     if [[ ${#files[@]} -eq 0 ]]; then
         # Not a skip. A tree named here and empty means the layout moved, and
-        # a generator that shrugged would leave the drift gate comparing
+        # a generator that shrugged would leave the drift check comparing
         # nothing against nothing forever.
         echo "--- generate FAILED: $sources has no .bx files ---" >&2
         return 1
@@ -67,6 +67,6 @@ generate_tree() {
 }
 
 # Not guarded on the directory existing. A tree named here and absent means the
-# layout moved, and a generator that shrugged would leave the drift gate blind.
+# layout moved, and a generator that shrugged would leave the drift check blind.
 generate_tree canvas templates generated/templates
 generate_tree canvas examples/showcase/site examples/showcase/generated/site

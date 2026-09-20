@@ -1,4 +1,4 @@
-// Gate 8, second row: a window that scrolls to the end and back with NO GAP
+// Check 8, second row: a window that scrolls to the end and back with NO GAP
 // and NO DUPLICATE, over a 50,000-row table.
 //
 // What "no gap" and "no duplicate" mean here, precisely, because a suite that
@@ -100,7 +100,7 @@ fn table() -> VirtualGeometry {
 /// One pass over a run of scroll offsets, checking every rule at every one.
 ///
 /// It carries its own counters instead of printing per position, because
-/// 112,800 lines is not a golden anybody reads — and the counts ARE the claim:
+/// 112,800 lines is not an expected output anybody reads — and the counts ARE the claim:
 /// a sweep that silently exercised three positions would show up here as a 3.
 pub class Walk {
     pub positions: int = 0
@@ -429,7 +429,7 @@ fn section_one(r: Report) {
     r.eqi("back: it returns to row 0", up.lowest, 0)
     r.eqi("back: having started at the last row", up.highest, ROWS - 1)
 
-    // The gate sentence itself: the union of every window on the way down is
+    // The check sentence itself: the union of every window on the way down is
     // one unbroken run, and it is exactly the table.
     r.eqi("down: the windows are one unbroken run", down.breaks, 0)
     r.eqi("down: covering row 0", down.covers_low, 0)
@@ -452,7 +452,7 @@ fn section_one(r: Report) {
         up.positions == down.positions)
     r.yes("and it exercised six figures of positions", total > 100000)
 
-    // The window at the two ends, printed, so the numbers are in the golden
+    // The window at the two ends, printed, so the numbers are in the expected output
     // rather than only inside a counter.
     let at_top: Placement = g.window_at(0, VIEWPORT)
     let at_bottom: Placement = g.window_at(bottom_most, VIEWPORT)
@@ -564,7 +564,7 @@ fn section_two(r: Report) {
     r.eqi("the sweep rendered both ways over the whole table", renders, 2 * (ROWS / 50 + 1))
     r.yes("and rendered five figures of rows", rows_rendered > 10000)
 
-    // The HTML at one position, in full, so the shape is in the golden.
+    // The HTML at one position, in full, so the shape is in the expected output.
     let _2: bool = list.apply_range(1000, 3)
     let _3: int = renderer.flush()
     let writer: Serializer = new Serializer()

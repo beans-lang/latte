@@ -1,4 +1,4 @@
-// tests/circuit.b — the circuit as a state machine, gated.
+// tests/circuit.b — the circuit as a state machine, checked.
 //
 // This file is everything the circuit MEANS, driven by hand with no socket,
 // no clock and no fibers-that-are-not-brewed: what a client message does,
@@ -169,7 +169,7 @@ fn drained(c: Circuit) -> string {
 fn frame_count(c: Circuit) -> int { return c.take_outbox().len() }
 
 /// A panic report carries the source position of the panic, which would make
-/// this golden change every time a line moved in this file. The trace id and
+/// this expected output change every time a line moved in this file. The trace id and
 /// the message are the facts; the position is not.
 fn without_position(line: string) -> string {
     match line.find(" at ") {

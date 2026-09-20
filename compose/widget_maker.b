@@ -66,7 +66,7 @@ pub class WidgetMaker {
     /// An empty control of one kind, with no element behind it.
     ///
     /// The one exhaustive `match` over `WidgetKind`, so a new kind is a
-    /// compile error here rather than a missing line in a golden. A kind with
+    /// compile error here rather than a missing line in an expected output. A kind with
     /// no renderer is refused by name, before anything is built.
     pub static fn of_kind(kind: controls.WidgetKind,
                           context: scene.UiContext) -> Result<controls.Widget> {
@@ -95,7 +95,7 @@ pub class WidgetMaker {
             split_view => { return ok(new controls.SplitView(context)) }
             table => { return ok(new controls.Table(context)) }
             canvas => {
-                return err("<Canvas /> draws nothing on its own — give it a shape, as in <Rectangle /> or <Path />",
+                return err("<Canvas /> is not a tag you write — a shape IS the canvas. Put <Rectangle />, <Ellipse />, <Path /> or <ResourceImage /> where you wanted the canvas, inside a <Box> that gives it a size",
                            "needs_a_shape")
             }
             _ => {

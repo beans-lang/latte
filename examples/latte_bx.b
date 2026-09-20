@@ -37,7 +37,7 @@ fn usage() {
     io.eprintln("  --package <name>   the package the generated file declares")
     io.eprintln("")
     io.eprintln("A generated file is checked in — beside its source for html, in a")
-    io.eprintln("mirror for a canvas tree — and a drift gate regenerates and diffs it,")
+    io.eprintln("mirror for a canvas tree — and a drift check regenerates and diffs it,")
     io.eprintln("so a stale one fails the build rather than shipping.")
 }
 
@@ -54,8 +54,8 @@ fn main() {
     }
     // The vocabulary takes no input file and no option: it is the language,
     // not a translation of anything. `editors/shared/bx.json` is this string,
-    // and `tests/w2_editor_data.out` is the same string as a golden, so the
-    // gate says the two cannot drift.
+    // and `tests/w2_editor_data.out` is the same string as an expected output, so the
+    // check says the two cannot drift.
     if command == "vocabulary" {
         var target: bx.Target = bx.Target.html
         if args.len() == 3 && args[1] == "--target" {

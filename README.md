@@ -54,7 +54,8 @@ the layout, the state, the editing, the focus and the accessibility tree
 compiled to WebAssembly. `docs/browser.md` is how to build and run it,
 `docs/migration.md` is what changed for an existing application (nothing, unless
 you ask), `docs/notes.md` is the reasoning behind the decisions that are too
-long to sit in a comment, and `docs/unfinished.md` is what does not work yet.
+long to sit in a comment, `docs/table-performance.md` is what a frame of table
+scrolling costs and why, and `docs/unfinished.md` is what does not work yet.
 
 ```sh
 npm install && node tools/font_prepare.mjs
@@ -72,7 +73,7 @@ node tools/serve.mjs 8731   # then open /examples/showcase/index.html
   [state across the seam](#state-across-the-prerender-seam),
   [your own espresso app](#mounting-on-your-own-espresso-app)
 - [The examples](#the-examples) · [How the pieces fit](#how-the-pieces-fit) ·
-  [The gate](#the-gate) · [Status](#status)
+  [The check](#the-check) · [Status](#status)
 
 ## Requirements
 
@@ -126,13 +127,13 @@ example stylesheets are read relative to the working directory.
 
 ```bash
 beansc run examples/minimal/main.b -- serve 8080   # http://127.0.0.1:8080/
-beansc run examples/minimal/main.b -- check        # what the gate runs, no socket
+beansc run examples/minimal/main.b -- check        # what the check runs, no socket
 beansc run examples/counter.b                      # renders one page to stdout
 ```
 
 `run_main` gives every application the same two words: `check` exits after the
 scan, `serve <port>` binds a socket. An example whose default was a listening
-socket would hang the gate, which is why there is no bare default.
+socket would hang the check, which is why there is no bare default.
 
 ### The markup compiler
 
@@ -163,7 +164,7 @@ beside it; `<stem>_gen.b` is only what you get when you pass no `-o`.
 The compiler is build-time only. It imports `std.fs`; nothing under the module
 root imports `latte.bx`, so a program that ships a latte page never links it.
 
-### Running the gate
+### Running the check
 
 ```bash
 ./test.sh              # every suite and example, both backends
@@ -175,7 +176,7 @@ root imports `latte.bx`, so a program that ships a latte page never links it.
 ```
 
 A name that matches neither a suite nor an example is an error, not a quiet
-pass. So is a missing golden: a gate that skips on a missing input dies
+pass. So is a missing expected output: a check that skips on a missing input dies
 silently the first time the layout moves.
 
 ### The probes
@@ -191,7 +192,7 @@ probes/delete_faults.sh builder.b     # just one source file
 
 `delete_faults.sh` deletes one `faults.push` at a time and requires a check that
 *names that site* to turn red. It **rewrites the source files, so it must never
-run beside a gate.** Run it after touching a refusal.
+run beside a check.** Run it after touching a refusal.
 
 ## Markup
 
@@ -348,7 +349,7 @@ one `Antiforgery` is shared by construction rather than by remembering to.
 | `token_seconds` | `900` | how long an antiforgery token stays valid |
 | `persist` | `false` | carry `@persist` state across the prerender seam |
 | `persist_options` | 4096 B / 300 s | the island's byte cap and expiry |
-| `now` | `0` | `0` reads the wall clock; anything else is used as-is, which is what a golden-file test wants |
+| `now` | `0` | `0` reads the wall clock; anything else is used as-is, which is what an expected-output test wants |
 | `idle_ms`, `retention_ms`, `poll_ms`, `socket_ms` | | circuit timings |
 
 #### Entry points
@@ -591,7 +592,7 @@ examples/board/build-css.sh     # after changing a class name in the markup
 ```
 
 Node is needed only to rebuild that CSS, which is why it is a script and not a
-leg of the gate: a gate that needed npm would fail on a machine that has
+leg of the check: a check that needed npm would fail on a machine that has
 `beansc` and nothing else.
 
 ## How the pieces fit
@@ -622,29 +623,29 @@ leg of the gate: a gate that needed npm would fail on a machine that has
 directly, with no render pass and no diff.
 
 The core — frames, builder, differ, serializer — **imports no I/O at all**. The
-gate builds it for `wasm32-unknown-unknown` to hold that line, which is what
+check builds it for `wasm32-unknown-unknown` to hold that line, which is what
 keeps a future in-browser render mode possible. A core that grows an import of
 `std.fs` or `std.net` fails that leg.
 
 **`.bx` files compile to `.b`, and the generated `.b` is checked in.** Consumers
 of a latte package add a `require` row and import it — they install no markup
-compiler and run no build step. The gate regenerates every `.b` and diffs it, so
+compiler and run no build step. The check regenerates every `.b` and diffs it, so
 a stale generated file fails the build instead of shipping.
 
-## The gate
+## The check
 
 ```bash
 ./test.sh
 ```
 
-Both backends must print every golden file byte for byte. Native output is
-diffed against the committed golden, never against a fresh interpreter run.
+Both backends must print every expected output byte for byte. Native output is
+diffed against the committed expected output, never against a fresh interpreter run.
 
 Beyond the suites, it runs legs that answer questions a suite cannot:
 
 | leg | what it proves |
 |---|---|
-| `examples` | every entry builds, **runs**, and matches its golden on both backends |
+| `examples` | every entry builds, **runs**, and matches its expected output on both backends |
 | `examples/markup` | every checked-in `.b` is what the markup compiler makes of its `.bx` today |
 | `examples/packages` | every package of every nested example module still checks |
 | `component-type` | a `<Tag>` that is not a `Component` is refused by `beansc`, and one that is checks clean |
@@ -661,9 +662,9 @@ refusal disappearing.
 
 ## Status
 
-The framework is built and gated: pages, layouts, forms, streaming, the circuit,
+The framework is built and checked: pages, layouts, forms, streaming, the circuit,
 the differ, the wire, a service container, `@inject`, view-models, signals,
-`live`, `@memo`, and signed state across the prerender seam. The gate is 33
+`live`, `@memo`, and signed state across the prerender seam. The check is 33
 suites over 68 legs, both backends, byte-identical, and it drives a real Chrome.
 
 The API will still move.

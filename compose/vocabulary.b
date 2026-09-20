@@ -105,7 +105,9 @@ pub class Vocabulary {
     }
 
     /// The host property an attribute name sets, or -1.
-    pub static fn property_of(name: string) -> int {
+    pub static fn property_of(name: string) -> int { return NameMemo.instance.property_of(name) }
+
+    static fn compute_property_of(name: string) -> int {
         if name == "a11y_label" { return platform.S_A11Y_LABEL }
         if name == "items" { return CHOICES_PROPERTY }
         if name == "labels" { return TAB_LABELS_PROPERTY }
@@ -221,7 +223,9 @@ pub class Vocabulary {
     }
 
     /// How a property's value travels.
-    pub static fn kind_of_property(name: string) -> AttributeKind {
+    pub static fn kind_of_property(name: string) -> AttributeKind { return NameMemo.instance.kind_of(name) }
+
+    static fn compute_kind_of_property(name: string) -> AttributeKind {
         if name == "a11y_label" { return AttributeKind.text }
         if name == "items" { return AttributeKind.items }
         if name == "labels" { return AttributeKind.items }
@@ -288,7 +292,9 @@ pub class Vocabulary {
     ///
     /// `bx.canvas_is_placement_attribute` is the compiler's copy of the
     /// placement half, and `tests/w3_vocabulary.b` § 6 pairs the two.
-    pub static fn is_layout_name(name: string) -> bool {
+    pub static fn is_layout_name(name: string) -> bool { return NameMemo.instance.is_layout(name) }
+
+    static fn compute_is_layout_name(name: string) -> bool {
         return name == "spacing" || name == "line_spacing" || name == "padding" || name == "justify" ||
                name == "align" || name == "grow" || name == "shrink" ||
                name == "basis" || name == "flex" || name == "wrap" ||
@@ -367,5 +373,37 @@ pub class Vocabulary {
         if name == "space_around" { return some(layout.Justify.space_around) }
         if name == "space_evenly" { return some(layout.Justify.space_evenly) }
         return none
+    }
+}
+
+/// What a name means, worked out once.
+///
+/// Every table in `Vocabulary` is a walk down a list of string comparisons,
+/// and the builder asks three of them for every attribute of every element.
+/// A table of two hundred visible cells asked about a hundred thousand times
+/// for one frame, which was most of what a scroll that crossed a row cost.
+/// The tables are fixed for the life of the process, so each answer is kept.
+pub singleton class NameMemo {
+    properties: Map<string, int> = {}
+    kinds: Map<string, AttributeKind> = {}
+    layouts: Map<string, bool> = {}
+    fn init() {}
+    pub fn property_of(name: string) -> int {
+        match self.properties.get(name) { some(found) => { return found } none => {} }
+        let answer: int = Vocabulary.compute_property_of(name)
+        self.properties[name] = answer
+        return answer
+    }
+    pub fn kind_of(name: string) -> AttributeKind {
+        match self.kinds.get(name) { some(found) => { return found } none => {} }
+        let answer: AttributeKind = Vocabulary.compute_kind_of_property(name)
+        self.kinds[name] = answer
+        return answer
+    }
+    pub fn is_layout(name: string) -> bool {
+        match self.layouts.get(name) { some(found) => { return found } none => {} }
+        let answer: bool = Vocabulary.compute_is_layout_name(name)
+        self.layouts[name] = answer
+        return answer
     }
 }

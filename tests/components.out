@@ -86,7 +86,7 @@ component 0
   out
 
 
-== 7. what gate 5 asks for and latte does not check ==
+== 7. what check 5 asks for and latte does not check ==
 a required parameter on a CHILD component is NOT checked; see the comment here
 
 == 8. three levels, each with its own buffer ==

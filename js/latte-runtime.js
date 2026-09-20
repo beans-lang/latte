@@ -202,6 +202,20 @@ export class LatteRuntime {
                 return 0;
             },
 
+            latte_js_semantics_move(id, x, y, width, height, focused) {
+                if (!self.semanticsHost) return -1;
+                self.semanticsHost.move(typeof id === "bigint" ? id : BigInt(id),
+                                        x, y, width, height, focused === 1);
+                return 0;
+            },
+
+            latte_js_semantics_grid(id, row, column, rows, columns) {
+                if (!self.semanticsHost) return -1;
+                self.semanticsHost.grid(typeof id === "bigint" ? id : BigInt(id),
+                                        row, column, rows, columns);
+                return 0;
+            },
+
             latte_js_semantics_end() {
                 if (!self.semanticsHost) return -1;
                 self.semanticsHost.end();

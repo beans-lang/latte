@@ -1,5 +1,5 @@
-// Every suite, in every installed engine, against the same goldens. A missing
-// engine is named and does not pass: a green gate that ran nothing is a lie.
+// Every suite, in every installed engine, against the same expected outputs. A missing
+// engine is named and does not pass: a green check that ran nothing is a lie.
 import { chromium, firefox, webkit } from "playwright";
 import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -14,16 +14,16 @@ const ENGINES = { chromium, firefox, webkit };
 const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const wantEngines = (process.env.LATTE_ENGINES || "chromium,firefox,webkit").split(",");
 
-/// Every `<name>.wasm` in build/browser with a golden beside it. A `browser_`
-/// suite runs only here: it imports the drawing half, and has its own golden.
+/// Every `<name>.wasm` in build/browser with an expected output beside it. A `browser_`
+/// suite runs only here: it imports the drawing half, and has its own expected output.
 async function suites() {
     const built = await readdir(join(ROOT, "build/browser")).catch(() => []);
-    const golden = await readdir(join(ROOT, "tests/canvas/golden")).catch(() => []);
+    const expected = await readdir(join(ROOT, "tests/canvas/expected")).catch(() => []);
     const found = [];
     for (const file of built) {
         if (!file.endsWith(".wasm")) continue;
         const name = file.slice(0, -5);
-        if (!golden.includes(`${name}.out`)) continue;
+        if (!expected.includes(`${name}.out`)) continue;
         if (only.length && !only.includes(name)) continue;
         found.push(name);
     }
@@ -71,7 +71,7 @@ async function main() {
         page.on("pageerror", (error) => consoleErrors.push(String(error)));
 
         for (const name of names) {
-            const want = await readFile(join(ROOT, `tests/canvas/golden/${name}.out`), "utf8");
+            const want = await readFile(join(ROOT, `tests/canvas/expected/${name}.out`), "utf8");
             let result;
             try {
                 result = await runSuite(page, name);
@@ -83,7 +83,7 @@ async function main() {
             ran++;
             const got = result.output;
             if (got !== want) {
-                console.error(`FAIL ${engineName}/${name}: output differs from the golden`);
+                console.error(`FAIL ${engineName}/${name}: output differs from the expected output`);
                 const gotLines = got.split("\n");
                 const wantLines = want.split("\n");
                 for (let i = 0; i < Math.max(gotLines.length, wantLines.length); i++) {
@@ -98,7 +98,7 @@ async function main() {
                 console.error(`FAIL ${engineName}/${name}: the module answered ${result.code}`);
                 failures++;
             } else {
-                console.log(`ok ${engineName}/${name} — matches the golden (${result.pages} pages, ${result.live} bytes live)`);
+                console.log(`ok ${engineName}/${name} — matches the expected output (${result.pages} pages, ${result.live} bytes live)`);
             }
         }
         if (consoleErrors.length) {
@@ -113,14 +113,14 @@ async function main() {
 
     for (const reason of skipped) console.log(`SKIP ${reason} — this engine proved nothing`);
     if (ran === 0) {
-        console.error("no engine ran: every one was skipped, so this gate proved nothing");
+        console.error("no engine ran: every one was skipped, so this check proved nothing");
         process.exit(1);
     }
     if (failures) {
         console.error(`${failures} failure(s)`);
         process.exit(1);
     }
-    console.log(`browser gate green: ${ran} run(s) across ${wantEngines.length - skipped.length} engine(s)`);
+    console.log(`browser check passed: ${ran} run(s) across ${wantEngines.length - skipped.length} engine(s)`);
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

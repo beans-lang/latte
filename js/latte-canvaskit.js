@@ -29,6 +29,9 @@ export class CanvasKitSurface {
         this.paragraphs = new Map();
         this.images = new Map();
         this.nextHandle = 1;
+        // Whether the page's CSS decides how wide this canvas is, or it
+        // follows its own width/height attributes. Null until asked.
+        this.pageSizes = null;
         this.fontState = 0;          // 0 none, 1 loading, 2 ready, -1 failed
         this.fontFaces = [];
         this.fontFamily = null;
@@ -40,7 +43,7 @@ export class CanvasKitSurface {
         this.commands = 0;
         this.frames = 0;
         // Frames copied back through the CPU, which should be zero for every
-        // frame a reader sees. A number a gate reads, not a claim in a comment.
+        // frame a reader sees. A number a check reads, not a claim in a comment.
         this.readbacks = 0;
         // The paint objects. Two, reused: a Paint is a Skia object and one per
         // command would be an allocation and a delete per rectangle.
@@ -65,10 +68,15 @@ export class CanvasKitSurface {
             return true;
         }
         this.dropSurface();
+        this.notePageSizes();
         this.element.width = backingWidth;
         this.element.height = backingHeight;
-        this.element.style.width = `${this.width}px`;
-        this.element.style.height = `${this.height}px`;
+        // Only for a canvas the page has not sized. Writing it on one the page
+        // did size pins it at its first measurement, and it can never grow.
+        if (this.pageSizes === false) {
+            this.element.style.width = `${this.width}px`;
+            this.element.style.height = `${this.height}px`;
+        }
 
         if (!this.wantSoftware) {
             try {
@@ -97,6 +105,29 @@ export class CanvasKitSurface {
         return false;
     }
 
+    /// Asks the layout engine, once, whether the page sizes this canvas: move
+    /// the width attribute and see whether the box follows. A canvas with no
+    /// CSS size of its own lays out at its attribute size and so would chase
+    /// the backing store, which is the one case that wants an inline size.
+    notePageSizes() {
+        if (this.pageSizes !== null) return;
+        const style = this.element.style;
+        const keptWidth = style.width;
+        const keptHeight = style.height;
+        style.width = "";
+        style.height = "";
+        const attribute = this.element.width;
+        const before = this.element.getBoundingClientRect().width;
+        this.element.width = attribute + 64;
+        const after = this.element.getBoundingClientRect().width;
+        this.element.width = attribute;
+        // A box of zero means the canvas is not laid out yet and the question
+        // has no answer. Leave it open and keep the inline size until it has.
+        if (before > 0) this.pageSizes = Math.abs(after - before) < 0.5;
+        style.width = keptWidth;
+        style.height = keptHeight;
+    }
+
     dropSurface() {
         if (this.surface && !this.surface.isDeleted()) this.surface.delete();
         this.surface = null;
@@ -111,7 +142,7 @@ export class CanvasKitSurface {
     }
 
     /// Forces the CPU path from here on. What the page calls when WebGL has
-    /// failed for good, and what a gate calls to compare the two.
+    /// failed for good, and what a check calls to compare the two.
     useSoftware(yes = true) {
         if (this.wantSoftware === yes) return;
         this.wantSoftware = yes;
@@ -400,8 +431,34 @@ export class CanvasKitSurface {
         // this is the largest finite layout width it does take.
         paragraph.layout(width > 0 ? width : 16777216);
         const handle = this.nextHandle++;
-        this.paragraphs.set(handle, { paragraph, text, wrapped: width > 0 });
+        this.paragraphs.set(handle, { paragraph, text, wrapped: width > 0,
+                                      shape: { size, weight, tracking, align, color } });
         return handle;
+    }
+
+    /// The first line's metrics. Skia reports no lines at all for empty text,
+    /// and a caret in an empty field still sits on the font's baseline — so
+    /// the answer comes from a one-space probe in the same style instead of
+    /// zeros, which put the caret at the bottom of the box.
+    lineMetricsFor(handle) {
+        const entry = this.paragraphs.get(handle);
+        if (!entry) return null;
+        const lines = entry.paragraph.getLineMetrics();
+        if (lines.length) return lines[0];
+        const shape = entry.shape;
+        if (!shape) return null;
+        const key = `${shape.size}|${shape.weight}|${shape.tracking}`;
+        this.emptyProbes = this.emptyProbes || new Map();
+        let probe = this.emptyProbes.get(key);
+        if (probe === undefined) {
+            const made = this.makeParagraph(" ", shape.size, shape.weight,
+                                            shape.tracking, shape.align, 0, shape.color);
+            probe = made < 0 ? null : made;
+            this.emptyProbes.set(key, probe);
+        }
+        if (probe === null) return null;
+        const probeLines = this.paragraphAt(probe)?.getLineMetrics() || [];
+        return probeLines.length ? probeLines[0] : null;
     }
 
     paragraphAt(handle) {
@@ -478,6 +535,14 @@ export class CanvasKitSurface {
     /// Paragraphs and images still held. A scene that closed and left one
     /// behind shows here as a number that did not come back to zero.
     resourceCount() { return this.paragraphs.size + this.images.size; }
+
+    /// Images still fetching or decoding. A screenshot taken before this is
+    /// zero catches whatever had arrived, which is not the same twice.
+    imagesPending() {
+        let waiting = 0;
+        for (const entry of this.images.values()) if (entry.state === 0) waiting++;
+        return waiting;
+    }
 
     close() {
         for (const handle of [...this.paragraphs.keys()]) this.releaseParagraph(handle);
@@ -580,11 +645,9 @@ export function canvasKitImports(runtime, surface) {
         },
 
         latte_js_ck_paragraph_metrics: (handle, out) => {
-            const paragraph = surface.paragraphAt(handle);
-            if (!paragraph) return -1;
-            const lines = paragraph.getLineMetrics();
-            if (!lines.length) { writeReals(out, [0, 0, 0, 0]); return 0; }
-            const first = lines[0];
+            if (!surface.paragraphAt(handle)) return -1;
+            const first = surface.lineMetricsFor(handle);
+            if (!first) { writeReals(out, [0, 0, 0, 0]); return 0; }
             writeReals(out, [first.ascent, first.descent, first.height, first.baseline]);
             return 0;
         },

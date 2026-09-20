@@ -64,7 +64,7 @@ pub enum WidgetKind {
     /// platform's: `NSDatePicker`, `UIDatePicker` and `SysDateTimePick32` can
     /// all show a time and `GtkCalendar` is a grid of squares with nowhere to
     /// put one. A kind whose value round-trips an afternoon on three platforms
-    /// and loses it on the fourth is found by a user rather than by a gate.
+    /// and loses it on the fourth is found by a user rather than by a check.
     date_picker
     /// A colour, and a way to pick another — and **not on every platform**:
     /// the Win32 common controls have no colour well. `ChooseColor` is a

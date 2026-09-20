@@ -28,7 +28,7 @@ pub class Card extends Component {
     /// caller's list would silently stop updating: same HTML, no fault, no
     /// error, wrong page.
     ///
-    /// The consumer's golden is what says so. Renaming an item changes neither
+    /// The consumer's expected output is what says so. Renaming an item changes neither
     /// the title nor the count, and the renamed row still appears — because
     /// this component renders whenever its parent does.
 

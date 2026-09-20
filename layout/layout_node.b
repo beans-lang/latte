@@ -11,11 +11,11 @@ import latte.geometry
 /// the widget it stands for with an integer `key`, and whoever owns the
 /// widgets turns keys back into controls after the solve.
 ///
-/// That separation is what makes the layout goldens meaningful: they run on
+/// That separation is what makes the layout expected outputs meaningful: they run on
 /// every CI runner, under both backends, with no display and no foreign call,
 /// so a frame that comes out wrong is a solver bug and never a font.
 pub class LayoutNode {
-    /// The name goldens and debug dumps print. Not an identifier — two
+    /// The name expected outputs and debug dumps print. Not an identifier — two
     /// siblings may share one, and the engine never looks at it.
     pub name: string = ""
 
@@ -39,7 +39,7 @@ pub class LayoutNode {
     ///
     /// Filled by `controls.WidgetLayout` from `ctd_view_content_inset`, and
     /// left at zero by anything that builds a tree without controls, which is
-    /// what keeps this package free of host calls and its goldens runnable on
+    /// what keeps this package free of host calls and its expected outputs runnable on
     /// a machine with no display.
     pub chrome: geometry.EdgeInsets = geometry.EdgeInsets {}
 

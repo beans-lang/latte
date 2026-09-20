@@ -1,0 +1,15 @@
+== 1 the two shapes of a <Canvas> markup cannot write ==
+-- a bare <Canvas />
+   refused: <Canvas /> is not a tag you write — a shape IS the canvas. Put <Rectangle />, <Ellipse />, <Path /> or <ResourceImage /> where you wanted the canvas, inside a <Box> that gives it a size
+-- a <Canvas> with a shape inside it
+   refused: <Canvas> holds 1 children and lays nothing out — and nesting a shape is not how a canvas is drawn. Drop the <Canvas> and write the shape itself inside a <Box>
+
+== 2 and the form that draws ==
+-- the shape itself, inside a <Box>
+   mounted
+
+ok the bare refusal does not ask for a nested shape
+ok it names the tag to write instead
+ok it says the shape replaces the canvas
+ok the nested refusal says to drop the <Canvas>
+ok and the working form raises nothing

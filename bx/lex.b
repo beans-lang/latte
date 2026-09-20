@@ -155,7 +155,7 @@ pub class Token {
         }
     }
 
-    /// A one-line form for a golden file.
+    /// A one-line form for an expected output.
     pub fn show() -> string {
         return match self.kind {
             name => "name {self.value} @{self.span.show()}",

@@ -66,9 +66,9 @@ pub abstract class ChoiceRender extends RenderObject {
     }
     pub override fn set_value_as_user(index: int, value: f64) -> Result<bool> { return self.set_integer(platform.P_SELECTED, index) }
     pub override fn value_event_text(index: int, value: f64) -> string { return self.selected_text() }
-    pub override fn semantics() -> SemanticsNode {
+    pub override fn semantics_at(bounds: geometry.Rect) -> SemanticsNode {
         let label: string = if self.a11y_name == "" { self.words } else { self.a11y_name }
-        return new SemanticsNode(self.identity, self.role(), label, self.selected_text(), self.bounds, self.enabled)
+        return new SemanticsNode(self.identity, self.role(), label, self.selected_text(), bounds, self.enabled)
     }
     pub override fn measure(available: geometry.Size) -> Result<geometry.Size> {
         let padding: f64 = self.theme.control_padding()

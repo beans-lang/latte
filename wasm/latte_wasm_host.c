@@ -167,7 +167,7 @@ float fmodf(float x, float y) { return (float)fmod((double)x, (double)y); }
 
 /* ---- the allocator -------------------------------------------------------
  *
- * A first-fit free list with coalescing, over one growing region.
+ * Size-class free lists with coalescing, over one growing region.
  *
  * A bump pointer would be shorter and is what most WebAssembly shims ship. It
  * is also wrong for this program: Latte mounts and unmounts scenes, and a
@@ -180,6 +180,12 @@ float fmodf(float x, float y) { return (float)fmod((double)x, (double)y); }
  * word before a block holds the previous block's size so a free can look left.
  * Freed neighbours merge in both directions, so a long run of differently
  * sized allocations does not shred the heap into unusable gaps.
+ *
+ * This was a first-fit scan over every block, free or not, which is quadratic
+ * for a page that allocates every frame: on the showcase's table one
+ * `new Element` took 10.7 microseconds and building the visible cells took
+ * 3.3 ms of a 16.7 ms frame, all of it here. Per-size lists of free blocks
+ * make the common case a pop off a list head.
  */
 
 #define LATTE_ALIGN      16u
@@ -199,18 +205,52 @@ typedef struct Block {
     u32 flags;           /* LATTE_IN_USE, or 0 */
     struct Block *prev;  /* the block below this one, or 0 */
     struct Block *next;  /* the block above this one, or 0 */
-    u32 pad0;
-    u32 pad1;
+    /* The two links that make this block findable when it is free. They are
+     * meaningless while it is in use, which is why they cost nothing: the
+     * header already had the room. */
+    struct Block *free_prev;
+    struct Block *free_next;
     u32 pad2;
     u32 shift;           /* payload[-1]: how far the caller's pointer was moved */
 } Block;
 
 #define LATTE_HEADER     ((u32)sizeof(Block))
 
+/* One list per size, up to half a kilobyte, and one for everything above it.
+ * Every block in an exact class is exactly that size, so the head of the first
+ * non-empty class at or above what was asked for always fits — no search. */
+#define LATTE_CLASSES    33
+
 static Block *latte_first = 0;
 static Block *latte_last = 0;
+static Block *latte_free[LATTE_CLASSES];
 static u8 *latte_top = 0;      /* one past the last byte we own */
 static u64 latte_live = 0;     /* payload bytes currently handed out */
+
+static u32 latte_class(u32 size) {
+    u32 slot = size / LATTE_ALIGN;
+    if (slot >= LATTE_CLASSES) slot = LATTE_CLASSES - 1;
+    return slot;
+}
+
+/* A free block joins its class; one that is about to be used or merged leaves
+ * it. Every block with LATTE_IN_USE clear is on exactly one of these lists. */
+static void latte_free_push(Block *block) {
+    u32 slot = latte_class(block->size);
+    block->free_prev = 0;
+    block->free_next = latte_free[slot];
+    if (latte_free[slot]) latte_free[slot]->free_prev = block;
+    latte_free[slot] = block;
+}
+
+static void latte_free_pull(Block *block) {
+    u32 slot = latte_class(block->size);
+    if (block->free_prev) block->free_prev->free_next = block->free_next;
+    else latte_free[slot] = block->free_next;
+    if (block->free_next) block->free_next->free_prev = block->free_prev;
+    block->free_prev = 0;
+    block->free_next = 0;
+}
 
 static u32 latte_round(u64 bytes) {
     u64 rounded = (bytes + (LATTE_ALIGN - 1)) & ~(u64)(LATTE_ALIGN - 1);
@@ -243,6 +283,8 @@ static Block *latte_extend(u32 bytes) {
     block->flags = 0;
     block->prev = latte_last;
     block->next = 0;
+    block->free_prev = 0;
+    block->free_next = 0;
     block->shift = 0;
     if (latte_last) latte_last->next = block;
     if (!latte_first) latte_first = block;
@@ -251,8 +293,9 @@ static Block *latte_extend(u32 bytes) {
     return block;
 }
 
-/* Splits `block` when the tail is worth keeping. A split that left a
- * header-sized scrap would cost more in bookkeeping than it returns. */
+/* Splits `block` when the tail is worth keeping, and puts the tail on a free
+ * list. A split that left a header-sized scrap would cost more in bookkeeping
+ * than it returns. `block` itself must already be off every free list. */
 static void latte_split(Block *block, u32 wanted) {
     if (block->size < wanted + LATTE_HEADER + LATTE_ALIGN) return;
     Block *tail = (Block *)(latte_payload(block) + wanted);
@@ -265,16 +308,28 @@ static void latte_split(Block *block, u32 wanted) {
     else latte_last = tail;
     block->next = tail;
     block->size = wanted;
+    latte_free_push(tail);
+}
+
+static Block *latte_use(Block *block, u32 wanted) {
+    latte_free_pull(block);
+    latte_split(block, wanted);
+    block->flags |= LATTE_IN_USE;
+    latte_live += block->size;
+    return block;
 }
 
 static Block *latte_take(u32 wanted) {
-    for (Block *at = latte_first; at; at = at->next) {
-        if ((at->flags & LATTE_IN_USE) == 0 && at->size >= wanted) {
-            latte_split(at, wanted);
-            at->flags |= LATTE_IN_USE;
-            latte_live += at->size;
-            return at;
-        }
+    u32 slot = latte_class(wanted);
+    /* Every block in an exact class is that size, so the first head found is
+     * the smallest block that fits. */
+    for (u32 at = slot; at < LATTE_CLASSES - 1; at++) {
+        if (latte_free[at]) return latte_use(latte_free[at], wanted);
+    }
+    /* The last class is every size above the exact ones, so it is searched —
+     * over free blocks only, and there are few of them. */
+    for (Block *at = latte_free[LATTE_CLASSES - 1]; at; at = at->free_next) {
+        if (at->size >= wanted) return latte_use(at, wanted);
     }
     Block *fresh = latte_extend(wanted);
     if (!fresh) return 0;
@@ -325,6 +380,7 @@ void beans_host_free(void *block) {
 
     Block *above = header->next;
     if (above && (above->flags & LATTE_IN_USE) == 0) {
+        latte_free_pull(above);
         header->size += above->size + LATTE_HEADER;
         header->next = above->next;
         if (above->next) above->next->prev = header;
@@ -332,11 +388,15 @@ void beans_host_free(void *block) {
     }
     Block *below = header->prev;
     if (below && (below->flags & LATTE_IN_USE) == 0) {
+        latte_free_pull(below);
         below->size += header->size + LATTE_HEADER;
         below->next = header->next;
         if (header->next) header->next->prev = below;
         else latte_last = below;
+        latte_free_push(below);
+        return;
     }
+    latte_free_push(header);
 }
 
 void *beans_host_realloc(void *block, u64 size) {
@@ -350,7 +410,9 @@ void *beans_host_realloc(void *block, u64 size) {
      * beans_raw_free — so this is a refusal rather than a case to handle. */
     if (header->shift != 0) return 0;
     if (header->shift == 0 && header->size >= wanted) {
+        u32 was = header->size;
         latte_split(header, wanted);
+        latte_live -= was - header->size;
         return block;
     }
 
@@ -362,6 +424,7 @@ void *beans_host_realloc(void *block, u64 size) {
         header->size + LATTE_HEADER + above->size >= wanted) {
         u32 was = header->size;
         latte_live -= was;
+        latte_free_pull(above);
         header->size += above->size + LATTE_HEADER;
         header->next = above->next;
         if (above->next) above->next->prev = header;
@@ -403,7 +466,7 @@ int beans_host_parse_f64(const char *text, double *out, const char **end) {
 }
 
 /* How many bytes are handed out right now, and how big the heap has grown.
- * The lifecycle gate reads both: a mount/unmount loop must leave the first
+ * The lifecycle check reads both: a mount/unmount loop must leave the first
  * unchanged and must stop moving the second. */
 __attribute__((export_name("latte_heap_live")))
 u64 latte_heap_live(void) { return latte_live; }

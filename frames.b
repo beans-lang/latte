@@ -101,7 +101,7 @@ pub class Frames {
     pub fn set(index: int, frame: Frame) { self.items[index] = frame }
 
     /// One frame per line, indented by depth. A one-line dump is unreadable in
-    /// a failing diff, and a golden file is read by a person exactly once —
+    /// a failing diff, and an expected output is read by a person exactly once —
     /// when it breaks.
     pub fn dump() -> string {
         var out: fmt.StringBuilder = new fmt.StringBuilder()

@@ -7,6 +7,6 @@ kind library
 #
 # `require path` resolves against THIS manifest's directory, so `../..` is the
 # latte checkout whether this tree is `community-libs/latte` or a worktree. A
-# published library would carry a git row instead; a path row is what a gate
+# published library would carry a git row instead; a path row is what a check
 # can run without a network.
 require path "../.."

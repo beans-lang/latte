@@ -1,33 +1,47 @@
-<Box width={self.total_width} background={self.card} border_color={self.separator} border_width={1}>
-  $if self.total_rows == 0 {
-    <Label x={6} y={self.header_height + 6.0} text="No rows" text_color={self.muted} font_size={self.font_size} />
-  }
-  $for row in self.rows {
-    <HStack key={"row-{row.index}"} y={row.top} height={self.row_height} width={self.total_width}
-            spacing={0} align="center" padding_x={6}
-            background={if row.selected { self.selection } else if row.index % 2 == 1 { self.stripe } else { "#00000000" }}>
-      $for column in 0..row.cells.len() {
-        $if row.index == self.editing_row && column == self.editing_column {
-          <TextField key={"editor-{row.index}-{column}"} text={row.cells[column]}
-                     width={self.widths[column]} height={self.row_height}
-                     on:commit={fn(e: UiEvent) { self.commit(row.index, column, e.text) }}
-                     on:key_down={fn(e: UiEvent) { self.editor_key(e) }} />
-        } else {
-          <Label key={"cell-{row.index}-{column}"} text={row.cells[column]}
-                 width={self.widths[column]} font_size={self.font_size}
-                 text_color={if row.selected { self.on_accent } else { self.ink }}
-                 background="#00000000" />
+<Box width={self.total_width} height={self.height} background={self.card} border_color={self.separator} border_width={1}>
+  <Box key={"body"} x={0} y={0} width={self.total_width} height={self.height}>
+    $if self.total_rows == 0 {
+      <Label x={self.column_inset} y={self.header_height + 6.0} text="No rows" text_color={self.muted} font_size={self.font_size} />
+    }
+    $for row in self.rows {
+      <HStack key={"r{row.index}"} x={self.strip_x} y={row.top} height={self.row_height}
+              width={self.strip_width} spacing={0} align="center" padding_x={self.column_inset}
+              background={if row.selected { self.selection } else if row.index % 2 == 1 { self.stripe } else { "#00000000" }}>
+        $for column in 0..row.cells.len() {
+          $if row.index == self.editing_row && self.first_column + column == self.editing_column {
+            <TextField key={"e{self.first_column + column}"} text={row.cells[column]}
+                       width={self.widths[column]} height={self.row_height}
+                       on:commit={fn(e: UiEvent) { self.commit(row.index, self.editing_column, e.text) }}
+                       on:key_down={fn(e: UiEvent) { self.editor_key(e) }} />
+          } else {
+            <Label key={"c{self.first_column + column}"} text={row.cells[column]}
+                   width={self.widths[column]} font_size={self.font_size}
+                   text_color={if row.selected { self.on_accent } else { self.ink }}
+                   background="#00000000" />
+          }
         }
+      </HStack>
+    }
+  </Box>
+  <Box key={"header"} x={0} y={0} width={self.total_width} height={self.header_height} background={self.grouped}>
+    <HStack x={self.strip_x} y={0} height={self.header_height} width={self.strip_width}
+            spacing={0} align="center" padding_x={self.column_inset}>
+      $for column in 0..self.titles.len() {
+        <Label key={"h{self.first_column + column}"} text={self.titles[column]} width={self.widths[column]}
+               font_size={self.footnote} text_color={self.muted} />
       }
     </HStack>
-  }
-  <HStack y={0} height={self.header_height} width={self.total_width} spacing={0}
-          align="center" padding_x={6} background={self.grouped}>
-    $for column in 0..self.titles.len() {
-      <Label key={"header-{column}"} text={self.titles[column]} width={self.widths[column]}
-             font_size={self.footnote} text_color={self.muted} />
-    }
-  </HStack>
+  </Box>
+  <Box key={"rowbar"} x={self.row_bar_x} y={self.row_bar_y}
+       width={self.bar_thickness} height={self.row_bar_height}>
+    <Rectangle x={0} y={0} width={self.bar_thickness} height={self.row_thumb_height}
+               fill={self.faint} corner_radius={self.bar_thickness / 2.0} />
+  </Box>
+  <Box key={"columnbar"} x={self.column_bar_x} y={self.column_bar_y}
+       width={self.column_bar_width} height={self.bar_thickness}>
+    <Rectangle x={0} y={0} width={self.column_thumb_width} height={self.bar_thickness}
+               fill={self.faint} corner_radius={self.bar_thickness / 2.0} />
+  </Box>
 </Box>
 <beans>
 package templates
@@ -41,6 +55,13 @@ pub partial class TableTemplate extends compose.TableControlTemplate {
     actions: Option<scene.ControlActions> = none
     pub fn init() { super.init() }
     pub override fn bind_actions(actions: scene.ControlActions) { self.actions = some(actions) }
+    /// The two bands a scroll moves. Named here rather than found by position:
+    /// which node scrolls is a fact about this markup, and a template that
+    /// rearranged its boxes should not quietly stop scrolling.
+    pub override fn on_mount(stage: compose.Stage) {
+        self.adopt_bands(stage.widget("body"), stage.widget("header"),
+                         stage.widget("rowbar"), stage.widget("columnbar"))
+    }
     pub fn commit(row: int, column: int, text: string) {
         match self.actions {
             some(actions) => { actions.commit_cell(row, column, text).expect("commit a table cell") }

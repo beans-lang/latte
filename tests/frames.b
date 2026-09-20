@@ -1,6 +1,6 @@
-// The slot-id gate, and the Builder's refusals.
+// The slot-id check, and the Builder's refusals.
 //
-// This suite exists because everything it asserts was WORKING and UNGATED. A
+// This suite exists because everything it asserts was WORKING and UNCHECKED. A
 // regression to keying the mount table by the bare sequence number would have
 // gone green in this repo, because the one probe that exercised `component<T>`
 // put it OUTSIDE the keyed region. A single keyed row proves nothing — this
@@ -36,7 +36,7 @@ import {Builder, Callback, Component, DirtySink, Frame, FocusEvent, InputEvent,
 
 // ---------------------------------------------------------------- reporting
 //
-// Concrete values go in the golden so drift shows as a diff; the invariants
+// Concrete values go in the expected output so drift shows as a diff; the invariants
 // that matter get an explicit ok/FAIL line so a person reading a failure is
 // told what was supposed to be true, not left to compare two numbers.
 pub class Report {
@@ -678,7 +678,7 @@ fn refusals() -> List<Refusal> {
         // The half of the rule that only the differ needs: within one seq,
         // NAMES must increase too, because the differ merges the two attribute
         // runs on `(seq, name)` and the applier keeps its slots in that order.
-        // A run the applier cannot reproduce is a gate-3 divergence, so it is
+        // A run the applier cannot reproduce is a check-3 divergence, so it is
         // refused here instead.
         b.open(0, "div")
         b.attr(1, "z", "1")
@@ -1624,7 +1624,7 @@ fn dirty_sink(r: Report) {
 //   4. a POSITIVE CONTROL beside it — the nearest legal input, which must be
 //      accepted and must render. Without one you cannot tell "refused for the
 //      right reason" from "refused earlier, for a coarser one", and the
-//      message in the golden is the only thing that would have told you.
+//      message in the expected output is the only thing that would have told you.
 //
 // A refusal nobody has tried to break proves nothing. The worst bug this
 // project found this way was a live refusal no input could reach, because a
@@ -1643,7 +1643,7 @@ fn dirty_sink(r: Report) {
 /// One fault site, one trip, one control.
 pub class Site {
     /// The report site, named by the method it lives in and its message. A
-    /// name and not a line number, because a line number in a golden goes
+    /// name and not a line number, because a line number in an expected output goes
     /// stale the first time anything above it moves.
     pub site: string = ""
     /// This case's own name — one site can be reached by several shapes.

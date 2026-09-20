@@ -1,4 +1,4 @@
-// Gate 8, first row: chunk boundaries at EVERY byte split.
+// Check 8, first row: chunk boundaries at EVERY byte split.
 //
 // The three claims this suite makes, in the order they matter:
 //
@@ -277,7 +277,7 @@ fn near_miss_html() -> string {
 // ---------------------------------------------------------------- the report
 
 /// A check that prints its own verdict. `probes/delete_faults.sh` reads the
-/// `FAIL <case>` lines, so a case that only writes a value into a golden
+/// `FAIL <case>` lines, so a case that only writes a value into an expected output
 /// cannot be mapped back to the site it guards.
 pub class Report {
     pub checks: int = 0

@@ -76,6 +76,43 @@ export function attachInput(element, handlers) {
     let composing = false;
     let captured = null;
 
+    // How many clicks this press is part of.
+    //
+    // **A pointer event's `detail` is zero, by specification.** Only `click`,
+    // `auxclick` and `contextmenu` carry a count, and those arrive after the
+    // `pointerup` Latte delivers — so reading `detail` here answered 1 for
+    // every press, and nothing that needed a double click ever saw one: a
+    // table cell could not be opened for editing with the mouse at all.
+    //
+    // So the run is counted here, the way a toolkit counts it: a press soon
+    // after the last one, close to it, and with the same button continues it.
+    // Half a second is what macOS and Windows both default to, and neither
+    // exposes the user's setting to a page.
+    const DOUBLE_CLICK_MS = 500;
+    const DOUBLE_CLICK_SLOP = 5;
+    let clicks = 0;
+    let clickedAt = -1;
+    let clickedX = 0;
+    let clickedY = 0;
+    let clickedButton = -1;
+
+    const countClick = (event, x, y) => {
+        const button = event.button;
+        const near = Math.abs(x - clickedX) <= DOUBLE_CLICK_SLOP &&
+                     Math.abs(y - clickedY) <= DOUBLE_CLICK_SLOP;
+        if (clickedAt >= 0 && button === clickedButton && near &&
+            event.timeStamp - clickedAt <= DOUBLE_CLICK_MS) {
+            clicks += 1;
+        } else {
+            clicks = 1;
+        }
+        clickedAt = event.timeStamp;
+        clickedX = x;
+        clickedY = y;
+        clickedButton = button;
+        return clicks;
+    };
+
     on(element, "pointerdown", (event) => {
         // Capture, so a drag that leaves the canvas keeps arriving. In a try:
         // Firefox throws for an unknown pointer id, which would lose the click.
@@ -88,7 +125,7 @@ export function attachInput(element, handlers) {
         element.focus({ preventScroll: true });
         const [x, y] = pointAt(event);
         handlers.pointer(EVENT.POINTER_DOWN, x, y,
-                         BUTTON[event.button] || 1, event.detail || 1,
+                         BUTTON[event.button] || 1, countClick(event, x, y),
                          modifiersOf(event));
         event.preventDefault();
     });
@@ -105,8 +142,10 @@ export function attachInput(element, handlers) {
             captured = null;
         }
         const [x, y] = pointAt(event);
+        // The release belongs to the press it ends, so it carries that count
+        // rather than starting a new one.
         handlers.pointer(EVENT.POINTER_UP, x, y,
-                         BUTTON[event.button] || 1, event.detail || 1,
+                         BUTTON[event.button] || 1, clicks || 1,
                          modifiersOf(event));
     };
     on(element, "pointerup", release);
@@ -125,25 +164,34 @@ export function attachInput(element, handlers) {
         event.preventDefault();
     }, { passive: false });
 
-    on(element, "keydown", (event) => {
-        if (composing) return;
-        const code = keyCodeOf(event);
-        if (code === null) return;
-        const text = event.key.length === 1 ? event.key : "";
-        handlers.key(EVENT.KEY_DOWN, code, text, modifiersOf(event));
-        // Tab would move focus out and the arrows would scroll the page.
-        // Latte has its own focus order and scrolling, so both are refused.
-        if (code !== KEY_CHARACTER || event.metaKey || event.ctrlKey) {
-            if (event.key !== "F5" && event.key !== "F12") event.preventDefault();
-        }
-    });
+    // Both the canvas and the editing element, because whichever has focus is
+    // where a key arrives — and while a field is being edited that is the
+    // editor, which lives beside the canvas and not inside it. Bound to the
+    // canvas alone, Backspace and the arrows never reached latte at all.
+    const keyTargets = [element];
+    if (handlers.editing && handlers.editing.element) keyTargets.push(handlers.editing.element);
 
-    on(element, "keyup", (event) => {
-        if (composing) return;
-        const code = keyCodeOf(event);
-        if (code === null) return;
-        handlers.key(EVENT.KEY_UP, code, "", modifiersOf(event));
-    });
+    for (const target of keyTargets) {
+        on(target, "keydown", (event) => {
+            if (composing) return;
+            const code = keyCodeOf(event);
+            if (code === null) return;
+            const text = event.key.length === 1 ? event.key : "";
+            handlers.key(EVENT.KEY_DOWN, code, text, modifiersOf(event));
+            // Tab would move focus out and the arrows would scroll the page.
+            // Latte has its own focus order and scrolling, so both are refused.
+            if (code !== KEY_CHARACTER || event.metaKey || event.ctrlKey) {
+                if (event.key !== "F5" && event.key !== "F12") event.preventDefault();
+            }
+        });
+
+        on(target, "keyup", (event) => {
+            if (composing) return;
+            const code = keyCodeOf(event);
+            if (code === null) return;
+            handlers.key(EVENT.KEY_UP, code, "", modifiersOf(event));
+        });
+    }
 
     // Text arrives at the editing element `latte-editing.js` owns and goes
     // through the *text* entry, never the key one. Why: docs/notes.md.

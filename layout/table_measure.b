@@ -6,7 +6,7 @@ import latte.geometry
 /// Synthetic measurements, keyed the same way real ones are.
 ///
 /// Two jobs. In the test suite it makes the layout engine deterministic: every
-/// golden file holds frames computed from numbers written down in the test, so
+/// expected output holds frames computed from numbers written down in the test, so
 /// a failure means the solver changed, never that a font did. In an
 /// application it is the stand-in a headless tool uses — a screenshot differ, a
 /// layout linter — where no window server exists to ask.

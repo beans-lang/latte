@@ -213,7 +213,7 @@ pub struct Attribute {
         return Attribute.of_whole(property, 0)
     }
 
-    /// The attribute as a golden file prints it: `enabled=false`, `text="Buy"`.
+    /// The attribute as an expected output prints it: `enabled=false`, `text="Buy"`.
     pub fn show() -> string {
         match self.kind {
             text => {
@@ -223,7 +223,7 @@ pub struct Attribute {
             real => { return "{property_name(self.property)}={self.number}" }
             whole => {
                 // A packed colour is the one whole number a reader cannot
-                // read. These goldens exist to be read by people, and
+                // read. These expected outputs exist to be read by people, and
                 // `color=4278190335` says nothing that `rgba(255,0,0,255)`
                 // does not say better. Three keys are one now that a control
                 // can be dressed, which is why it asks a function rather than
@@ -251,7 +251,7 @@ pub struct Attribute {
 
 /// Whether a property's whole number is a packed `0xRRGGBBAA` colour.
 ///
-/// Four keys are. Stated once so that a golden printing a colour as
+/// Four keys are. Stated once so that an expected output printing a colour as
 /// `4278190335` is a missing row here rather than a number a reader decodes.
 pub fn is_packed_colour(property: int) -> bool {
     return property == platform.P_COLOR ||
@@ -265,7 +265,7 @@ pub fn is_packed_colour(property: int) -> bool {
 
 /// The readable name of a host property id.
 ///
-/// Goldens are read by people. An unknown id prints as a number rather than as
+/// Expected outputs are read by people. An unknown id prints as a number rather than as
 /// a guess, so adding a property to the header and forgetting this function
 /// shows up as `p12=3` in a test rather than as the wrong name.
 pub fn property_name(property: int) -> string {

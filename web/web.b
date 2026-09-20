@@ -178,7 +178,7 @@ pub class EndpointOptions {
     /// one.
     ///
     /// Turning this on means exactly that, and `tests/w4_upgrade.b` § 5 asserts
-    /// the theft succeeding so the cost is a golden line rather than a comment.
+    /// the theft succeeding so the cost is an expected line rather than a comment.
     /// It exists because `websocket.Connection.connect` cannot send a `Cookie`
     /// header at all, so a suite that drives the real client — `circuit_live`,
     /// `w7_live` — has no way to present a session, and those suites test the

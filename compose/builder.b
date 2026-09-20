@@ -141,7 +141,13 @@ pub class Builder {
         // the corner, unmeasured. Say so instead.
         if element.count() > 0 {
             match element.arranger {
-                none => { self.fault_once("<{element.tag}> holds {element.count()} children and lays nothing out — put them in a <Box> or a <VStack>") }
+                none => {
+                    if element.tag == "Canvas" {
+                        self.fault_once("<Canvas> holds {element.count()} children and lays nothing out — and nesting a shape is not how a canvas is drawn. Drop the <Canvas> and write the shape itself inside a <Box>")
+                    } else {
+                        self.fault_once("<{element.tag}> holds {element.count()} children and lays nothing out — put them in a <Box> or a <VStack>")
+                    }
+                }
                 some(arranger) => {}
             }
         }

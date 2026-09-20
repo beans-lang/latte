@@ -11,7 +11,7 @@ pub enum AppRole {
     accessory
     /// Builds and measures widgets, but never puts one on screen.
     ///
-    /// This is what the test suite runs as, and it is why latte's golden
+    /// This is what the test suite runs as, and it is why latte's expected output
     /// files are the same on a continuous-integration runner as on a desk: the
     /// widget tree is fully real — measured by the platform's own text
     /// metrics — without anything ever being displayed.

@@ -245,7 +245,7 @@ fn faults_of(b: Builder) -> string {
 }
 
 fn main() {
-    // ---- gate 4: the same frames, folded and unfolded --------------------
+    // ---- check 4: the same frames, folded and unfolded --------------------
     var index: int = 0
     for index < 2 {
         let fold: bool = index == 0
@@ -262,7 +262,7 @@ fn main() {
         index += 1
     }
 
-    // ---- gate 2: the folded string is what the unfolded walk produces -----
+    // ---- check 2: the folded string is what the unfolded walk produces -----
     let folded: Builder = render_generated(true)
     let walked: Builder = render_generated(false)
     let one: Serializer = new Serializer()
@@ -329,7 +329,7 @@ fn main() {
     held.render_root(page)
     io.println("ref: after the branch flipped away {show_hint(page.hint)}")
 
-    // The frame dump, once, as the golden's record of the numbering.
+    // The frame dump, once, as the expected output's record of the numbering.
     io.println("---- frames, folded ----")
     io.print(folded.dump_tree())
     io.println("---- frames, unfolded ----")

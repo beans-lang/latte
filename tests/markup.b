@@ -14,12 +14,12 @@
 // **The `$` rules.** Every row of the transition table, against a fixture,
 // through the parse tree.
 //
-// **The emission.** Every fixture's generated `render`, in the golden. That is
+// **The emission.** Every fixture's generated `render`, in the expected output. That is
 // where sequence numbering, the two arms of the fold switch, the line map and
 // the whole-tree refusals are visible.
 //
-// **The drift gate.** Every generated `.b` checked into this repo is
-// regenerated here and diffed. A stale generated file fails the gate instead
+// **The drift check.** Every generated `.b` checked into this repo is
+// regenerated here and diffed. A stale generated file fails the check instead
 // of shipping.
 //
 // **Hand-written builder versus generated builder producing identical
@@ -98,7 +98,7 @@ pub class Suite {
 
 /// The build-time copies and the run-time originals, over a corpus.
 ///
-/// Every row here is a rule that exists in two files. The gate is not that
+/// Every row here is a rule that exists in two files. The check is not that
 /// they look alike; it is that they answer the same for every input tried.
     fn contract_agrees() {
     for tag: string in self.tag_corpus() {
@@ -159,7 +159,7 @@ pub class Suite {
 // in it mirrors a predicate in `html.b`, and a predicate is a chain of `==`
 // that cannot be enumerated — the same problem `event_names()` has.
 //
-// So the gate is **two-sided over a corpus**: for every name in the corpus,
+// So the check is **two-sided over a corpus**: for every name in the corpus,
 // the predicate and the list must give the same answer. Adding a name to
 // `html.b` and forgetting the list fails here, and so does the reverse. A
 // one-sided check — "every listed name satisfies the predicate" — would pass
@@ -355,7 +355,7 @@ pub class Suite {
 
 /// Just the `render` body — the part this lane writes. The header, the copied
 /// `<beans>` block and the component assertions are shown once, for `simple`,
-/// so the golden records the whole file shape without repeating it eight times.
+/// so the expected output records the whole file shape without repeating it eight times.
     fn show_render(name: string) {
     io.println("======== render: {name}.bx ========")
     let compiled: bx.Compiled = self.compile_fixture(name)
@@ -382,14 +382,14 @@ pub class Suite {
     io.print(compiled.source)
 }
 
-// ------------------------------------------------ section 4: the drift gate
+// ------------------------------------------------ section 4: the drift check
 
 /// Regenerate a checked-in generated file and compare it with what is on disk.
 ///
 /// A generated file is committed beside its source so a consumer never needs
 /// the markup compiler. That is only safe while the two agree, and "the author
 /// edited the `.bx` and forgot to regenerate" is the failure it hides. This is
-/// the gate that catches it.
+/// the check that catches it.
     fn drift(source: string, generated: string, latte_module: string) {
     let options: bx.Options = new bx.Options()
     options.latte_module = latte_module
@@ -433,7 +433,7 @@ pub class Suite {
     }
 }
 
-// --------------------------------------- section 5: gate 4, the text half
+// --------------------------------------- section 5: check 4, the text half
 
 /// Every `b.<method>(<seq>, …)` in a file, as `seq -> description`.
 ///
@@ -673,10 +673,10 @@ fn main() {
     suite.show_render("beans")
     suite.show_render("generic")
 
-    io.println("======== the drift gate ========")
+    io.println("======== the drift check ========")
     suite.drift("tests/w2cases/equiv.bx", "tests/w2_equiv.b", "latte")
 
-    io.println("======== gate 4, the text half ========")
+    io.println("======== check 4, the text half ========")
     io.println("probes/p8_builder/pages/counter_gen.b is the reference copy of the worked")
     io.println("example. latte-bx's fresh output from the matching .bx source must agree with it.")
     suite.compare_meanings("counter", "probes/p8_builder/pages/counter_gen.b",

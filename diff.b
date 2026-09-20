@@ -96,7 +96,7 @@ pub class Batch {
     }
 
     /// Edits below the `step_in` that scoped them. A one-line dump is
-    /// unreadable in a failing diff, and a golden is read by a person exactly
+    /// unreadable in a failing diff, and an expected output is read by a person exactly
     /// once — when it breaks.
     pub fn dump() -> string {
         var out: fmt.StringBuilder = new fmt.StringBuilder()
@@ -662,7 +662,7 @@ pub class Differ {
     // not a cleverer diff. What would remove it is a longest-increasing-
     // subsequence pass, which also makes the two rotation directions cost the
     // same; today rotate-right is one move and rotate-left is n-1.
-    // `tests/diff.b` asserts both numbers so the asymmetry is a golden rather
+    // `tests/diff.b` asserts both numbers so the asymmetry is an expected output rather
     // than a claim.
     fn keyed(o: Unit, n: Unit, base: int) -> int {
         var live: List<int> = []

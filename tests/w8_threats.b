@@ -19,7 +19,7 @@
 //
 // **A row that lands on a control latte does not have FAILS.** It is not
 // silently marked "not covered" and it is not asserted against what the code
-// happens to do today: the golden holds what the threat table says must
+// happens to do today: the expected output holds what the threat table says must
 // happen, the run prints what happens, and the diff is the gap. A failing
 // row someone can see beats a green one that pinned a hole.
 //
@@ -57,7 +57,7 @@ import {describe_body, HandleStore, ReleaseLog} from latte.uploads
 // ============================================================== the report
 //
 // `row(n, slug)` opens a row; every check after it is charged to that row.
-// `uncovered` opens a row and says, in the golden, that latte has no control
+// `uncovered` opens a row and says, in the expected output, that latte has no control
 // for it — a decision written down rather than a silence.
 
 pub class RowTally {
@@ -78,7 +78,7 @@ pub class Report {
     pub fn init() {}
 
     /// Open a threat-table row. Prints its header so a reader can walk the
-    /// table down the golden in row-number order.
+    /// table down the expected output in row-number order.
     pub fn row(number: int, slug: string) {
         var made: RowTally = new RowTally()
         made.number = number
@@ -273,7 +273,7 @@ fn main() {
 //
 // XSS through interpolated text: every `$expr` is escaped at the serializer
 // **and** at the applier. `$html` is the only bypass, named to be
-// greppable, and the gate counts its uses.
+// greppable, and the check counts its uses.
 
 fn row1_text(r: Report) {
     r.row(1, "XSS through interpolated text")
@@ -2229,7 +2229,7 @@ fn row16_navigation(r: Report) {
 
 // ======================================================================= 17
 //
-// | information disclosure | espresso's `detailed_errors` gate already hides
+// | information disclosure | espresso's `detailed_errors` check already hides
 // | server detail behind a trace id; a contained panic goes to the log, never
 // | to the client. |
 
@@ -2363,7 +2363,7 @@ pub class Unguarded extends Component {
 //
 // `HeaderOptions.policy()` is the half that needs no server. The middleware
 // putting those headers on a real response, and a real headless Chrome reading
-// them, is `tests/w4_headers.b` and the gated `csp-browser` leg.
+// them, is `tests/w4_headers.b` and the checked `csp-browser` leg.
 
 fn row18_headers(r: Report) {
     r.row(18, "clickjacking and script injection")

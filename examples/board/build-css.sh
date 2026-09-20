@@ -10,7 +10,7 @@
 #
 # It needs Node, because Tailwind is a Node program. That is the only part of
 # this repository that does, and it is why this is a script you run rather than
-# a leg of the gate: a gate that needed npm would fail on a machine that has
+# a leg of the check: a check that needed npm would fail on a machine that has
 # beansc and nothing else.
 set -euo pipefail
 

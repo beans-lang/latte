@@ -10,7 +10,7 @@
 // shipped `latte` package to work around that would put five hundred lines of
 // test data in everybody's binary.
 //
-// The golden is the folded HTML of every case, with the builder's and the
+// The expected output is the folded HTML of every case, with the builder's and the
 // serializer's faults under it — a refusal that stopped being a refusal is a
 // diff, not a silence. That makes a broken refusal visible as a diff; it does
 // not exercise one. `tests/w1_faults.b` § 3 is the audit of `serialize.b`'s
@@ -507,7 +507,7 @@ fn main() {
         for fault: string in b.all_faults() { io.println("   builder: {fault}") }
         for fault: string in writer.faults { io.println("   serializer: {fault}") }
 
-        // Gate 2, on this case: the folded walk and the unfolded walk must
+        // Check 2, on this case: the folded walk and the unfolded walk must
         // produce the same bytes. A folding bug that emits valid but DIFFERENT
         // html is the silent one — nothing else here would see it.
         let unfolded: string = render(probe, false)

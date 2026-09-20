@@ -96,7 +96,7 @@ pub class Item extends Component {
     /// is consulted only from the second render onward, so a component that
     /// snapshots there never records the first render's parameters and answers
     /// "changed" for ever after — which is a component that re-renders on
-    /// every parent pass while every golden file still passes.
+    /// every parent pass while every expected output still passes.
     pub override fn on_params_set() {
         self.watch.record(["{self.id}", self.label, "{self.done}"])
     }

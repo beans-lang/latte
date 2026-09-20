@@ -107,10 +107,10 @@ pub class TabViewRender extends BoxRender {
         if index < 0 || index >= self.child_count() { return err("tab index is outside the pages", "out_of_range") }
         return self.set_integer(platform.P_SELECTED, index)
     }
-    pub override fn semantics() -> SemanticsNode {
+    pub override fn semantics_at(bounds: geometry.Rect) -> SemanticsNode {
         let label: string = if self.a11y_name == "" { self.words } else { self.a11y_name }
         let value: string = if self.chosen >= 0 && self.chosen < self.titles.len() { self.titles[self.chosen] } else { "" }
-        return new SemanticsNode(self.identity, self.role(), label, value, self.bounds, self.enabled)
+        return new SemanticsNode(self.identity, self.role(), label, value, bounds, self.enabled)
     }
     pub override fn paint_self(canvas: paint.Canvas) -> Result<bool> { super.paint_self(canvas)?; return self.paint_template(canvas) }
     fn select_as_user(index: int) -> Option<input.UiEvent> {

@@ -346,7 +346,7 @@ pub class EventRouter {
         self.settle_window = wanted
     }
 
-    /// Whether a settle has been put off and not yet run. The input gate reads
+    /// Whether a settle has been put off and not yet run. The input check reads
     /// it: a deferral that no wake-up ever collected is a render that never
     /// happened.
     pub fn settle_waiting() -> bool {

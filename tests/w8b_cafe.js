@@ -4,9 +4,9 @@
 // port the kernel chose and passes it in `W8B_CAFE_URL`.
 //
 // **What this asserts, and what it deliberately leaves to the example's own
-// gate.** `examples/cafe/main.b -- check` already drives every route, the
+// check.** `examples/cafe/main.b -- check` already drives every route, the
 // binding, the antiforgery and the circuit seam through espresso's `TestHost`,
-// on both backends, against a golden. None of that is repeated here. What a
+// on both backends, against an expected output. None of that is repeated here. What a
 // `TestHost` cannot do is be a browser, so every check below is one of:
 //
 //   * the bytes on the wire — a real document, not a page body: a doctype, a

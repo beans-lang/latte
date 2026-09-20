@@ -60,8 +60,8 @@ fn hex(raw: Bytes) -> string {
 ///
 /// The body arrives **raw**, not parsed. espresso can parse a urlencoded body
 /// and so can the module root, and the root's parser is the one that has to be
-/// right: it is what `test.sh --wasm` builds and what the form suite gates. A
-/// seam that parsed here would leave the root's parser shipped and ungated.
+/// right: it is what `test.sh --wasm` builds and what the form suite checks. A
+/// seam that parsed here would leave the root's parser shipped and unchecked.
 pub class WebRequest {
     pub method: string = "GET"
     /// The path with no query string, percent-decoding left alone: latte's own

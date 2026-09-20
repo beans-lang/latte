@@ -1,5 +1,5 @@
 // Does a float print the same in a browser as it does natively? One program,
-// three backends, one golden. Why the spellings differ: docs/notes.md.
+// three backends, one expected output. Why the spellings differ: docs/notes.md.
 package main
 
 import std.io
@@ -39,7 +39,7 @@ pub extern "C" fn run() -> i32 as "latte_floats_run" {
     show("nine nine nine nine", 9999.0)
 
     // Arithmetic a layout does, so the numbers a control reports are in the
-    // same set the gates compare.
+    // same set the checks compare.
     show("a scale", 2.0)
     show("a half scale", 0.5)
     show("a third of a point", 13.0 / 3.0)

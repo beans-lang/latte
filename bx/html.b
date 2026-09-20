@@ -194,7 +194,7 @@ pub fn names_an_event_handler(name: string) -> bool {
 // Everything from here to the escapers is a **mirror of `frames.b`**, which
 // lives in the module root that a package under `latte/` cannot import ("a
 // package cannot import its own module root"). So the rules are
-// written twice, and the only defence against them drifting is a gate: the
+// written twice, and the only defence against them drifting is a check: the
 // contract section of `tests/markup.b` runs both copies over a corpus of names
 // and values and fails on the first disagreement. Do not edit one of these
 // without the other.

@@ -46,6 +46,7 @@ class TemplateInstance {
             self.mount.resized(size)?
             self.mount.refresh_if_needed()?
         }
+        self.view.after_render(self.root.render_object()?)
         if self.popup {
             self.view.decorate_popup(self.root.render_object()?)?
             self.context.popups().show(self.owner, self.root.render_object()?)?

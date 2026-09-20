@@ -9,7 +9,7 @@
 // **`counter.b` beside this file is GENERATED and checked in.** A consumer
 // installs no markup compiler and runs no build step — they add one `require`
 // row and import the package. `test.sh` regenerates this file and diffs, so a
-// stale `counter.b` fails the gate instead of shipping.
+// stale `counter.b` fails the check instead of shipping.
 //
 // Two classes in this block would be their own `.bx` file in a real app, and
 // are hand-written here because one `.bx` file compiles the markup of **one**

@@ -14,7 +14,7 @@
 // this file existed, fourteen of them had never been executed once.
 //
 // **How a case is written.** `refused(...)` compiles a `.bx` file that must not
-// compile and prints the diagnostic verbatim, so the golden holds the exact
+// compile and prints the diagnostic verbatim, so the expected output holds the exact
 // message. If the refusal is deleted the file compiles, `FAIL it was ACCEPTED`
 // goes into the output and the failure count moves — which is the property that
 // makes this suite bite rather than merely pass. Every family also carries an
@@ -170,7 +170,7 @@ pub class Suite {
     /// `component-type` leg in `test.sh` — but beansc can only answer it about
     /// tags latte-bx actually reported, so "which tags reach `note_component`"
     /// is a question only this file can ask, on both backends, against a
-    /// golden.
+    /// expected output.
     fn assertions(label: string, decls: string, markup: string) {
         let compiled: bx.Compiled = bx.compile_source(
             self.wrap(decls, markup), "refusal.bx", self.options())
@@ -386,7 +386,7 @@ pub class Suite {
         // one Beans string" — and **nothing can reach it**: the markup-level
         // `$( )` and `{ }` scanners refuse the same shapes first, and their
         // message is the better one because it names what the author typed.
-        // Deleting the emitter's branch leaves this golden unchanged; that is
+        // Deleting the emitter's branch leaves this expected output unchanged; that is
         // recorded in bx/emit.b beside the branch, and it is why the branch is
         // kept rather than removed.
         self.refused("a nested string holding an unmatched brace, in a $( )", r#"pub fn f(s: string) -> string { return s }"#,
@@ -844,7 +844,7 @@ pub class Suite {
         // and a case that only proves it compiles would pass on a compiler
         // that accepted the attribute and ignored it — which is the exact
         // thing the old refusal existed to prevent. The unmarked sibling is in
-        // the same case so the golden carries both spellings side by side.
+        // the same case so the expected output carries both spellings side by side.
         self.accepted_showing("live on its own, beside a plain run",
                       r#"pub ticks: Signal<int> = new Signal<int>(0)
     pub label: string = "hits""#,

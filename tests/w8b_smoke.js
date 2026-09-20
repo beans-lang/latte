@@ -25,7 +25,7 @@
 //     real applier against a real DOM.
 //
 // Every assertion below is on one of those. Nothing here re-checks an edit
-// kind, because `browser-apply` does that better and against a golden.
+// kind, because `browser-apply` does that better and against an expected output.
 //
 // The checks print `ok`/`FAIL` lines and the process exits non-zero on the
 // first failure with the count, so the shell leg can quote it.

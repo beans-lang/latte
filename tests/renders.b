@@ -1,6 +1,6 @@
 // tests/renders.b — the update model.
 //
-// This is the gate that proves latte's headline claim, and the one a framework
+// This is the check that proves latte's headline claim, and the one a framework
 // quietly fails: "the page is never re-rendered. Not on an event, not on a
 // navigation inside a circuit, not ever." Every other suite here passes just as
 // well for a framework that re-renders the world.
@@ -309,7 +309,7 @@ fn frame_count(r: Renderer, id: int) -> int {
     }
 }
 
-// ---------------------------------------------------------------- the gate
+// ---------------------------------------------------------------- the check
 
 fn main() {
     let report: Report = new Report()
@@ -721,7 +721,7 @@ fn main() {
     io.println("")
     io.println("== 14. a signal batch APPLIES to the tree it describes ==")
     // §§ 10-13 assert what crosses the wire. This asserts that what crosses
-    // the wire means the right thing when something applies it — gate 3's
+    // the wire means the right thing when something applies it — check 3's
     // contract, over the streams only the live tier produces. § 10b proved the
     // signal's edits equal the differ's for one shape; this walks a real
     // applier through a write, a write-then-render, and a branch flip, and
@@ -783,7 +783,7 @@ fn main() {
 /// Every edit in the batch, in order, as one line. An edit count on its own
 /// cannot tell a `set_text` from a `remove`, and the cursor edits (`in`/`out`)
 /// are part of what the applier receives, so they are shown rather than
-/// filtered — a golden that hides half the stream is a golden that cannot fail
+/// filtered — an expected output that hides half the stream is an expected output that cannot fail
 /// when the differ starts sending the wrong half.
 fn describe_all(batch: Batch) -> string {
     var out: string = ""

@@ -159,7 +159,7 @@ pub class Component {
 
     // Lifecycle. These are declared and called HERE because mounting happens
     // here — `component<T>` is the only place a child is activated, its
-    // parameters are set, and its render is gated. Any subclass may override
+    // parameters are set, and its render is checked. Any subclass may override
     // them.
     //
     // `on_after_render` is deliberately absent: it would fire once a batch has

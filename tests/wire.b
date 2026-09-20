@@ -94,7 +94,7 @@ fn show(value: Json) -> string {
 
 /// What the reader made of `text`: the value it read, or the sentence it
 /// refused with. One helper for both, so a control and its refusal print in
-/// one shape and a reader of the golden can see which is which.
+/// one shape and a reader of the expected output can see which is which.
 fn read(text: string, limits: WireLimits) -> string {
     match parse_json(text, limits) {
         ok(value) => { return show(value) }
@@ -103,7 +103,7 @@ fn read(text: string, limits: WireLimits) -> string {
 }
 
 /// Taken or refused, with no value printed. Twenty-four nested brackets in a
-/// golden are noise; whether the reader took them is the fact.
+/// expected output are noise; whether the reader took them is the fact.
 fn taken(text: string, limits: WireLimits) -> string {
     match parse_json(text, limits) {
         ok(value) => { return "ACCEPTED" }
@@ -136,7 +136,7 @@ fn told(text: string, limits: WireLimits) -> string {
     if m.fault != "" { return "REFUSED {m.fault}" }
     // The sequence is printed only when the client asked for a fence, so every
     // row written before `n` existed still reads the same. That is deliberate:
-    // a golden that shifted on every line would have hidden which rows this
+    // an expected output that shifted on every line would have hidden which rows this
     // change actually touched.
     if m.sequence > 0 { return "{told_body(m)} seq={m.sequence}" }
     return told_body(m)
@@ -561,7 +561,7 @@ fn main() {
          escaped("</script>"), r#""\u003c/script>""#)
     r.eq("8.5 U+2028 and U+2029, legal in JSON and fatal in JavaScript",
          escaped("a\u{2028}b\u{2029}c"), r#""a\u2028b\u2029c""#)
-    r.eq("8.6 greater-than and ampersand stay raw, so a golden reads",
+    r.eq("8.6 greater-than and ampersand stay raw, so an expected output reads",
          escaped("a>b&c"), r#""a>b&c""#)
     r.eq("8.7 U+2028 at the very end", escaped("x\u{2028}"), r#""x\u2028""#)
     r.eq("8.8 other three-byte UTF-8 starting E2 80 is untouched",

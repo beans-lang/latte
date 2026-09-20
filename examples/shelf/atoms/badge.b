@@ -15,7 +15,7 @@ pub class Badge extends Component {
     /// The snapshot belongs in `on_params_set`, not in `should_render` — see
     /// `latte.ParamWatch`. A leaf three levels down is exactly where a
     /// framework that re-rendered the world would hide it, so the consumer's
-    /// golden prints this component's render count.
+    /// expected output prints this component's render count.
     pub override fn on_params_set() { self.watch.record([self.label, self.tone]) }
     pub override fn should_render() -> bool { return self.watch.differs() }
 

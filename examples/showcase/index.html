@@ -85,7 +85,7 @@ try {
   const failure = String((error && error.stack) || error);
   show(failure);
   window.__latteFailed = failure;
-  // Defined on this path too. A gate that waits for __latteReady and then
+  // Defined on this path too. A check that waits for __latteReady and then
   // calls this reported "not a function" instead of the boot error.
   window.__latteFacts = () => ({
     software: false, surfaceFrames: 0, resources: 0,

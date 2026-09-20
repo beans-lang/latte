@@ -61,7 +61,7 @@ pub abstract class Layout {
         return false
     }
 
-    /// The name goldens print for this layout.
+    /// The name expected outputs print for this layout.
     pub fn label() -> string {
         return "layout"
     }

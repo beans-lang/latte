@@ -56,7 +56,7 @@ fn shape_of(node: scene.RenderObject) -> Option<scene.VisualRender> {
     }
 }
 
-/// Two decimal places, so a golden is about the curve and not about the last
+/// Two decimal places, so an expected output is about the curve and not about the last
 /// bit of a double.
 fn rounded(value: f64) -> string {
     let hundredths: int = (value * 100.0 + 0.5) as int

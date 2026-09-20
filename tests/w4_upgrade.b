@@ -37,7 +37,7 @@
 //        drops, session s2 presents its circuit id and is refused, session s1
 //        presents the same id and is served. Then the SAME three steps against
 //        an endpoint with `anonymous_circuits = true`, where the theft
-//        SUCCEEDS — so the cost of that option is a golden line rather than a
+//        SUCCEEDS — so the cost of that option is an expected line rather than a
 //        sentence in a doc comment.
 //
 // **What makes it byte-deterministic.** Ports are chosen by the kernel and

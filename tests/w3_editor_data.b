@@ -1,5 +1,5 @@
 // The canvas target's surface as an editor reads it, beside
-// `tests/w2_editor_data.b`. Two goldens: they are two languages, not one.
+// `tests/w2_editor_data.b`. Two expected outputs: they are two languages, not one.
 package main
 
 import std.io

@@ -69,7 +69,7 @@ ok   BadLayoutLoop
 ok   BadNoMethods
 ok   the map as a whole is ok
 
-== 3b. every refusal message, sorted, so the golden reads them ==
+== 3b. every refusal message, sorted, so the expected output reads them ==
   latte$entry.BadCatchAll: route "/files/{*rest}": a catch-all placeholder ("{*rest}") is not supported — a placeholder captures one segment
   latte$entry.BadClashB and latte$entry.BadClashA both answer GET /clash/{}; nothing at request time could choose between them
   latte$entry.BadClashB and latte$entry.BadClashA both answer GET /clash/{}; nothing at request time could choose between them

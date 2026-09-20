@@ -2,7 +2,7 @@
 // would wire one.
 //
 //     beansc run examples/cafe/main.b -- serve 8080     # open http://127.0.0.1:8080/
-//     beansc run examples/cafe/main.b -- check          # what the gate runs
+//     beansc run examples/cafe/main.b -- check          # what the check runs
 //     beansc run examples/cafe/main.b                   # the same as `check`
 //
 // Run it from the latte module root: the client script is read from
@@ -168,8 +168,8 @@ class Report {
 /// The antiforgery token, replaced by a fixed word.
 ///
 /// The token is `{expiry}.{HMAC}` over a session that is 256 random bits, so
-/// it is different on every run and cannot be in a golden. Its *shape* is
-/// asserted separately; what the golden holds is the page around it.
+/// it is different on every run and cannot be in an expected output. Its *shape* is
+/// asserted separately; what the expected output holds is the page around it.
 fn mask_token(html: string) -> string {
     let marker: string = "name=\"{TOKEN_FIELD}\" value=\""
     match html.find(marker) {
@@ -340,7 +340,7 @@ fn drive(r: Report, app: LatteApp) {
 
 /// The document, whole, and the four headers that make it safe.
 ///
-/// The document is PRINTED, in full, into the golden. It is the whole point
+/// The document is PRINTED, in full, into the expected output. It is the whole point
 /// of this example — the one thing a reader most needs to see — and an
 /// assertion that it "contains a script tag" would pass on a page that also
 /// carried an inline one.

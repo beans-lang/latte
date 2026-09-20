@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# test.sh — the gate.
+# test.sh — the check.
 #
-# Every suite runs on both backends and both must print the golden file, byte
-# for byte. The golden is what `beansc run` produced when the suite was
+# Every suite runs on both backends and both must print the expected output, byte
+# for byte. The expected output is what `beansc run` produced when the suite was
 # written; the native binary is diffed against the same file, never against
 # the interpreter's fresh output.
 #
 # The two legs are not redundant. Nearly every compiler fault this workspace
 # has found showed up as one backend disagreeing with the other — a List
 # stride, an Option compared by address, a struct equality that was silently
-# false natively. An interpreter-only gate would have caught none of them.
+# false natively. An interpreter-only check would have caught none of them.
 #
 #   ./test.sh              both legs, every suite
 #   ./test.sh --interp     the interpreter only (fast; what an edit loop wants)
@@ -42,7 +42,7 @@ fi
 # *relative to the working directory*, so building from here fails with
 # "cannot find the Beans C runtime". An installed beansc knows its own prefix
 # and needs none of this. The interpreter leg never touches the runtime, which
-# is why an interpreter-only gate could not have told you it was missing.
+# is why an interpreter-only check could not have told you it was missing.
 if [[ -n ${BEANS_ROOT:-} ]]; then
     [[ -z ${BEANS_RUNTIME:-}  && -f "$BEANS_ROOT/runtime/beans_rt.c" ]] && export BEANS_RUNTIME="$BEANS_ROOT/runtime/beans_rt.c"
     [[ -z ${BEANS_STDLIB:-}   && -d "$BEANS_ROOT/stdlib/std"        ]] && export BEANS_STDLIB="$BEANS_ROOT/stdlib/std"
@@ -61,7 +61,7 @@ fi
 # latte bug and is not one. Refuse rather than mislead.
 #
 # This compares versions instead of matching one, because an exact match turns
-# every future compiler release into a red latte gate that names the wrong
+# every future compiler release into a red latte check that names the wrong
 # cause.
 version_floor=0.1.41
 version_line=$("$BEANSC" --version 2>/dev/null || true)
@@ -386,7 +386,7 @@ run_component_type_leg() {
 
 # --- the examples leg ----------------------------------------------------
 #
-# Every example is BUILT, RUN on both backends, and diffed against a golden.
+# Every example is BUILT, RUN on both backends, and diffed against an expected output.
 #
 # It used to only `beansc check` them, and that was a hole with a name: an
 # example that compiled and printed garbage was green. The examples are the
@@ -409,29 +409,29 @@ run_component_type_leg() {
 #
 # `examples/latte_bx.b` is here because a `kind library` module may only hold a
 # program entry under examples/ or tests/, so latte-bx's command line has
-# nowhere else to live. Its golden is its own usage text — the one part of that
-# CLI nothing else in this gate reads. (The compile path is covered by the
+# nowhere else to live. Its expected output is its own usage text — the one part of that
+# CLI nothing else in this check reads. (The compile path is covered by the
 # component-type leg, which builds the binary and runs both backends through
-# it.) Its stdout golden is empty and its stderr golden is not, which is the
+# it.) Its stdout expected output is empty and its stderr expected output is not, which is the
 # shape the empty-on-both-streams refusal above exists to distinguish from.
 #
-# **Nothing here SKIPs, and the two ways to silence a golden gate are both
+# **Nothing here SKIPs, and the two ways to silence an expected-output check are both
 # failures:**
 #
-#   * A missing `.out` is a FAILURE, not a skip. A gate that skips on a
+#   * A missing `.out` is a FAILURE, not a skip. A check that skips on a
 #     missing input dies silently the day the layout moves and is green for
-#     ever after — and "just don't write the golden" is the
+#     ever after — and "just don't write the expected output" is the
 #     cheapest way to get there.
-#   * Goldens that are EMPTY on both streams are a FAILURE. That is the other
+#   * Expected outputs that are EMPTY on both streams are a FAILURE. That is the other
 #     cheap way — `touch examples/foo.out` — and an example that prints
 #     nothing cannot tell a working program from a broken one.
 #
-# **The summary names every entry and its golden's size**, so "3 examples ran"
+# **The summary names every entry and its expected output's size**, so "3 examples ran"
 # can never be read the same as "3 examples ran and one of them asserted
 # nothing".
 #
-# Both legs are diffed against the GOLDEN, never against each other. Two
-# backends agreeing on the wrong answer is the failure a golden exists for,
+# Both legs are diffed against the EXPECTED OUTPUT, never against each other. Two
+# backends agreeing on the wrong answer is the failure an expected output exists for,
 # and diffing native against a fresh interpreter run would call it a pass.
 
 # Every .b file under examples/, sorted, scratch names dropped. A name
@@ -445,7 +445,7 @@ examples_sources() {
 }
 
 # One entry, one backend. Compares stdout, stderr and the exit status, each
-# against the golden. Returns non-zero on a mismatch and says which stream.
+# against the expected output. Returns non-zero on a mismatch and says which stream.
 compare_example_leg() {
     local rel=$1 how=$2 got_out=$3 got_err=$4 got_status=$5
     local want_out=$6 want_err=$7 want_status=$8
@@ -458,18 +458,18 @@ compare_example_leg() {
         bad=1
     fi
     if ! diff -u "$want_out" "$got_out" >"$tmp/example_diff" 2>&1; then
-        echo "--- examples FAILED: $rel stdout differs from the golden under $how ---" >&2
+        echo "--- examples FAILED: $rel stdout differs from the expected output under $how ---" >&2
         cat "$tmp/example_diff" >&2
         bad=1
     fi
     if [[ -f "$want_err" ]]; then
         if ! diff -u "$want_err" "$got_err" >"$tmp/example_diff" 2>&1; then
-            echo "--- examples FAILED: $rel stderr differs from the golden under $how ---" >&2
+            echo "--- examples FAILED: $rel stderr differs from the expected output under $how ---" >&2
             cat "$tmp/example_diff" >&2
             bad=1
         fi
     elif [[ -s "$got_err" ]]; then
-        echo "--- examples FAILED: $rel wrote to stderr under $how, and has no .err golden ---" >&2
+        echo "--- examples FAILED: $rel wrote to stderr under $how, and has no .err expected output ---" >&2
         echo "    An example prints its page and nothing else. If the noise is wanted," >&2
         echo "    record it in $(basename "${want_out%.out}.err"); if it is not, it is a bug" >&2
         echo "    the leg just caught." >&2
@@ -647,10 +647,10 @@ run_examples_leg() {
     # build step and no markup compiler. The price of checking a generated
     # file in is that it can go stale, and a stale one is invisible — it
     # compiles, it runs, and it renders the markup somebody edited last week.
-    # So the gate regenerates and diffs.
+    # So the check regenerates and diffs.
     #
     # A `.bx` with no `.b` beside it is a FAILURE for the same reason a missing
-    # golden is: the check would otherwise vanish the moment the file it
+    # expected output is: the check would otherwise vanish the moment the file it
     # watches is renamed.
     # A canvas tree generates into a mirror, not beside its source. The list
     # comes out of tools/generate.sh so there is no second list to drift.
@@ -753,27 +753,27 @@ run_examples_leg() {
         fi
 
         if [[ ! -f "$want_out" ]]; then
-            echo "--- examples FAILED: $rel has no golden ($(basename "$want_out")) ---" >&2
+            echo "--- examples FAILED: $rel has no expected output ($(basename "$want_out")) ---" >&2
             echo "    Every example is RUN, on both backends, and diffed against its" >&2
-            echo "    golden. A missing golden is a failure and not a skip: a gate that" >&2
+            echo "    expected output. A missing expected output is a failure and not a skip: a check that" >&2
             echo "    skips on a missing input is green for ever after, and" >&2
-            echo "    not writing the golden is the cheapest way to get there." >&2
+            echo "    not writing the expected output is the cheapest way to get there." >&2
             echo "    Write it:   (cd \"$ROOT\" && beansc run $rel [args]) > ${want_out#"$ROOT"/}" >&2
-            echo "    and READ it before committing — a golden nobody read is a" >&2
+            echo "    and READ it before committing — an expected output nobody read is a" >&2
             echo "    screenshot of whatever the program did that day." >&2
             failed=1
             continue
         fi
 
-        local golden_bytes
-        golden_bytes=$(wc -c <"$want_out" | tr -d ' ')
+        local expected_bytes
+        expected_bytes=$(wc -c <"$want_out" | tr -d ' ')
         if [[ -f "$want_err" ]]; then
-            golden_bytes=$(( golden_bytes + $(wc -c <"$want_err" | tr -d ' ') ))
+            expected_bytes=$(( expected_bytes + $(wc -c <"$want_err" | tr -d ' ') ))
         fi
-        if [[ $golden_bytes -eq 0 ]]; then
-            echo "--- examples FAILED: $rel's goldens are empty on both streams ---" >&2
+        if [[ $expected_bytes -eq 0 ]]; then
+            echo "--- examples FAILED: $rel's expected outputs are empty on both streams ---" >&2
             echo "    An example that prints nothing cannot tell a working program from" >&2
-            echo "    a broken one, and an empty golden is the second way to silence this" >&2
+            echo "    a broken one, and an empty expected output is the second way to silence this" >&2
             echo "    leg. Print the page." >&2
             failed=1
             continue
@@ -829,7 +829,7 @@ run_examples_leg() {
                     "$tmp/ex_$slug.native.out" "$tmp/ex_$slug.native.err" "$status" \
                     "$want_out" "$want_err" "$want_status" || entry_bad=1
                 # The two backends against each other, on top of the two
-                # against the golden. It is redundant while both goldens are
+                # against the expected output. It is redundant while both expected outputs are
                 # right and it is not redundant the day someone re-records one
                 # of them from the wrong backend: this line names the split
                 # even then.
@@ -849,7 +849,7 @@ run_examples_leg() {
             continue
         fi
         ran=$((ran + 1))
-        summary="$summary, $name (${golden_bytes} B)"
+        summary="$summary, $name (${expected_bytes} B)"
     done
 
     examples_ran=$ran
@@ -866,7 +866,7 @@ run_examples_leg() {
     # whether all three asserted a page or one of them asserted a newline.
     # "(checked, not run)" beside a name is a browser module, and the count
     # would otherwise read as a claim that every one of them was run.
-    echo "ok examples — $ran entry(ies) on $how, each built, RUN and byte-identical to its golden except where it says otherwise:${summary#,}"
+    echo "ok examples — $ran entry(ies) on $how, each built, RUN and byte-identical to its expected output except where it says otherwise:${summary#,}"
 }
 
 if [[ $examples_only -eq 1 ]]; then
@@ -885,8 +885,8 @@ fi
 #
 # This is here because the first latte.b shipped with `pub let version` at
 # module scope — `error: expected a declaration`, it is `pub const` — and the
-# gate printed "no suites yet" and exited 0 for hours. Two lanes tripped over
-# it independently and each fixed it in passing. A suite-only gate says nothing
+# check printed "no suites yet" and exited 0 for hours. Two lanes tripped over
+# it independently and each fixed it in passing. A suite-only check says nothing
 # about a package nothing imports yet, which is exactly the state a new package
 # is in for its whole first day.
 root_sources=("$ROOT"/*.b)
@@ -950,13 +950,13 @@ count_sites() {
 }
 
 refusal_coverage_for() {
-    local file="$1" golden="$2" suite="$3"
+    local file="$1" expected="$2" suite="$3"
     classified="$classified $file"
     audited="$audited $file"
     local source="$ROOT/$file"
-    local recorded="$ROOT/$golden"
+    local recorded="$ROOT/$expected"
     if [[ ! -f "$source" || ! -f "$recorded" ]]; then
-        echo "--- refusal-coverage FAILED: $file or $golden is missing ---" >&2
+        echo "--- refusal-coverage FAILED: $file or $expected is missing ---" >&2
         failed=1
         uncovered=$((uncovered + 1))
         return 0
@@ -973,7 +973,7 @@ refusal_coverage_for() {
                   END { print n + 0 }' "$recorded")
 
     if [[ "$listed" -eq 0 ]]; then
-        echo "--- refusal-coverage FAILED: $golden has no site tally for $file ---" >&2
+        echo "--- refusal-coverage FAILED: $expected has no site tally for $file ---" >&2
         echo "    $suite prints one line per fault site it reached, under" >&2
         echo "    \"-- the sites in $file, and how many shapes reach each\"." >&2
         echo "    An empty tally means the audit moved and this leg is now blind." >&2
@@ -1028,7 +1028,7 @@ refusal_coverage_none() {
 }
 
 # A file whose report sites are known and NOT audited yet. It cannot get worse
-# quietly: the count is recorded here, and a new site fails the gate with the
+# quietly: the count is recorded here, and a new site fails the check with the
 # same instructions as everywhere else. `render.b`'s three sites are the only
 # ones in latte's core with no case at all.
 #
@@ -1128,7 +1128,7 @@ run_refusal_coverage_leg() {
     # Like the html builder's 24: reachable only by a call the markup
     # compiler would not emit. Pinned so the count cannot grow unaudited.
     refusal_coverage_pending compose/builder.b 84
-    refusal_coverage_for compose/mount_plan.b tests/canvas/golden/mount_cost.out \
+    refusal_coverage_for compose/mount_plan.b tests/canvas/expected/mount_cost.out \
         "tests/canvas/mount_cost.b § 6"
     refusal_coverage_pending pages.b 34
     refusal_coverage_pending circuit.b 4
@@ -1160,7 +1160,7 @@ run_refusal_coverage_leg() {
 # Every recorded refusal in probes/*_bad/, re-checked against today's compiler.
 #
 # A guard that only runs when someone remembers to run it by hand reports
-# nothing the day it matters, so this gate calls it every run. A probe's
+# nothing the day it matters, so this check calls it every run. A probe's
 # answer is half "this works" and half "this is refused, and here is the
 # message" — the second half rots silently when a compiler starts accepting a
 # shape the design was built around.
@@ -1214,7 +1214,7 @@ run_recorded_refusals_leg() {
 # Always runs, for the same reason as the leg above.
 [[ $canvas_only -eq 1 ]] || run_recorded_refusals_leg
 
-# The browser half of gate 3. `tests/js_cases.b` is a gated suite already — it
+# The browser half of check 3. `tests/js_cases.b` is a checked suite already — it
 # prints a JavaScript fixture file, and both backends agree on it byte for
 # byte. That proves the ENCODER is consistent with itself. This leg is the
 # other half: it takes that same fixture into a real browser and requires the
@@ -1227,7 +1227,7 @@ run_recorded_refusals_leg() {
 # without Chrome is a real thing. Chrome PRESENT and anything else wrong is a
 # FAILURE — an empty extraction, a fixture that will not generate, a diff.
 # That distinction is why the verdict is diffed whole rather than grepped for
-# a count: the golden's last line is "338 checks, 0 bad", so a
+# a count: the expected output's last line is "338 checks, 0 bad", so a
 # harness that silently ran nine of them fails on the body long before the
 # count line.
 find_chrome() {
@@ -1247,7 +1247,7 @@ run_browser_apply_leg() {
     local harness="$ROOT/tests/js_apply.js"
     local applier="$ROOT/js/latte.js"
 
-    # Inputs missing is a FAILURE, never a skip. A gate that skips when its
+    # Inputs missing is a FAILURE, never a skip. A check that skips when its
     # subject disappears is the shape this repo keeps getting bitten by.
     local f
     for f in "$want" "$harness" "$applier"; do
@@ -1425,13 +1425,13 @@ run_csp_browser_leg() {
 for case in "$ROOT"/tests/*.b; do
     [[ $canvas_only -eq 1 ]] && break
     name=$(basename "$case" .b)
-    # Scratch drivers are allowed in tests/ and are not gated: a name starting
+    # Scratch drivers are allowed in tests/ and are not checked: a name starting
     # with "_" or "probe" is a probe, not a suite.
     case "$name" in _*|probe*) continue ;; esac
     if [[ -n "$only" && "$name" != "$only" ]]; then continue ; fi
     want="$ROOT/tests/$name.out"
     if [[ ! -f "$want" ]]; then
-        echo "no golden file for $name" >&2
+        echo "no expected output for $name" >&2
         failed=1
         continue
     fi
@@ -1447,7 +1447,7 @@ for case in "$ROOT"/tests/*.b; do
     if diff -u "$want" "$tmp/$name.interp"; then
         legs=$((legs + 1))
     else
-        echo "--- $name: interpreter output differs from the golden ---" >&2
+        echo "--- $name: interpreter output differs from the expected output ---" >&2
         failed=1
     fi
 
@@ -1472,7 +1472,7 @@ for case in "$ROOT"/tests/*.b; do
     if diff -u "$want" "$tmp/$name.native"; then
         legs=$((legs + 1))
     else
-        echo "--- $name: NATIVE output differs from the golden ---" >&2
+        echo "--- $name: NATIVE output differs from the expected output ---" >&2
         echo "    the two backends disagree; that is a compiler fault until" >&2
         echo "    proven otherwise." >&2
         failed=1
@@ -1499,7 +1499,7 @@ run_canvas_leg() {
     local sources=("$ROOT"/tests/canvas/*.b)
     if [[ ${#sources[@]} -eq 0 ]]; then
         echo "--- canvas FAILED: tests/canvas/ has no suites ---" >&2
-        echo "    the canvas runtime is in the tree; a gate with nothing in it is not a pass." >&2
+        echo "    the canvas runtime is in the tree; a check with nothing in it is not a pass." >&2
         failed=1
         return 0
     fi
@@ -1510,10 +1510,10 @@ run_canvas_leg() {
         name=$(basename "$case" .b)
         case "$name" in _*) continue ;; esac
         if [[ -n "$only" && "$name" != "$only" ]]; then continue ; fi
-        local want="$ROOT/tests/canvas/golden/$name.out"
+        local want="$ROOT/tests/canvas/expected/$name.out"
         if [[ ! -f "$want" ]]; then
-            echo "--- canvas FAILED: tests/canvas/$name.b has no golden ---" >&2
-            echo "    record it: \$BEANSC run tests/canvas/$name.b > tests/canvas/golden/$name.out" >&2
+            echo "--- canvas FAILED: tests/canvas/$name.b has no expected output ---" >&2
+            echo "    record it: \$BEANSC run tests/canvas/$name.b > tests/canvas/expected/$name.out" >&2
             failed=1
             continue
         fi
@@ -1529,7 +1529,7 @@ run_canvas_leg() {
         if diff -u "$want" "$tmp/c_$name.interp"; then
             legs=$((legs + 1))
         else
-            echo "--- canvas/$name: interpreter output differs from the golden ---" >&2
+            echo "--- canvas/$name: interpreter output differs from the expected output ---" >&2
             failed=1
             continue
         fi
@@ -1550,7 +1550,7 @@ run_canvas_leg() {
         if diff -u "$want" "$tmp/c_$name.native"; then
             legs=$((legs + 1))
         else
-            echo "--- canvas/$name: NATIVE output differs from the golden ---" >&2
+            echo "--- canvas/$name: NATIVE output differs from the expected output ---" >&2
             echo "    the two backends disagree; that is a compiler fault until" >&2
             echo "    proven otherwise." >&2
             failed=1
@@ -1562,10 +1562,10 @@ run_canvas_leg() {
 # --- the browser leg ------------------------------------------------------
 #
 # The same suites, built for wasm32-unknown-unknown and run in Chromium,
-# Firefox and WebKit against the same goldens. It needs node, playwright's
+# Firefox and WebKit against the same expected outputs. It needs node, playwright's
 # browsers, a Clang with a wasm32 backend and a wasm-ld; each missing piece is
-# reported by name and counted as a SKIP, because a browser gate that quietly
-# passes when it ran nothing is worse than no browser gate.
+# reported by name and counted as a SKIP, because a browser check that quietly
+# passes when it ran nothing is worse than no browser check.
 run_browser_leg() {
     # The isolated check runs here rather than in its own leg because it needs
     # a built compiler and nothing else, and this is where the heavyweight
@@ -1592,7 +1592,7 @@ run_browser_leg() {
             _browser_*) name=${name#_browser_}; name="browser_$name" ;;
             _*) continue ;;
         esac
-        [[ -f "$ROOT/tests/canvas/golden/$name.out" ]] || continue
+        [[ -f "$ROOT/tests/canvas/expected/$name.out" ]] || continue
         local source_name
         source_name=$(basename "$case" .b)
         if ! (cd "$ROOT" && bash tools/wasm_build.sh "tests/canvas/$source_name.b" \
@@ -1627,7 +1627,7 @@ run_browser_leg() {
     fi
     sed 's/^/  /' "$tmp/abi.log"
 
-    if (cd "$ROOT" && node tools/browser_gate.mjs) >"$tmp/browser.log" 2>&1; then
+    if (cd "$ROOT" && node tools/browser_check.mjs) >"$tmp/browser.log" 2>&1; then
         sed 's/^/  /' "$tmp/browser.log"
         legs=$((legs + 1))
     else
@@ -1653,7 +1653,7 @@ run_browser_leg() {
             return 0
         fi
     fi
-    if (cd "$ROOT" && node tools/ui_gate.mjs) >"$tmp/ui.log" 2>&1; then
+    if (cd "$ROOT" && node tools/ui_check.mjs) >"$tmp/ui.log" 2>&1; then
         sed 's/^/  /' "$tmp/ui.log"
         legs=$((legs + 1))
     else
@@ -1664,8 +1664,8 @@ run_browser_leg() {
 
     # And the pictures. One engine, because three rasterize text differently
     # enough that one reference cannot serve all three; the other two are
-    # covered by the gate above, which asks about behaviour.
-    if (cd "$ROOT" && node tools/shot_gate.mjs) >"$tmp/shots.log" 2>&1; then
+    # covered by the check above, which asks about behaviour.
+    if (cd "$ROOT" && node tools/shot_check.mjs) >"$tmp/shots.log" 2>&1; then
         sed 's/^/  /' "$tmp/shots.log"
         legs=$((legs + 1))
     else
@@ -1683,7 +1683,7 @@ run_browser_leg() {
 # --- the vocabulary leg -------------------------------------------------
 #
 # `WidgetKind.all()` is hand-written, because Beans cannot enumerate an enum,
-# and a kind left out of it is invisible to every other gate here.
+# and a kind left out of it is invisible to every other check here.
 run_vocabulary_leg() {
     if (cd "$ROOT" && bash tools/check_vocabulary.sh) >"$tmp/vocabulary.log" 2>&1; then
         cat "$tmp/vocabulary.log"
@@ -1696,6 +1696,23 @@ run_vocabulary_leg() {
 }
 
 run_vocabulary_leg
+
+# --- the gallery leg ----------------------------------------------------
+#
+# A control latte draws and the showcase never shows is a control nobody looks
+# at. The list comes from the compiler, so adding one is what fails this.
+run_gallery_leg() {
+    if (cd "$ROOT" && bash tools/check_gallery.sh) >"$tmp/gallery.log" 2>&1; then
+        cat "$tmp/gallery.log"
+        legs=$((legs + 1))
+    else
+        echo "--- gallery FAILED ---" >&2
+        cat "$tmp/gallery.log" >&2
+        failed=1
+    fi
+}
+
+run_gallery_leg
 
 # --- the constants leg --------------------------------------------------
 #
@@ -1719,7 +1736,7 @@ run_constants_leg
 # Every `.bx` file in the tree, recompiled into a scratch directory and diffed
 # against what is checked in. A markup file that changed and was never
 # regenerated is a program doing what the markup used to say, and nothing else
-# in this gate can see it.
+# in this check can see it.
 run_generated_leg() {
     if (cd "$ROOT" && bash tools/check_generated.sh) >"$tmp/generated.log" 2>&1; then
         sed 's/^/  /' "$tmp/generated.log"
@@ -1748,7 +1765,7 @@ if [[ $failed -ne 0 ]]; then
     exit 1
 fi
 
-# Say what was skipped. A gate that skips on a missing input dies silently
+# Say what was skipped. A check that skips on a missing input dies silently
 # when the layout moves, and then everything is green forever.
 note=""
 [[ $skipped -gt 0 ]] && note=" — $skipped leg(s) SKIPPED, read the SKIP lines above"
@@ -1756,12 +1773,12 @@ if [[ $suites -eq 0 && $examples_ran -gt 0 ]]; then
     # `--examples`, or a name that matched an example and no suite. This used to
     # fall into the line below and answer "the tree is scaffolding" — a message
     # written when latte had no suites at all, which now reads like a pass over
-    # a gate that ran none of it. Say what actually ran.
+    # a check that ran none of it. Say what actually ran.
     echo "ok latte — $examples_ran example(s) on both backends; no suite was selected${note}"
 elif [[ $suites -eq 0 ]]; then
     echo "latte: no suites yet — the tree is scaffolding${note}"
 elif [[ $native -eq 1 ]]; then
-    echo "ok latte — $suites suites, $legs legs (interpreter + native), all byte-identical to the goldens${note}"
+    echo "ok latte — $suites suites, $legs legs (interpreter + native), all byte-identical to the expected outputs${note}"
 else
     echo "ok latte — $suites suites, interpreter only (--interp); the native leg did not run${note}"
 fi

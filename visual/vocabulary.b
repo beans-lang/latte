@@ -74,7 +74,32 @@ pub fn attribute_note(name: string) -> string {
     if name == "transition_easing" { return "linear or ease_in_out timing for later visual changes" }
     return ""
 }
-pub fn attribute_call(name: string) -> string {
+/// The name tables above are fixed for the life of the process and every one
+/// of them is a walk down a list of string comparisons. A render asks them
+/// once per attribute per element — on a table that is a hundred thousand
+/// comparisons for one frame — so each answer is worked out once and kept.
+pub singleton class Memo {
+    calls: Map<string, string> = {}
+    properties: Map<string, int> = {}
+    fn init() {}
+    pub fn call_of(name: string) -> string {
+        match self.calls.get(name) { some(found) => { return found } none => {} }
+        let answer: string = compute_attribute_call(name)
+        self.calls[name] = answer
+        return answer
+    }
+    pub fn property_of(name: string) -> int {
+        match self.properties.get(name) { some(found) => { return found } none => {} }
+        let answer: int = compute_property_of(name)
+        self.properties[name] = answer
+        return answer
+    }
+}
+
+pub fn attribute_call(name: string) -> string { return Memo.instance.call_of(name) }
+pub fn property_of(name: string) -> int { return Memo.instance.property_of(name) }
+
+fn compute_attribute_call(name: string) -> string {
     if name == "d" || name == "source" { return "text" }
     if name == "transition_easing" { return "word" }
     if name == "stroke_cap" || name == "stroke_join" { return "word" }
@@ -88,7 +113,7 @@ pub fn attribute_call(name: string) -> string {
     }
     return ""
 }
-pub fn property_of(name: string) -> int {
+fn compute_property_of(name: string) -> int {
     if name == "fill" { return FILL }
     if name == "stroke" { return STROKE }
     if name == "stroke_width" { return STROKE_WIDTH }

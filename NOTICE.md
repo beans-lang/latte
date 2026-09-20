@@ -41,7 +41,7 @@ SOFTWARE.
 
 ## Roboto
 
-The showcase and the screenshot gates draw text with **Roboto**, which is
+The showcase and the screenshot checks draw text with **Roboto**, which is
 licensed under the Apache License 2.0. It arrives through the `roboto-fontface`
 npm package and `tools/font_prepare.mjs` turns its WOFF files back into the
 TrueType files CanvasKit can read; nothing is committed to this repository.

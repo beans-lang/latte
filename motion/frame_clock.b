@@ -15,7 +15,7 @@ import latte.input
 ///
 /// **It stops when nothing is moving.** One request buys one callback, and the
 /// next is only asked for while there are listeners. An idle screen therefore
-/// costs no frames at all, which is a property the idle-redraw gate checks
+/// costs no frames at all, which is a property the idle-redraw check proves
 /// rather than a claim.
 pub class FrameClock {
     priv scene: platform.Handle = platform.Handle.none()

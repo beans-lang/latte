@@ -7,7 +7,7 @@ import latte.input
 ///
 /// Changes are a list, not a callback, and that is the design decision this
 /// type exists to make possible. A list can be printed, compared against a
-/// golden file, and checked for properties no single-step API could be —
+/// expected output, and checked for properties no single-step API could be —
 /// that a render which moved one row emits one `move` and not five `set`s,
 /// that nothing is created and immediately removed, that the order is
 /// applicable. `tests/diff.b` does exactly that, with no platform anywhere
@@ -40,7 +40,7 @@ pub class Change {
     /// the container the mount was given to fill. A first render, and a render
     /// whose root changed kind, act there. Every other change names an element.
     /// Saying which is which explicitly beats a rule about what an empty path
-    /// means in each of six cases, and goldens print `surface` rather than
+    /// means in each of six cases, and expected outputs print `surface` rather than
     /// `root` so a reader can see it too.
     pub at_surface: bool = false
 
@@ -62,7 +62,7 @@ pub class Change {
         return self.steps[index]
     }
 
-    /// The path as goldens print it: `root`, `root.0`, `root.0.2`.
+    /// The path as expected outputs print it: `root`, `root.0`, `root.0.2`.
     pub fn path_text() -> string {
         var out: string = "root"
         if self.at_surface { out = "surface" }
@@ -72,7 +72,7 @@ pub class Change {
         return out
     }
 
-    /// The line a golden file carries.
+    /// The line an expected output carries.
     pub fn show() -> string {
         match self.kind {
             create => {
@@ -93,7 +93,7 @@ pub class Change {
 }
 
 // A created element as one line: its tag, its key if it has one, and how many
-// children come with it. The subtree itself is not printed — a golden that
+// children come with it. The subtree itself is not printed — an expected output that
 // carried every attribute of every descendant would change whenever anything
 // anywhere did, and stop being read.
 fn describe(element: Element) -> string {

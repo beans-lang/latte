@@ -6,7 +6,7 @@ signals, a memo, and a real Tailwind stylesheet.
 ```bash
 cd community-libs/latte
 beansc run examples/board/main.b -- serve 8080   # http://127.0.0.1:8080/
-beansc run examples/board/main.b -- check        # what the gate runs
+beansc run examples/board/main.b -- check        # what the check runs
 ```
 
 `examples/cafe` is the reference for the seam itself — a served document, a
@@ -46,7 +46,7 @@ asserts the document loads nothing from anywhere else.
 
 Node is needed only to rebuild the CSS. It is the only part of this repository
 that needs it, which is why it is a script you run rather than a leg of the
-gate: a gate that needed npm would fail on a machine that has `beansc` and
+check: a check that needed npm would fail on a machine that has `beansc` and
 nothing else.
 
 ## What it does not show

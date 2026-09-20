@@ -229,7 +229,7 @@ pub class Applier {
         for edit: Edit in update.edits {
             let cur: Node = stack[stack.len() - 1]
             // The kind rule, for every edit that acts on the CURRENT node. One
-            // gate rather than eight, because eight copies of a rule are eight
+            // check rather than eight, because eight copies of a rule are eight
             // chances to spell it differently — and `latte.js` has to spell it
             // the same as this one. `step_in`, `set_text` and `set_markup`
             // address a CHILD and are checked below, against that child.

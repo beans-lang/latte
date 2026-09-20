@@ -1,4 +1,4 @@
-// The text questions a real renderer answers differently, and the two goldens
+// The text questions a real renderer answers differently, and the two expected outputs
 // differ on purpose: the browser's is `browser_text.browser.out`.
 package main
 

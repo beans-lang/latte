@@ -17,7 +17,7 @@ import latte.visual
 /// That indirection buys three things worth the type:
 ///
 /// - **Renders are testable with no platform.** A whole application's render
-///   output is a value you can print, and latte's differ goldens run on
+///   output is a value you can print, and latte's differ expected outputs run on
 ///   Linux with no display.
 /// - **The tree can be described out of order.** Markup reads top to bottom;
 ///   the platform wants parents created before children and siblings in final
@@ -28,7 +28,7 @@ import latte.visual
 pub class Element {
     pub kind: controls.WidgetKind = controls.WidgetKind.container
 
-    /// What the markup called this, kept for goldens and error messages. Never
+    /// What the markup called this, kept for expected outputs and error messages. Never
     /// used for matching — that is `key` and `kind`.
     pub tag: string = ""
 
@@ -79,6 +79,12 @@ pub class Element {
     listeners: List<Listener> = []
     contents: List<Element> = []
 
+    /// Whether this element carries one of the attributes the differ has to
+    /// apply in a fixed order — a choice list, a tab's labels, a table's
+    /// columns, widths or source. Almost nothing does, and the differ looked
+    /// for all five on every element of every render to find that out.
+    pub ordered: bool = false
+
     pub fn init(kind: controls.WidgetKind, tag: string) {
         self.kind = kind
         self.tag = tag
@@ -92,6 +98,10 @@ pub class Element {
     /// means the applier writes both and the last one wins — which is an order
     /// dependency nobody can see in the markup that produced it.
     pub fn set(attribute: Attribute) {
+        if attribute.kind == AttributeKind.items ||
+           attribute.kind == AttributeKind.numbers ||
+           attribute.kind == AttributeKind.table_source ||
+           attribute.kind == AttributeKind.table_edit_policy { self.ordered = true }
         var index: int = 0
         for index: int in 0..self.attributes.len() {
             if self.attributes[index].property == attribute.property &&

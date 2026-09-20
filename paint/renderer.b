@@ -31,7 +31,7 @@ pub interface Renderer {
 
     /// The pixels of the last finished frame.
     ///
-    /// What the screenshot gates read. Refused rather than faked by a renderer
+    /// What the screenshot checks read. Refused rather than faked by a renderer
     /// with no readable surface, so a suite that cannot compare images fails
     /// instead of passing on an empty picture.
     fn snapshot() -> Result<Pixels>

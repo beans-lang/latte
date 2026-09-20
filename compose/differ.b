@@ -65,6 +65,39 @@ pub class Differ {
         // first, regardless of markup order, then reapply selected even when
         // its numeric value did not change.
         var items_changed: bool = false
+        if before.ordered || after.ordered { items_changed = self.walk_ordered(here, before, after) }
+        var index: int = 0
+        for index: int in 0..after.attribute_count() {
+            let wanted: Attribute = after.attribute_at(index)
+            if wanted.kind == AttributeKind.items || wanted.kind == AttributeKind.numbers ||
+               wanted.kind == AttributeKind.table_source { continue }
+            match before.attribute(wanted.property, wanted.kind) {
+                some(held) => {
+                    if !held.same_as(wanted) || (items_changed && wanted.property == platform.P_SELECTED) { self.property(here, wanted) }
+                }
+                none => { self.property(here, wanted) }
+            }
+        }
+        // A property that was set and is not any more has to be put back to
+        // what a fresh control of this kind would have. Leaving it alone is
+        // how a control stays disabled after the markup that disabled it was
+        // deleted.
+        for index: int in 0..before.attribute_count() {
+            let gone: Attribute = before.attribute_at(index)
+            if gone.kind == AttributeKind.items || gone.kind == AttributeKind.numbers ||
+               gone.kind == AttributeKind.table_source { continue }
+            match after.attribute(gone.property, gone.kind) {
+                some(still) => {}
+                none => { self.property(here, Attribute.default_for(gone.property, gone.kind)) }
+            }
+        }
+    }
+
+    /// The five attributes whose order matters, for the elements that have
+    /// any. Answers whether a list this element's `selected` is judged against
+    /// was rewritten.
+    fn walk_ordered(here: Path, before: Element, after: Element) -> bool {
+        var items_changed: bool = false
         match after.attribute(CHOICES_PROPERTY, AttributeKind.items) {
             some(wanted_items) => {
                 match before.attribute(CHOICES_PROPERTY, AttributeKind.items) {
@@ -99,31 +132,7 @@ pub class Differ {
             TABLE_WIDTHS_PROPERTY, AttributeKind.numbers, columns_changed)
         self.ordered_attribute(here, before, after,
             TABLE_SOURCE_PROPERTY, AttributeKind.table_source, false)
-        var index: int = 0
-        for index: int in 0..after.attribute_count() {
-            let wanted: Attribute = after.attribute_at(index)
-            if wanted.kind == AttributeKind.items || wanted.kind == AttributeKind.numbers ||
-               wanted.kind == AttributeKind.table_source { continue }
-            match before.attribute(wanted.property, wanted.kind) {
-                some(held) => {
-                    if !held.same_as(wanted) || (items_changed && wanted.property == platform.P_SELECTED) { self.property(here, wanted) }
-                }
-                none => { self.property(here, wanted) }
-            }
-        }
-        // A property that was set and is not any more has to be put back to
-        // what a fresh control of this kind would have. Leaving it alone is
-        // how a control stays disabled after the markup that disabled it was
-        // deleted.
-        for index: int in 0..before.attribute_count() {
-            let gone: Attribute = before.attribute_at(index)
-            if gone.kind == AttributeKind.items || gone.kind == AttributeKind.numbers ||
-               gone.kind == AttributeKind.table_source { continue }
-            match after.attribute(gone.property, gone.kind) {
-                some(still) => {}
-                none => { self.property(here, Attribute.default_for(gone.property, gone.kind)) }
-            }
-        }
+        return items_changed
     }
 
     fn ordered_attribute(here: Path, before: Element, after: Element,

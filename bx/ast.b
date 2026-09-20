@@ -63,7 +63,7 @@ pub abstract class Attr {
     /// (`value`, not `bind:value.int`).
     pub abstract fn name() -> string
 
-    /// A one-line form for the golden files.
+    /// A one-line form for the expected outputs.
     pub abstract fn show() -> string
 }
 
@@ -313,10 +313,10 @@ pub abstract class Node {
         self.span = span
     }
 
-    /// A short kind name, for diagnostics and goldens.
+    /// A short kind name, for diagnostics and expected outputs.
     pub abstract fn kind() -> string
 
-    /// A tree form for the golden files, indented by `depth` levels of two
+    /// A tree form for the expected outputs, indented by `depth` levels of two
     /// spaces. Every subclass prints its own line and then its children.
     pub abstract fn show(depth: int) -> string
 }
@@ -456,7 +456,7 @@ pub class ExprNode extends Node {
     /// The Beans expression, verbatim, without any `$` or parentheses.
     pub code: string = ""
     /// `implicit` for `$self.count`, `explicit` for `$(...)`. Kept for the
-    /// goldens: the two forms must produce the same frame, and a golden that
+    /// expected outputs: the two forms must produce the same frame, and an expected output that
     /// shows which form was written is what proves it.
     pub form: string = "implicit"
 

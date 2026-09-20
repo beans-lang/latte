@@ -153,6 +153,30 @@ pub class BrowserHost implements platform.Host {
         return ok(true)
     }
 
+    pub fn semantics_move(id: u64, x: f64, y: f64, width: f64, height: f64,
+                          focused: bool) -> Result<bool> {
+        unsafe {
+            if latte_js_semantics_move(id, x, y, width, height,
+                                       if focused { 1 } else { 0 }) < 0 {
+                return err("could not move an accessibility node: the page refused",
+                           "platform_refused")
+            }
+        }
+        return ok(true)
+    }
+
+    pub fn semantics_grid(id: u64, row: int, column: int,
+                          rows: int, columns: int) -> Result<bool> {
+        unsafe {
+            if latte_js_semantics_grid(id, row as i32, column as i32,
+                                       rows as i32, columns as i32) < 0 {
+                return err("could not place an accessibility node in a grid: the page refused",
+                           "platform_refused")
+            }
+        }
+        return ok(true)
+    }
+
     pub fn semantics_end() -> Result<bool> {
         unsafe {
             if latte_js_semantics_end() < 0 {

@@ -4,6 +4,7 @@
 /// Latte's roles, and the HTML that carries each one best.
 const ELEMENTS = {
     button: "button",
+    columnheader: "div",
     link: "a",
     checkbox: "input",
     radio: "input",
@@ -27,6 +28,9 @@ const ACTION = { ACTIVATE: 1, FOCUS: 2 };
 export class SemanticsHost {
     constructor(parent, options = {}) {
         this.onAction = options.onAction || (() => {});
+        // While a text field is being edited the editing element holds the
+        // keyboard, and a proxy that grabs it back stops typing dead.
+        this.editing = options.editing || null;
         this.root = document.createElement("div");
         this.root.setAttribute("role", "application");
         Object.assign(this.root.style, {
@@ -51,8 +55,61 @@ export class SemanticsHost {
         this.seen.clear();
     }
 
+    /// A node that only moved. Everything it says is already on the element,
+    /// so this is four style writes at most and no text decoding at all.
+    move(id, x, y, width, height, focused) {
+        this.seen.add(id);
+        const element = this.nodes.get(id);
+        if (!element) return;
+        this.place(element, x, y, width, height);
+        this.follow(element, focused);
+    }
+
+    place(element, x, y, width, height) {
+        // Every write here is a style mutation the browser has to account for,
+        // and a scrolling table republishes hundreds of nodes a frame of which
+        // only the position moved. `last` is what this element was last told.
+        const last = element.__latte;
+        const w = Math.max(1, width), h = Math.max(1, height);
+        if (last.x !== x) { element.style.left = `${x}px`; last.x = x; }
+        if (last.y !== y) { element.style.top = `${y}px`; last.y = y; }
+        if (last.w !== w) { element.style.width = `${w}px`; last.w = w; }
+        if (last.h !== h) { element.style.height = `${h}px`; last.h = h; }
+    }
+
+    /// Moves the browser's focus onto a node latte says has it.
+    follow(element, focused) {
+        const editorOwns = !!(this.editing && this.editing.active);
+        if (focused && element.__latte.focusable && !editorOwns &&
+            document.activeElement !== element) {
+            this.moving = true;
+            try { element.focus({ preventScroll: true }); } finally { this.moving = false; }
+        }
+    }
+
+    /// Where a node sits in a grid, and how big that grid really is.
+    ///
+    /// A virtual table gives a reader the rows on screen. Left to count them
+    /// it would say "row 3 of 12" in the middle of ten million, which is the
+    /// one thing a screen reader must not do with a list this long.
+    grid(id, row, column, rows, columns) {
+        const element = this.nodes.get(id);
+        if (!element) return;
+        const last = element.__latte;
+        const set = (name, value) => {
+            if (last[name] === value) return;
+            if (value > 0) element.setAttribute(name, String(value));
+            else element.removeAttribute(name);
+            last[name] = value;
+        };
+        set("aria-rowindex", row);
+        set("aria-colindex", column);
+        set("aria-rowcount", rows);
+        set("aria-colcount", columns);
+    }
+
     node(item) {
-        const key = String(item.id);
+        const key = item.id;
         this.seen.add(key);
         let element = this.nodes.get(key);
         const tag = ELEMENTS[item.role] || "div";
@@ -64,7 +121,11 @@ export class SemanticsHost {
             element.style.padding = "0";
             element.style.border = "0";
             element.style.background = "transparent";
-            element.style.pointerEvents = "auto";
+            // NOT "auto". These sit over the canvas, so a proxy that takes
+            // pointer events takes every click and latte never sees one —
+            // no caret placement, no drag, no text selection. A screen
+            // reader's activate is dispatched at the element and still works.
+            element.style.pointerEvents = "none";
             if (tag === "input") {
                 element.type = item.role === "checkbox" ? "checkbox"
                              : item.role === "radio" ? "radio"
@@ -74,44 +135,52 @@ export class SemanticsHost {
             // click runs: two paths to one button is how they diverge.
             element.addEventListener("click", (event) => {
                 event.preventDefault();
-                this.onAction(BigInt(key), ACTION.ACTIVATE);
+                this.onAction(key, ACTION.ACTIVATE);
             });
             element.addEventListener("focus", () => {
                 if (this.moving) return;
-                this.onAction(BigInt(key), ACTION.FOCUS);
+                this.onAction(key, ACTION.FOCUS);
             });
+            element.__latte = {};
             this.root.appendChild(element);
             this.nodes.set(key, element);
         }
-        element.style.left = `${item.x}px`;
-        element.style.top = `${item.y}px`;
-        element.style.width = `${Math.max(1, item.width)}px`;
-        element.style.height = `${Math.max(1, item.height)}px`;
-        if (element.getAttribute("role") !== item.role) element.setAttribute("role", item.role);
+        const last = element.__latte;
+        this.place(element, item.x, item.y, item.width, item.height);
+        if (last.role !== item.role) { element.setAttribute("role", item.role); last.role = item.role; }
         // aria-label rather than text content: the words are drawn on the
         // canvas, and two copies is two things that can disagree.
-        if (element.getAttribute("aria-label") !== item.label) {
+        if (last.label !== item.label) {
             element.setAttribute("aria-label", item.label);
+            last.label = item.label;
         }
-        if (item.value) element.setAttribute("aria-valuetext", item.value);
-        else element.removeAttribute("aria-valuetext");
-        element.setAttribute("aria-disabled", item.enabled ? "false" : "true");
+        if (last.value !== item.value) {
+            if (item.value) element.setAttribute("aria-valuetext", item.value);
+            else element.removeAttribute("aria-valuetext");
+            last.value = item.value;
+        }
+        if (last.enabled !== item.enabled) {
+            element.setAttribute("aria-disabled", item.enabled ? "false" : "true");
+            last.enabled = item.enabled;
+        }
         // A node with no name and nothing to do is decoration: left in, it is
         // a stop with nothing to announce.
         const silent = !item.label && !item.value &&
                        (item.role === "image" || item.role === "group");
-        if (silent) element.setAttribute("aria-hidden", "true");
-        else element.removeAttribute("aria-hidden");
-
         // Only what can take focus gets a tab stop. A label is in the tree to
         // be read; a tab stop on one is a stop the canvas does not have.
         const focusable = item.enabled && !silent && item.role !== "text" &&
                           item.role !== "group" && item.role !== "progressbar";
-        element.tabIndex = focusable ? 0 : -1;
-        if (item.focused && focusable && document.activeElement !== element) {
-            this.moving = true;
-            try { element.focus({ preventScroll: true }); } finally { this.moving = false; }
+        if (last.silent !== silent) {
+            if (silent) element.setAttribute("aria-hidden", "true");
+            else element.removeAttribute("aria-hidden");
+            last.silent = silent;
         }
+        if (last.focusable !== focusable) {
+            element.tabIndex = focusable ? 0 : -1;
+            last.focusable = focusable;
+        }
+        this.follow(element, item.focused);
     }
 
     end() {
@@ -123,7 +192,7 @@ export class SemanticsHost {
         this.published++;
     }
 
-    /// What a gate reads: the elements now standing, and how many trees have
+    /// What a check reads: the elements now standing, and how many trees have
     /// been published.
     count() { return this.nodes.size; }
 

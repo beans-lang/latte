@@ -18,7 +18,7 @@
 //        logical TREE the applier reconstructed, so a browser that lands on
 //        the right HTML by luck still fails here.
 //
-// The suite's own golden is that JavaScript file, so both backends must emit
+// The suite's own expected output is that JavaScript file, so both backends must emit
 // it byte for byte and a change to any of frames.b, builder.b, diff.b, apply.b
 // or serialize.b that moves a batch shows up here as a diff a person reads.
 // `test.sh`'s js-apply leg then feeds the same file to headless Chrome.
@@ -1022,7 +1022,7 @@ fn progress_cases() -> List<ProgressCase> {
     // Every number here is inside the range a double represents exactly.
     // Beyond it neither half can produce a value at all: latte.js passes every
     // number through `wireInt`, which clamps at 9007199254740991, and Beans'
-    // own i64 rows are gated in tests/w6_upload.b where a double is not in the
+    // own i64 rows are checked in tests/w6_upload.b where a double is not in the
     // way.
     var pairs: List<List<int>> = []
     pairs.push([0, 0])

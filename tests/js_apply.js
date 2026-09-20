@@ -1,4 +1,4 @@
-// tests/js_apply.js — gate 3's browser half, and the only place latte.js runs.
+// tests/js_apply.js — check 3's browser half, and the only place latte.js runs.
 //
 // A reference applier in Beans, over thousands of random trees and mutations,
 // and the real `latte.js` applier, over a small DOM, are both required to land
@@ -123,7 +123,7 @@
 
     // Chrome's HTML serializer and frames.b's escaper disagree about `'` and
     // U+00A0 in an attribute value, and about `<` in one. Those are escaping
-    // dialects, not trees, and gate 3 asks whether the two mean the same thing
+    // dialects, not trees, and check 3 asks whether the two mean the same thing
     // to a browser — so both sides are round-tripped through the browser's own
     // parser and the two normal forms are compared. A `<template>` is used
     // because it is the one element whose innerHTML parses in a context that
@@ -403,7 +403,7 @@
     var RECONNECT_ID = 'fedcba9876543210fedc';
 
     // The clock and the timer queue are FAKE, and that is the point: the
-    // fence deadline (§ 5) is a property of elapsed time, and a gate that
+    // fence deadline (§ 5) is a property of elapsed time, and a check that
     // asserted it by really waiting would be slow, flaky, and unable to say
     // which millisecond mattered. `advance` is the only thing that moves time
     // here, so every timer that fires does so because a check asked it to.
@@ -424,7 +424,7 @@
             answerMs: options.answerMs,
             // The animation frame, injected for the same reason the clock is:
             // the scroll reporter coalesces to one message per frame, and a
-            // gate that waited for a real frame could not say which frame it
+            // check that waited for a real frame could not say which frame it
             // was waiting for.
             schedule: options.schedule,
             open: function () {
@@ -955,7 +955,7 @@
     /// all at `close()`, every sweep between the writes would see an empty
     /// document, every split would pass for the same trivial reason, and the
     /// 4397 below would be 4397 runs of one test. The count is printed into
-    /// the golden.
+    /// the expected output.
     function runStream(text, cuts) {
         var doc = frame.contentDocument;
         doc.open();
@@ -1613,7 +1613,7 @@
     //
     // Every rig in § 4 and § 5 injects `setTimeout`, `clearTimeout` and the
     // clock. That is right — a deadline asserted by really waiting is a
-    // deadline no gate can name a millisecond of — and it is also why 469
+    // deadline no check can name a millisecond of — and it is also why 469
     // checks ran without one of them ever reaching the browser's own timer.
     // Which is how this survived, in the file those checks are about:
     //

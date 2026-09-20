@@ -253,7 +253,7 @@ fn is_hex(text: string, want: int) -> bool {
     return true
 }
 
-// ================================================================ the gate
+// ================================================================ the check
 
 fn main() {
     let r: Report = new Report()
@@ -370,7 +370,7 @@ fn section_one(r: Report, host: espresso.TestHost, dial: Dial, ticket: Ticket) {
             r.eqi("a second GET in the same session", reply.status, 200)
             r.eq("sets no new cookie", header_of(reply, "Set-Cookie"), "")
             // Compared, never printed: the token is an HMAC over a random
-            // session id, so putting it in the golden would make this suite
+            // session id, so putting it in the expected output would make this suite
             // fail on its second run for a reason that has nothing to do with
             // latte.
             r.yes("and issues the same token for the same clock",

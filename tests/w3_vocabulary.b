@@ -103,7 +103,7 @@ fn main() {
 
     rule("5b — the names that mean a layout to one tag and a property to another")
 
-    // Not a pass or a fail: a printed list the golden holds. `columns` is a
+    // Not a pass or a fail: a printed list the expected output holds. `columns` is a
     // Grid's track list and a Table's column titles, by two different roads.
     for name: string in bx.canvas_attribute_names() {
         if !compose.Vocabulary.is_layout_name(name) { continue }

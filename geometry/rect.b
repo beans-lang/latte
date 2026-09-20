@@ -47,9 +47,9 @@ pub struct Rect {
                point.y >= self.y && point.y < self.bottom()
     }
 
-    /// The frame as the test goldens print it: whole points, no decimals.
+    /// The frame as the test expected outputs print it: whole points, no decimals.
     /// Sub-point differences come out of font metrics that move between OS
-    /// releases, and a golden carrying them fails for the wrong reason.
+    /// releases, and an expected output carrying them fails for the wrong reason.
     pub fn show() -> string {
         return "{self.x as int},{self.y as int},{self.width as int},{self.height as int}"
     }

@@ -65,7 +65,7 @@ pub fn event_family(event: string) -> string {
 /// Written out rather than derived, because `event_family` is a chain of
 /// comparisons and a chain cannot be enumerated. `w2_event_table_agrees` in
 /// tests/markup.b checks the two against each other, so a row added to one and
-/// forgotten in the other fails the gate rather than shipping a table that
+/// forgotten in the other fails the check rather than shipping a table that
 /// lists an event the compiler refuses.
 pub fn event_names() -> List<string> {
     return ["click", "dblclick", "mousedown", "mouseup", "mouseenter",

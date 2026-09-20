@@ -12,7 +12,7 @@
 // run that reaches its last line panicked on none of its shapes. That is why
 // the totals are printed at the END and why every family reports the number of
 // shapes it actually fed: a suite that died on shape 4,000 of 9,000 produces a
-// truncated golden diff, not a green run. `hostile.<family>.every-shape-was-fed`
+// truncated expected output diff, not a green run. `hostile.<family>.every-shape-was-fed`
 // compares the number fed against the number generated, so a generator that
 // quietly produced nothing cannot look like a family that survived everything.
 //
@@ -21,9 +21,9 @@
 // SKIP, loudly, on a machine without `leaks`. Every shape allocates a fresh
 // `Circuit` with its two channels, so the corpus is also the leak corpus.
 //
-// **Why the golden is vocabularies and counts and not a transcript.** A
+// **Why the expected output is vocabularies and counts and not a transcript.** A
 // hostile shape contains NUL bytes, lone `\xff`s and 32 KB strings; printing
-// one would put them in the golden file. So what is printed is:
+// one would put them in the expected output. So what is printed is:
 //
 //   * per family, how many shapes were generated, refused and accepted — a
 //     function of the generators, so a refusal that stopped refusing moves a
@@ -70,7 +70,7 @@ pub class Report {
 /// A sorted set of strings, printed without counts.
 ///
 /// Without counts on purpose: a count changes every time a generator grows a
-/// shape, and a golden that has to be re-recorded for that reason stops being
+/// shape, and an expected output that has to be re-recorded for that reason stops being
 /// read. The MEMBERSHIP is what matters — a fault sentence nobody decided, or
 /// one carrying bytes off the wire, is a new line here.
 pub class Vocabulary {
@@ -96,7 +96,7 @@ pub class Vocabulary {
 
 /// Digits collapsed to `#`, so `"nesting deeper than 24"` and
 /// `"nesting deeper than 4"` are one entry and a limit that moves does not
-/// rewrite the golden.
+/// rewrite the expected output.
 fn normalise(text: string) -> string {
     var out: fmt.StringBuilder = new fmt.StringBuilder()
     var index: int = 0
@@ -181,7 +181,7 @@ pub const FAULT_MAX: int = 160
 /// Feed one hostile shape through both readers and charge what happened.
 ///
 /// It takes `text` by value and never prints it. Nothing in this file prints a
-/// shape: the golden would then hold NUL bytes and lone `\xff`s, and would stop
+/// shape: the expected output would then hold NUL bytes and lone `\xff`s, and would stop
 /// being a text file.
 fn feed(c: Corpus, family: Family, text: string, limits: WireLimits) {
     family.fed += 1
@@ -318,7 +318,7 @@ fn substitute(text: string, at: int, byte: int) -> string {
 /// The bytes worth substituting. Structural JSON punctuation, the two quote
 /// characters, a backslash, a raw control byte, a lone continuation byte and a
 /// byte no UTF-8 sequence may contain. A random alphabet would be a different
-/// corpus on every run and its golden would be a photograph.
+/// corpus on every run and its expected output would be a photograph.
 fn nasty_bytes() -> List<int> {
     var out: List<int> = []
     out.push(0)      // NUL
@@ -748,7 +748,7 @@ fn main() {
     // new member means a shape reached an encoder that did not expect it.
     c.frames.print("the outbox frame kinds a hostile shape produced")
 
-    // The three vocabularies are the load-bearing part of this golden, so they
+    // The three vocabularies are the load-bearing part of this expected output, so they
     // get assertions of their own rather than only being printed. A frame kind
     // latte's own encoders cannot produce means a hostile shape reached the
     // encoder with something it did not expect.

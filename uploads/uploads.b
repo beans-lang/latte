@@ -253,7 +253,7 @@ fn describe_form(form: espresso.MultipartForm, store: HandleStore,
         for handle: PartHandle in store.handles {
             if handle.storage_id == file.storage_id { stored = handle.size() }
         }
-        // The storage id is random, so it cannot appear in a golden. What can
+        // The storage id is random, so it cannot appear in an expected output. What can
         // is that the file's id was one the store opened, which is the same
         // statement without the entropy.
         out.push("file {file.field} \"{file.submitted_filename}\" {file.declared_type} form={file.size} stored={stored}")

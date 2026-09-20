@@ -8,7 +8,7 @@
 # a different cause.
 #
 # So this regenerates the whole tree into a scratch directory and diffs. It
-# never writes into the repository, which matters: a gate that "fixed" the
+# never writes into the repository, which matters: a check that "fixed" the
 # drift would hide exactly the change it exists to report.
 set -euo pipefail
 

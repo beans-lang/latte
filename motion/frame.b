@@ -46,7 +46,7 @@ pub struct Frame {
         return Frame { number: number, elapsed: elapsed, delta: delta, token: token }
     }
 
-    /// What a golden can hold. The times are deliberately not in it: they are
+    /// What an expected output can hold. The times are deliberately not in it: they are
     /// never the same twice, so printing them would make a test a report on
     /// how busy the machine was.
     pub fn show() -> string {

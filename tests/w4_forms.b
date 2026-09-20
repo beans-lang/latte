@@ -310,8 +310,8 @@ class Report {
 /// An entry file compiled inside a module is `<module>$entry`, not `main`, and
 /// every fault message this suite compares against carries it. It is computed
 /// once rather than written out seventeen times, so the day the compiler names
-/// entry packages differently this file changes in one place — and the golden
-/// still changes, which is the point of a golden.
+/// entry packages differently this file changes in one place — and the expected output
+/// still changes, which is the point of an expected output.
 fn here() -> string {
     let named: string = type_of(Signup).qualified_name()
     match named.rfind(".") {
@@ -361,7 +361,7 @@ class Site {
     }
 }
 
-// ================================================================ the gate
+// ================================================================ the check
 
 fn main() {
     let report: Report = new Report()

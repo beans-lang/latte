@@ -3,9 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "The page half of Latte: the WebAssembly loader, the CanvasKit renderer, and the browser gates.",
+  "description": "The page half of Latte: the WebAssembly loader, the CanvasKit renderer, and the browser checks.",
   "scripts": {
-    "gate": "node tools/browser_gate.mjs",
+    "check": "node tools/browser_check.mjs",
     "serve": "node tools/serve.mjs"
   },
   "devDependencies": {

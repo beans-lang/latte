@@ -48,6 +48,11 @@ pub extern "C" fn latte_js_semantics_node(id: u64,
                                           value: RawPtr<i8>, value_len: i32,
                                           x: f64, y: f64, width: f64, height: f64,
                                           enabled: i32, focused: i32) -> i32
+pub extern "C" fn latte_js_semantics_move(id: u64,
+                                          x: f64, y: f64, width: f64, height: f64,
+                                          focused: i32) -> i32
+pub extern "C" fn latte_js_semantics_grid(id: u64, row: i32, column: i32,
+                                          rows: i32, columns: i32) -> i32
 pub extern "C" fn latte_js_semantics_end() -> i32
 
 /// Moving text across the boundary: never NUL-terminated, always a pointer and

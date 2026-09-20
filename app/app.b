@@ -103,7 +103,7 @@ pub class LatteOptions {
     pub contain_panics: bool = true
 
     /// The clock the antiforgery expiry is measured against. `0` reads the
-    /// wall clock; any other value is used as-is, which is what a golden-file
+    /// wall clock; any other value is used as-is, which is what an expected output-file
     /// test wants so its token is a pure function of inputs it chose.
     pub now: int = 0
 
@@ -731,10 +731,10 @@ pub fn build_with(options: LatteOptions,
 /// than the defaults.
 ///
 /// **The default is `check`, not `serve`.** An entry whose default was a
-/// listening socket would hang a golden-file gate for ever the day its
+/// listening socket would hang an expected output-file check for ever the day its
 /// arguments went missing — green, because nothing would ever come back to be
 /// red. Failing towards the deterministic mode costs a person eight characters
-/// and cannot silence a gate.
+/// and cannot silence a check.
 pub fn run_main(options: LatteOptions) {
     let args: List<string> = os.args()
     var command: string = "check"

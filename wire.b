@@ -153,7 +153,7 @@ pub fn json_text(value: string) -> Json {
 //   U+2029   string literal even though they are legal in JSON. Same reason.
 //
 // `>` and `&` are deliberately NOT escaped: `<` alone is enough to stop a tag
-// from opening, and leaving them raw keeps a golden file readable.
+// from opening, and leaving them raw keeps an expected output readable.
 pub fn write_json_string(out: fmt.StringBuilder, value: string) {
     out.push("\"")
     var start: int = 0

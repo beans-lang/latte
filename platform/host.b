@@ -55,6 +55,21 @@ pub interface Host {
     fn semantics_node(id: u64, role: string, label: string, value: string,
                       x: f64, y: f64, width: f64, height: f64,
                       enabled: bool, focused: bool) -> Result<bool>
+    /// The same node again, when only where it is has changed.
+    ///
+    /// A scrolling list republishes every node it shows on every frame, and
+    /// what moved is four numbers — the words are the ones the host already
+    /// has. Sending them again means encoding three strings here and decoding
+    /// three there, per node, per frame, which on a table of a few hundred
+    /// cells cost more than drawing them. A host that cannot tell the two
+    /// apart may answer this with `semantics_node` and lose nothing but time.
+    fn semantics_move(id: u64, x: f64, y: f64, width: f64, height: f64,
+                      focused: bool) -> Result<bool>
+    /// Where a node sits in a grid, one-based, and how big that grid really
+    /// is. Sent only for the nodes that are in one, and only beside
+    /// `semantics_node` — a node that merely moved is in the same cell.
+    fn semantics_grid(id: u64, row: int, column: int,
+                      rows: int, columns: int) -> Result<bool>
     fn semantics_end() -> Result<bool>
 }
 
@@ -169,6 +184,18 @@ pub class HeadlessHost implements Host {
                           x: f64, y: f64, width: f64, height: f64,
                           enabled: bool, focused: bool) -> Result<bool> {
         return err("could not publish an accessibility node: this host has none",
+                   "unsupported")
+    }
+
+    pub fn semantics_move(id: u64, x: f64, y: f64, width: f64, height: f64,
+                          focused: bool) -> Result<bool> {
+        return err("could not move an accessibility node: this host has none",
+                   "unsupported")
+    }
+
+    pub fn semantics_grid(id: u64, row: int, column: int,
+                          rows: int, columns: int) -> Result<bool> {
+        return err("could not place an accessibility node in a grid: this host has none",
                    "unsupported")
     }
 

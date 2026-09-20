@@ -99,7 +99,7 @@ ok 8.2 the named control escapes
 ok 8.3 an unnamed control byte
 ok 8.4 a less-than can never leave a JSON string
 ok 8.5 U+2028 and U+2029, legal in JSON and fatal in JavaScript
-ok 8.6 greater-than and ampersand stay raw, so a golden reads
+ok 8.6 greater-than and ampersand stay raw, so an expected output reads
 ok 8.7 U+2028 at the very end
 ok 8.8 other three-byte UTF-8 starting E2 80 is untouched
 ok 8.9 astral characters pass through

@@ -56,7 +56,7 @@ pub enum Capability {
         }
     }
 
-    /// Every capability, so a gate can walk them rather than list them — a new
+    /// Every capability, so a check can walk them rather than list them — a new
     /// one then shows up in the suite whether or not anybody added a row.
     pub static fn all() -> List<Capability> {
         return [Capability.frame_clock, Capability.clipboard, Capability.text_input,

@@ -169,14 +169,18 @@ pub class UiContext {
         if !self.invalidation_value.needs_paint() { return ok(false) }
         let version: int = self.invalidation_value.paint_version()
         let commands: paint.DisplayList = new paint.DisplayList()
+        platform.Probe.instance.enter(platform.PHASE_RECORD)
         root.record(commands)?
         match self.popup_value.root() { some(popup) => { popup.record(commands)? } none => {} }
+        platform.Probe.instance.leave(platform.PHASE_RECORD)
+        platform.Probe.instance.enter(platform.PHASE_DRAW)
         let canvas: paint.Canvas = self.renderer_value.begin(size, scale, self.theme_value.background())?
         match commands.replay(canvas) {
             err(problem) => { self.renderer_value.end(); return err(problem.msg, problem.kind) }
             ok(_) => {}
         }
         self.renderer_value.end()?
+        platform.Probe.instance.leave(platform.PHASE_DRAW)
         self.invalidation_value.painted(version)
         return ok(true)
     }

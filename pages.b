@@ -182,7 +182,7 @@ pub class Layout extends Component {
 /// render onward, so a component that snapshots there never records the first
 /// render's parameters and answers "changed" for ever after — which is a
 /// component that re-renders on every parent pass while every test still
-/// passes, because re-rendering too much is invisible to a golden file.
+/// passes, because re-rendering too much is invisible to an expected output.
 /// `tests/renders.b` measures it and `tests/components.b` § 2 proves the
 /// helper's own answer across the first render, where the hand-written mistake
 /// would show.

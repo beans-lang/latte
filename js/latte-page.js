@@ -81,6 +81,9 @@ export class LattePage {
                     page.withText(text, (pointer, length) =>
                         page.call("latte_text_input", kind, pointer, length, anchor, caret)),
               });
+        // Wired after both exist: the semantics tree must not pull focus off
+        // an open editing session, or every keystroke after the first is lost.
+        if (page.semantics) page.semantics.editing = page.editing;
 
         // The drawing imports need a memory that does not exist until the
         // module is instantiated, so the runtime builds them as it wires up.
@@ -177,7 +180,7 @@ export class LattePage {
         this.scaleWatch = matchMedia(`(resolution: ${ratio}dppx)`);
         const onChange = () => { this.resized(); this.watchScale(); };
         // `addEventListener` on a MediaQueryList is the modern spelling and
-        // `addListener` is older WebKit's; the gate runs on both.
+        // `addListener` is older WebKit's; the check runs on both.
         if (this.scaleWatch.addEventListener) {
             this.scaleWatch.addEventListener("change", onChange, { once: true });
         } else if (this.scaleWatch.addListener) {

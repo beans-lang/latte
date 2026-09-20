@@ -47,10 +47,10 @@ pub class VisualRender extends RenderObject {
     /// path data, and a screen reader read "M8 32 L32 8 L56 32 Z" aloud. A
     /// drawing that means something says so with `a11y_label`; one that does
     /// not is decoration and is better left silent.
-    pub override fn semantics() -> SemanticsNode {
+    pub override fn semantics_at(bounds: geometry.Rect) -> SemanticsNode {
         return new SemanticsNode(self.identity,
             if self.a11y_role == "" { self.role() } else { self.a11y_role },
-            self.a11y_name, self.a11y_value, self.visual_frame(), self.enabled)
+            self.a11y_name, self.a11y_value, bounds, self.enabled)
     }
     pub fn arm_transitions() { self.transitions_armed = true }
     pub override fn animating() -> bool {

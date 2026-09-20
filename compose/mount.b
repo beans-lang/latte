@@ -353,11 +353,14 @@ pub class Mount implements Composer {
                     return err("<{next.tag}> is the screen's root, and nothing contains it to hide it — hide what is inside it instead",
                                "bad_render")
                 }
+                platform.Probe.instance.enter(platform.PHASE_DIFF)
                 var differ: Differ = new Differ()
                 let changes: List<Change> = differ.diff(self.shown, next)
+                platform.Probe.instance.count(platform.TALLY_CHANGES, changes.len())
                 var applier: Applier = new Applier(self.root, self.router, self)
                 applier.apply(changes)?
                 applier.index(next)?
+                platform.Probe.instance.leave(platform.PHASE_DIFF)
                 self.face = some(applier.face()?)
                 self.shown = some(next)
                 self.settle_all()
@@ -486,7 +489,9 @@ pub class Mount implements Composer {
         self.rendering = path
         component.note_viewport(self.bounds)
         component.note_rendering(true)
+        platform.Probe.instance.enter(platform.PHASE_COMPOSE)
         component.render(into)
+        platform.Probe.instance.leave(platform.PHASE_COMPOSE)
         component.note_rendering(false)
         self.rendering = outer
         self.renders = self.renders + 1
@@ -773,6 +778,8 @@ pub class Mount implements Composer {
     /// would show up as controls in the wrong place with every frame otherwise
     /// looking right.
     fn lay_out() -> Result<bool> {
+        platform.Probe.instance.enter(platform.PHASE_LAYOUT)
+        defer platform.Probe.instance.leave(platform.PHASE_LAYOUT)
         match self.shown {
             none => { return ok(true) }
             some(element) => {

@@ -8,18 +8,18 @@ import latte.paint
 ///
 /// It is not a stub that answers zero. It shapes text with a monospaced metric
 /// — one advance per grapheme, scaled by the point size — so layout runs, a
-/// caret lands somewhere defensible, and a golden of the tree is the same on
+/// caret lands somewhere defensible, and an expected output of the tree is the same on
 /// every machine. Nothing here is a guess about what a real font will do; it
 /// is a *stated* font, which is what makes a layout test a test rather than a
 /// screenshot of whichever face was installed.
 ///
-/// Two jobs, and they are the same object on purpose. A gate needs measurement
+/// Two jobs, and they are the same object on purpose. A check needs measurement
 /// with no browser, and a browser that has lost its GPU context needs
 /// measurement for it rebuilds one. A second implementation for the second
 /// case would be a second set of line breaks.
 pub class MetricRenderer implements paint.Renderer {
     /// Width of one grapheme as a fraction of the point size. 0.6 is a
-    /// typical monospaced advance and is the number every golden in this repo
+    /// typical monospaced advance and is the number every expected output in this repo
     /// was recorded against; changing it re-records all of them.
     advance: f64 = 0.6
     ascent_ratio: f64 = 0.8
@@ -37,7 +37,7 @@ pub class MetricRenderer implements paint.Renderer {
         return ok(true)
     }
 
-    /// Which font file was pinned, so a gate can assert a run used the face it
+    /// Which font file was pinned, so a check can assert a run used the face it
     /// meant to.
     pub fn font() -> string { return self.font_path }
 
@@ -164,7 +164,7 @@ pub class MetricRenderer implements paint.Renderer {
                    "unsupported")
     }
 
-    /// The commands of the last finished frame, for a gate that wants to
+    /// The commands of the last finished frame, for a check that wants to
     /// assert what was drawn rather than what it looked like.
     pub fn last_frame() -> Option<paint.DisplayList> {
         if self.recorded.len() == 0 { return none }
@@ -203,7 +203,7 @@ pub class MetricParagraph implements paint.Paragraph {
     ///
     /// Breaks at a space when one is available inside the line, and mid-word
     /// when none is — the same two rules every shaper has, which is what keeps
-    /// a golden recorded here close to what a real one produces.
+    /// an expected output recorded here close to what a real one produces.
     fn lay_out() {
         var starts: List<int> = [0]
         var widest: f64 = 0.0

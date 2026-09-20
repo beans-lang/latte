@@ -171,6 +171,12 @@ pub abstract class ControlTemplate extends Component {
 
     pub fn init() { super.init() }
     pub fn bind_actions(actions: scene.ControlActions) {}
+    /// Run after this template's controls exist and have been laid out, every
+    /// time. `on_mount` runs once and is the place to find a control; this is
+    /// the place to say something about controls a render just made — which a
+    /// virtual table needs, because which logical cell a control stands for
+    /// changes under it and only the template knows.
+    pub fn after_render(root: scene.RenderObject) {}
     pub fn decorate_popup(root: scene.RenderObject) -> Result<bool> { return ok(false) }
 
     pub fn update(control: scene.RenderObject, theme: scene.Theme) {

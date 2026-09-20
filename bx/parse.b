@@ -59,7 +59,7 @@ pub class Document {
         return lines.join("\n")
     }
 
-    /// A tree form for the golden files.
+    /// A tree form for the expected outputs.
     pub fn show() -> string {
         let parts: List<string> = []
         for n: Node in self.nodes {

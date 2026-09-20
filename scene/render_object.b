@@ -42,8 +42,20 @@ pub abstract class RenderObject {
     a11y_name: string = ""
     a11y_role: string = ""
     a11y_value: string = ""
+    /// This node's one-based place in a grid, and the size of that grid. Zero
+    /// where there is no grid. A table fills the size; the template that draws
+    /// its cells fills the places, because only it knows which logical row and
+    /// column a materialized cell stands for.
+    a11y_row: int = 0
+    a11y_column: int = 0
+    a11y_rows: int = 0
+    a11y_columns: int = 0
     content: geometry.Size = geometry.Size.zero()
     template_visual: Option<RenderObject> = none
+    /// Where this node's children are drawn, relative to its own box. A pure
+    /// paint-and-hit transform: layout never reads it, so moving it is a
+    /// repaint and not a re-measure.
+    shift: geometry.Point = geometry.Point.zero()
 
     fn init(renderer: paint.Renderer, theme: Theme, dirty: Invalidation) {
         self.renderer = renderer
@@ -276,15 +288,65 @@ pub abstract class RenderObject {
         return err("this control does not scroll", "wrong_kind")
     }
     pub fn content_size() -> geometry.Size { return self.content }
-    pub fn child_offset() -> geometry.Point { return geometry.Point.zero() }
+    pub fn child_offset() -> geometry.Point { return self.shift }
+
+    /// Moves everything inside this node without laying anything out again.
+    ///
+    /// This is what a scrolling band is made of: a table's rows slide under a
+    /// header by a fraction of a row on every wheel notch, and re-rendering
+    /// the markup to write twenty new `y` values would cost a render, a diff
+    /// and a layout pass for a transform.
+    pub fn set_shift(point: geometry.Point) -> Result<bool> {
+        self.demand_alive()?
+        if !(point.x > -10000000.0 && point.x < 10000000.0 &&
+             point.y > -10000000.0 && point.y < 10000000.0) {
+            return err("invalid child shift", "out_of_range")
+        }
+        if self.shift.x == point.x && self.shift.y == point.y { return ok(false) }
+        self.shift = point
+        self.dirty.paint()
+        self.dirty.semantics()
+        return ok(true)
+    }
     pub fn child_offset_for(handle: u64) -> geometry.Point {
         return if self.is_visual_child(handle) { self.visual_offset() } else { self.child_offset() }
     }
     pub fn clips_children() -> bool { return false }
 
-    pub fn semantics() -> SemanticsNode {
-        return new SemanticsNode(self.identity, if self.a11y_role == "" { self.role() } else { self.a11y_role },
-            if self.a11y_name == "" { self.words } else { self.a11y_name }, self.a11y_value, self.visual_frame(), self.enabled)
+    pub fn semantics() -> SemanticsNode { return self.semantics_at(self.visual_frame()) }
+
+    /// The same node, at bounds the caller already worked out. A tree walk
+    /// knows where it is; asking each node to climb back to the root to find
+    /// out is a map lookup per ancestor per node, every frame.
+    pub fn semantics_at(bounds: geometry.Rect) -> SemanticsNode {
+        var node: SemanticsNode = new SemanticsNode(self.identity,
+            if self.a11y_role == "" { self.role() } else { self.a11y_role },
+            if self.a11y_name == "" { self.words } else { self.a11y_name },
+            self.a11y_value, bounds, self.enabled)
+        node.set_grid(self.a11y_row, self.a11y_column, self.a11y_rows, self.a11y_columns)
+        return node
+    }
+
+    /// What this node is inside a grid: the role a reader should announce it
+    /// as, and its one-based row and column. Zero for an axis it does not sit
+    /// on — a row has a row and no column.
+    pub fn set_grid_place(role: string, row: int, column: int) -> Result<bool> {
+        self.demand_alive()?
+        if self.a11y_role == role && self.a11y_row == row && self.a11y_column == column {
+            return ok(false)
+        }
+        self.a11y_role = role; self.a11y_row = row; self.a11y_column = column
+        self.dirty.semantics()
+        return ok(true)
+    }
+    /// How many rows and columns the grid really has — not how many of them
+    /// are on screen, which is what a reader would otherwise count.
+    pub fn set_grid_size(rows: int, columns: int) -> Result<bool> {
+        self.demand_alive()?
+        if self.a11y_rows == rows && self.a11y_columns == columns { return ok(false) }
+        self.a11y_rows = rows; self.a11y_columns = columns
+        self.dirty.semantics()
+        return ok(true)
     }
     pub fn set_semantics(role: string, label: string, value: string) -> Result<bool> {
         self.demand_alive()?
@@ -348,6 +410,10 @@ pub abstract class RenderObject {
     }
     pub fn handle_event(event: input.UiEvent) -> Option<input.UiEvent> { return none }
     pub fn focus_changed(focused: bool) { self.has_focus = focused; self.dirty.paint(); self.dirty.semantics() }
+
+    /// Where an input method should sit, or `none` for an object that is not
+    /// being edited. Only a focused, editable text field answers.
+    pub fn editing_spot() -> Option<EditingSpot> { return none }
     fn contains_handle(handle: u64) -> bool {
         if self.identity == handle { return true }
         for child: RenderObject in self.contents { if child.contains_handle(handle) { return true } }

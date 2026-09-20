@@ -399,7 +399,7 @@ pub abstract class Widget {
 
     // ---- introspection ----
 
-    /// Latte's own class name for this control. The test suite golden-files
+    /// Latte's own class name for this control. The test suite expected output-files
     /// it, because it is the answer that proves the right render object was
     /// built and not a stand-in.
     pub fn native_class() -> Result<string> {
@@ -486,7 +486,7 @@ pub abstract class Widget {
     /// platform calls it, how assistive technology sees it, its text, its
     /// frame, and whatever state is not at its default.
     ///
-    /// This is the line the test goldens carry, and it is deliberately built
+    /// This is the line the test expected outputs carry, and it is deliberately built
     /// here in Beans rather than in the platform. If the host formatted it, the
     /// interpreter and a native build would call the same compiled function
     /// and print identical bytes even with the whole foreign-function layer
@@ -505,7 +505,7 @@ pub abstract class Widget {
         var line: string = "{self.kind_value.name()} {native} role={role} \"{text}\" frame={frame.show()}"
         // Only a widget that actually has the state reports it. A container
         // has no enabled flag at all, and printing a default for it would say
-        // something false about every container in every golden file.
+        // something false about every container in every expected output.
         match self.is_enabled() {
             ok(enabled) => { if !enabled { line = "{line} disabled" } }
             err(absent) => {}

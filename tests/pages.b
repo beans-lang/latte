@@ -395,7 +395,7 @@ fn html_of(instance: PageInstance) -> string {
     return r.html()
 }
 
-// ================================================================ the gate
+// ================================================================ the check
 
 fn main() {
     let report: Report = new Report()
@@ -564,7 +564,7 @@ fn main() {
     report.check_false("the map as a whole is ok", map.ok())
 
     io.println("")
-    io.println("== 3b. every refusal message, sorted, so the golden reads them ==")
+    io.println("== 3b. every refusal message, sorted, so the expected output reads them ==")
     var messages: List<string> = map.faults.clone()
     messages.sort()
     for message: string in messages { io.println("  {message}") }
@@ -765,13 +765,13 @@ fn main() {
     io.println("== 10. a type name inside a string interpolation ==")
     //
     // This section used to assert a COMPILER BUG, deliberately, and said so:
-    // "the day it is fixed, THIS GOLDEN GOES RED". The bug was that a type
+    // "the day it is fixed, THIS EXPECTED OUTPUT GOES RED". The bug was that a type
     // name written inside `"{ }"` resolved without the file's
     // named-import bindings and fell back to composing the asking package's
     // own name with the simple name, so a consumer's `type_of(Component)`
     // read `<their package>.Component` — a name that exists nowhere.
     //
-    // beans #164 closed it in 0.1.41, the golden went red exactly as designed,
+    // beans #164 closed it in 0.1.41, the expected output went red exactly as designed,
     // and this section now asserts the fix from the same place: an ENTRY
     // package, whose name is not `latte`, which is the only vantage point that
     // could ever see the bug. Latte's own files could not — `Component` is

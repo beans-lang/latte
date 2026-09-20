@@ -17,6 +17,23 @@ import {UiEvent} from latte.input
 import latte.compose
 import {view} from latte.annotations
 
+/// What opens, and how big the table on it is.
+///
+/// Set before `latte_mount`, which is the only moment it is read: the showcase
+/// is the thing the table benchmark drives, and a benchmark that had to click
+/// its way to a screen would be timing the click.
+pub singleton class ShowcaseShape {
+    pub page: int = 0
+    pub rows: int = 1000000
+    pub columns: int = 200
+    fn init() {}
+    pub fn set(rows: int, columns: int, page: int) {
+        self.rows = rows
+        self.columns = columns
+        self.page = page
+    }
+}
+
 /// The showcase's frame: a row of buttons, and whichever screen they chose.
 ///
 /// The `$if` chain rather than five screens with four hidden: a hidden control
@@ -28,7 +45,10 @@ pub partial class Shell extends compose.Component {
     pub page: int = 0
     pub status: string = "ready"
 
-    pub fn init() { super.init() }
+    pub fn init() {
+        self.page = ShowcaseShape.instance.page
+        super.init()
+    }
 
     pub fn show(index: int) {
         if self.page == index { return }
@@ -37,7 +57,7 @@ pub partial class Shell extends compose.Component {
         self.request_render()
     }
 
-    /// Which screen is showing, for a gate that drives the shell rather than
+    /// Which screen is showing, for a check that drives the shell rather than
     /// reaching inside it.
     pub fn showing() -> int { return self.page }
 }
@@ -51,6 +71,7 @@ fn _latte_component_shell_EditingPage(value: EditingPage) -> Component { return 
 fn _latte_component_shell_TablePage(value: TablePage) -> Component { return value }
 fn _latte_component_shell_DrawingPage(value: DrawingPage) -> Component { return value }
 fn _latte_component_shell_PanesPage(value: PanesPage) -> Component { return value }
+fn _latte_component_shell_GalleryPage(value: GalleryPage) -> Component { return value }
 
 partial class Shell {
     pub override fn render(b: Builder) {
@@ -99,34 +120,43 @@ partial class Shell {
         b.flag("prominent", self.page == 4)
         b.on("click", fn(e: UiEvent) { self.show(4) })
         b.close()
-        b.open("Label")  // shell.bx:14
+        b.open("Button")  // shell.bx:14
+        b.key("{"nav-gallery"}")
+        b.text("Gallery")
+        b.flag("prominent", self.page == 5)
+        b.on("click", fn(e: UiEvent) { self.show(5) })
+        b.close()
+        b.open("Label")  // shell.bx:16
         b.text("")
         b.number("grow", (1) as f64)
         b.close()
-        b.open("Label")  // shell.bx:15
+        b.open("Label")  // shell.bx:17
         b.key("{"status"}")
         b.text("{self.status}")
         b.word("text_color", "#555b6b")
         b.close()
         b.close()
-        b.open("Separator")  // shell.bx:17
+        b.open("Separator")  // shell.bx:19
         b.number("height", (1) as f64)
         b.close()
-        if self.page == 0 {  // shell.bx:18
-            b.child<ControlsPage>("c0", fn(_latte_c: ControlsPage) {  // shell.bx:19
-            })
-        } else if self.page == 1 {  // shell.bx:20
-            b.child<EditingPage>("c1", fn(_latte_c: EditingPage) {  // shell.bx:21
-            })
-        } else if self.page == 2 {  // shell.bx:22
-            b.child<TablePage>("c2", fn(_latte_c: TablePage) {  // shell.bx:23
-            })
-        } else if self.page == 3 {  // shell.bx:24
-            b.child<DrawingPage>("c3", fn(_latte_c: DrawingPage) {  // shell.bx:25
-            })
-        } else {  // shell.bx:26
-            b.child<PanesPage>("c4", fn(_latte_c: PanesPage) {  // shell.bx:27
-            })
+        if self.page == 0 {  // shell.bx:20
+            b.child<ControlsPage>("c0", fn(_latte_c: ControlsPage) {  // shell.bx:21
+            }).number("grow", (1) as f64)
+        } else if self.page == 1 {  // shell.bx:22
+            b.child<EditingPage>("c1", fn(_latte_c: EditingPage) {  // shell.bx:23
+            }).number("grow", (1) as f64)
+        } else if self.page == 2 {  // shell.bx:24
+            b.child<TablePage>("c2", fn(_latte_c: TablePage) {  // shell.bx:25
+            }).number("grow", (1) as f64)
+        } else if self.page == 3 {  // shell.bx:26
+            b.child<DrawingPage>("c3", fn(_latte_c: DrawingPage) {  // shell.bx:27
+            }).number("grow", (1) as f64)
+        } else if self.page == 4 {  // shell.bx:28
+            b.child<PanesPage>("c4", fn(_latte_c: PanesPage) {  // shell.bx:29
+            }).number("grow", (1) as f64)
+        } else {  // shell.bx:30
+            b.child<GalleryPage>("c5", fn(_latte_c: GalleryPage) {  // shell.bx:31
+            }).number("grow", (1) as f64)
         }
         b.close()
     }

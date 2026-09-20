@@ -69,15 +69,15 @@ pub class UiEvent {
         return if self.token > 0 { self.token } else { 1 }
     }
 
-    /// The line the event goldens carry. Only the fields a given kind actually
+    /// The line the event expected outputs carry. Only the fields a given kind actually
     /// uses appear, so adding a field to the record does not churn every
-    /// golden in the suite.
+    /// expected output in the suite.
     pub fn show() -> string {
         match self.kind {
             post => { return "post token={self.token}" }
             // The number and nothing else. A frame also carries when it
             // happened and how long since the last one, and neither is the
-            // same twice — a golden that printed them would be a report on
+            // same twice — an expected output that printed them would be a report on
             // how busy the machine was.
             frame => { return "frame #{self.index}" }
             surface_resized => { return "surface_resized {self.size.show()}" }
@@ -87,7 +87,7 @@ pub class UiEvent {
             selection => { return "selection {self.target.show()} index={self.index}" }
             // The key's name and not its number, because the number is an ABI
             // detail and the name is the same word on every host — which is
-            // what makes one golden stand for four of them.
+            // what makes one expected output stand for four of them.
             key_down => { return "key_down {self.target.show()} key={self.key().name()} typed=\"{self.text}\"" }
             key_up => { return "key_up {self.target.show()} key={self.key().name()}" }
             focus => { return "focus {self.target.show()}" }

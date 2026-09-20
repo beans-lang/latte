@@ -3,6 +3,7 @@ package canvaskit
 
 import latte.geometry
 import latte.paint
+import latte.platform
 
 /// The renderer a Latte page draws with: handles, never pixels, and never a
 /// frame read back. Ownership and the surface: docs/notes.md.
@@ -46,7 +47,7 @@ pub class CanvasKitRenderer implements paint.Renderer {
     }
 
     /// Pins one font file as the family later paragraphs use. Answers whether
-    /// it is already loaded; a gate polls `font_ready()` before it measures.
+    /// it is already loaded; a check polls `font_ready()` before it measures.
     pub fn use_font(path: string) -> Result<bool> {
         let bytes: Bytes = Bytes.from(path)
         unsafe {
@@ -75,6 +76,8 @@ pub class CanvasKitRenderer implements paint.Renderer {
             return err("could not shape text: a point size is a positive number, and {style.size} is not",
                        "out_of_range")
         }
+        platform.Probe.instance.enter(platform.PHASE_SHAPE)
+        platform.Probe.instance.count(platform.TALLY_SHAPED, 1)
         let bytes: Bytes = Bytes.from(text)
         var handle: int = 0
         unsafe {
@@ -83,6 +86,7 @@ pub class CanvasKitRenderer implements paint.Renderer {
                                            style.tracking, style.align as i32,
                                            width, color as i32) as int
         }
+        platform.Probe.instance.leave(platform.PHASE_SHAPE)
         if handle < 0 {
             return err("could not shape text: the page has no font to shape it with",
                        "renderer_error")

@@ -1,7 +1,7 @@
-// Gate 8, third row: a multipart body split at every byte, an oversized part
+// Check 8, third row: a multipart body split at every byte, an oversized part
 // refused, and every part released when the handler does not finish.
 //
-// The third clause of the gate sentence says "a temp file released after a
+// The third clause of the check sentence says "a temp file released after a
 // panic". There is no temp file: this store is in-memory, not file-backed,
 // so there is nothing on disk for a refused or abandoned upload to leave
 // behind.
@@ -463,7 +463,7 @@ fn section_five(r: Report) {
 
 const TWO_FILES: string = "--X\r\nContent-Disposition: form-data; name=\"f\"; filename=\"one.txt\"\r\n\r\nAAAA\r\n--X\r\nContent-Disposition: form-data; name=\"f\"; filename=\"two.txt\"\r\n\r\nBBBBBB\r\n--X--\r\n"
 
-/// The ids are random, so a golden cannot carry them. The ORDER can, and the
+/// The ids are random, so an expected output cannot carry them. The ORDER can, and the
 /// order is the claim: opened in arrival order, released newest first.
 fn first_id(log: ReleaseLog) -> string {
     if log.lines.len() == 0 { return "?" }

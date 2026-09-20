@@ -3,7 +3,7 @@ package controls
 
 import std.fmt
 
-/// Prints a widget tree the way the test goldens record it.
+/// Prints a widget tree the way the test expected outputs record it.
 ///
 /// Useful when debugging, and load-bearing in the test suite: a native control
 /// has no output to compare, but it does have a shape, a class name, an

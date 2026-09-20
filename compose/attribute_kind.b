@@ -5,8 +5,8 @@ package compose
 ///
 /// There are three host calls — `ctd_set_text`, `ctd_set_int`, `ctd_set_real`
 /// — and four kinds, because `flag` and `whole` both travel as an integer but
-/// read very differently. A golden file saying `enabled=true` is a golden file
-/// somebody can check; one saying `enabled=1` is a golden file people skim.
+/// read very differently. An expected output saying `enabled=true` is an expected output
+/// somebody can check; one saying `enabled=1` is an expected output people skim.
 pub enum AttributeKind {
     text
     whole

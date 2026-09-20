@@ -11,7 +11,7 @@ import latte.scene
 import latte.templates
 
 /// One canvas, one component tree, one renderer. It takes a `paint.Renderer`
-/// rather than making one, which is what lets a gate run the same scene.
+/// rather than making one, which is what lets a check run the same scene.
 pub class Scene {
     renderer_value: paint.Renderer
     context_value: scene.UiContext
@@ -204,6 +204,29 @@ pub class Scene {
         return self.context_value.focused_object()
     }
 
+    /// Where an input method should put its editing element, in SCENE
+    /// coordinates, or `none` when nothing is being edited.
+    pub fn editing_spot() -> Option<scene.EditingSpot> {
+        match self.context_value.focused_object() {
+            none => { return none }
+            some(object) => {
+                match object.editing_spot() {
+                    none => { return none }
+                    some(spot) => {
+                        match self.global_frame(object) {
+                            err(problem) => { return none }
+                            ok(frame) => {
+                                return some(new scene.EditingSpot(spot.text, spot.anchor, spot.caret,
+                                    geometry.Rect.of(frame.x + spot.rect.x, frame.y + spot.rect.y,
+                                                     spot.rect.width, spot.rect.height)))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn global_frame(object: scene.RenderObject) -> Result<geometry.Rect> {
         return self.context_value.global_frame(object)
     }
@@ -219,46 +242,63 @@ pub class Scene {
     pub fn semantics() -> List<scene.SemanticsNode> {
         var nodes: List<scene.SemanticsNode> = []
         match self.root_value.render_object() {
-            ok(root) => { self.collect_semantics(root, nodes, true) }
+            ok(root) => { self.collect_semantics(root, nodes, true, geometry.Point.zero()) }
             err(_) => {}
         }
         match self.context_value.popups().root() {
-            some(popup) => { self.collect_semantics(popup, nodes, true) }
+            some(popup) => { self.collect_semantics(popup, nodes, true, geometry.Point.zero()) }
             none => {}
         }
         return move nodes
     }
 
+    /// `origin` is where this node's own box starts from — the running sum of
+    /// every ancestor's frame and child offset, carried down rather than
+    /// rebuilt per node. Climbing back up cost a registry lookup per ancestor
+    /// for every node in the tree, which on a table is most of a frame.
     fn collect_semantics(object: scene.RenderObject, nodes: List<scene.SemanticsNode>,
-                         enabled: bool) {
+                         enabled: bool, origin: geometry.Point) {
         if !object.is_alive() || object.is_hidden() { return }
-        let node: scene.SemanticsNode = object.semantics()
-        match self.global_visual_frame(object) {
-            ok(bounds) => {
-                nodes.push(new scene.SemanticsNode(node.id(), node.role(), node.label(),
-                                                   node.value(), bounds,
-                                                   enabled && node.enabled()))
-            }
-            err(_) => { return }
+        let layout: geometry.Rect = object.frame()
+        let visual: geometry.Rect = object.visual_frame()
+        let node: scene.SemanticsNode = object.semantics_at(
+            geometry.Rect.of(origin.x + visual.x, origin.y + visual.y,
+                             visual.width, visual.height))
+        let live: bool = enabled && node.enabled()
+        if live != node.enabled() {
+            nodes.push(new scene.SemanticsNode(node.id(), node.role(), node.label(),
+                                               node.value(), node.bounds(), live))
+        } else {
+            nodes.push(node)
         }
         if object.interactive_visual() {
             match object.visual() {
-                some(visual) => {
-                    self.collect_semantics(visual, nodes, enabled && node.enabled())
+                some(visual_root) => {
+                    let shift: geometry.Point = object.child_offset_for(visual_root.handle())
+                    self.collect_semantics(visual_root, nodes, live,
+                        geometry.Point.at(origin.x + layout.x + shift.x,
+                                          origin.y + layout.y + shift.y))
                 }
                 none => {}
             }
         }
         if !object.shows_children() { return }
+        let inside: geometry.Point = object.child_offset()
+        let start: geometry.Point = geometry.Point.at(origin.x + layout.x + inside.x,
+                                                      origin.y + layout.y + inside.y)
         for index: int in 0..object.child_count() {
             if !object.shows_child(index) { continue }
             match object.child_at(index) {
-                some(child) => {
-                    self.collect_semantics(child, nodes, enabled && node.enabled())
-                }
+                some(child) => { self.collect_semantics(child, nodes, live, start) }
                 none => {}
             }
         }
+    }
+
+    /// The revision the semantics tree is at. A page that published this one
+    /// already has nothing to send.
+    pub fn semantics_version() -> int {
+        return self.context_value.invalidation().semantics_version()
     }
 
     /// Runs what assistive technology asked for on one node.

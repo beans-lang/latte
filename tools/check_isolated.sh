@@ -33,7 +33,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 mkdir -p "$tmp/community-libs/latte"
 # Exported from git rather than copied: an uncommitted file is not part of what
-# anybody else would get, and a gate that passed because of one would be
+# anybody else would get, and a check that passed because of one would be
 # measuring this machine.
 (cd "$ROOT" && git archive HEAD) | tar -x -C "$tmp/community-libs/latte"
 
@@ -85,14 +85,14 @@ ran=0
 for case in tests/canvas/*.b; do
     name=$(basename "$case" .b)
     case "$name" in _*) continue ;; esac
-    [[ -f "tests/canvas/golden/$name.out" ]] || continue
+    [[ -f "tests/canvas/expected/$name.out" ]] || continue
     if ! "$BEANSC" run "$case" >"$tmp/$name.out" 2>&1; then
         echo "--- isolated FAILED: $name did not run ---" >&2
         cat "$tmp/$name.out" >&2
         exit 1
     fi
-    if ! diff -u "tests/canvas/golden/$name.out" "$tmp/$name.out" >"$tmp/$name.diff"; then
-        echo "--- isolated FAILED: $name differs from its golden ---" >&2
+    if ! diff -u "tests/canvas/expected/$name.out" "$tmp/$name.out" >"$tmp/$name.diff"; then
+        echo "--- isolated FAILED: $name differs from its expected output ---" >&2
         head -30 "$tmp/$name.diff" >&2
         exit 1
     fi

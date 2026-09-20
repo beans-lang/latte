@@ -2,7 +2,7 @@
 //
 // The generated file is **whole**: the `<beans>` block's Beans and the
 // generated `render` live in it together, so a `.bx` file has exactly one
-// output and the drift gate has exactly one thing to regenerate and diff.
+// output and the drift check has exactly one thing to regenerate and diff.
 //
 //     // Generated from pages/counter.bx by latte-bx. Do not edit.
 //     package pages

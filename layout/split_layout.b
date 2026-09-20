@@ -16,7 +16,7 @@ import latte.geometry
 /// from here: `position`, which is `SplitView.divider()`, and `thickness`,
 /// which is the handle's own size out of `Widget.content_inset`. They are
 /// plain numbers on this class because `latte.layout` makes no host calls —
-/// that is what lets the layout goldens run on a machine with no display, and
+/// that is what lets the layout expected outputs run on a machine with no display, and
 /// it is not worth giving up for two doubles.
 ///
 /// Exactly two children. A third is a refusal rather than a silent drop,

@@ -5,7 +5,7 @@ import latte.platform
 import latte.input
 
 /// The listeners on one scene's frame clock. A class, not a nested `Map`:
-/// a map inside a map is move-only. Join order is kept so a golden can assert it.
+/// a map inside a map is move-only. Join order is kept so an expected output can assert it.
 pub class SceneListeners {
     by_token: Map<int, fn(Frame)> = {}
     joined: List<int> = []
@@ -106,7 +106,7 @@ pub singleton class ClockDesk {
         }
     }
 
-    /// Whether a frame has been asked for and not yet delivered. The idle gate
+    /// Whether a frame has been asked for and not yet delivered. The idle check
     /// reads it: false with nothing moving is what "the page stopped drawing"
     /// means.
     pub fn frame_pending() -> bool { return self.pending }

@@ -1,5 +1,5 @@
 // tests/_w7_bytes.b — how many bytes a batch costs on the wire, with and
-// without permessage-deflate. NOT A GATE. Scratch (`_` prefix), run by hand:
+// without permessage-deflate. NOT A CHECK. Scratch (`_` prefix), run by hand:
 //
 //     cd community-libs/latte && ../../beans/build/beansc run tests/_w7_bytes.b
 //     cd community-libs/latte && ../../beans/build/beansc build tests/_w7_bytes.b -o /tmp/w7bytes && /tmp/w7bytes
@@ -29,7 +29,7 @@
 //
 // The reading side has a read timeout and stops when it goes quiet. That is a
 // TIMING dependency, and it is why this file is scratch and not a suite: a
-// gate that stops reading on a timer is a gate that goes green on a slow
+// check that stops reading on a timer is a check that goes green on a slow
 // machine for the wrong reason.
 package main
 

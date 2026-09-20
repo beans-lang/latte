@@ -388,7 +388,7 @@ pub const THERMAL_FAIR: int = 2
 pub const THERMAL_SERIOUS: int = 3
 pub const THERMAL_CRITICAL: int = 4
 
-// ---- the gated four ----
+// ---- the checked four ----
 
 // Which kind of thing a machine listens or looks through.
 pub const CAPTURE_CAMERA: int = 0

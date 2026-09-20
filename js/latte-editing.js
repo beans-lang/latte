@@ -77,8 +77,11 @@ export class EditingHost {
         this.element.style.left = `${Math.round(origin.x + state.x)}px`;
         this.element.style.top = `${Math.round(origin.y + state.y)}px`;
         this.element.style.height = `${Math.max(1, Math.round(state.height))}px`;
-        if (!this.active) {
-            this.active = true;
+        this.active = true;
+        // Every update, not only the first. The accessibility tree focuses its
+        // own proxy element for the same control, so a session that focused
+        // once loses the keyboard on the next event and typing goes nowhere.
+        if (document.activeElement !== this.element) {
             this.element.focus({ preventScroll: true });
         }
     }

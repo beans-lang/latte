@@ -131,6 +131,102 @@ async function run(engineName, engine) {
     // survives, which is why `beforeinput` is ignored while it composes.
     check(results, "a composition commits once", composed === "Zoe日本", JSON.stringify(composed));
 
+    // --- a REAL mouse and a REAL keyboard ---------------------------------
+    //
+    // Everything above dispatches events at the editing element, which skips
+    // the click, the focus and the hit test. All of that was broken while
+    // these checks were green: the accessibility proxies covered the canvas,
+    // so no click ever reached latte, and nothing focused the editor.
+    // The gallery's search box, because nothing above types into it.
+    await click(page, "Gallery");
+    await page.waitForTimeout(150);
+    const field = await page.evaluate(() => {
+        const p = window.__lattePage;
+        const e = [...p.semantics.root.children]
+            .find((n) => (n.getAttribute("aria-label") || "").startsWith("Search orders"));
+        const r = p.element.getBoundingClientRect();
+        return { left: r.left, top: r.top, x: parseFloat(e.style.left), y: parseFloat(e.style.top),
+                 w: parseFloat(e.style.width), h: parseFloat(e.style.height) };
+    });
+    const valueNow = () => page.evaluate(() => {
+        const e = [...window.__lattePage.semantics.root.children]
+            .find((n) => (n.getAttribute("aria-label") || "").startsWith("Search orders"));
+        return e ? (e.getAttribute("aria-valuetext") || "") : "<gone>";
+    });
+
+    await page.mouse.click(field.left + field.x + field.w / 2, field.top + field.y + field.h / 2);
+    await page.keyboard.type("mno", { delay: 20 });
+    await page.waitForTimeout(150);
+    const realTyped = await valueNow();
+    check(results, "a real click and real keys reach the field",
+        realTyped === "mno", JSON.stringify(realTyped));
+
+    // And the caret goes where the pointer went, not to the end. Clicking the
+    // left edge and typing puts the letter first.
+    await page.mouse.click(field.left + field.x + 2, field.top + field.y + field.h / 2);
+    await page.keyboard.type("A", { delay: 20 });
+    await page.waitForTimeout(150);
+    const placed = await valueNow();
+    check(results, "the caret lands where the click did",
+        placed === "Amno", JSON.stringify(placed));
+
+    // Backspace and the arrows are KEYS, not text, and they arrive at
+    // whichever element has focus. While editing that is the editing element,
+    // so a page that bound keys to the canvas alone could type but never erase.
+    // The caret is after the "A" the click placed, so this erases that.
+    await page.keyboard.press("Backspace");
+    await page.waitForTimeout(120);
+    const erased = await valueNow();
+    check(results, "backspace erases", erased === "mno", JSON.stringify(erased));
+
+    // Caret is at the start now; one step right puts the letter after "m".
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.type("Z", { delay: 20 });
+    await page.waitForTimeout(120);
+    const arrowed = await valueNow();
+    check(results, "an arrow key moves the caret", arrowed === "mZno", JSON.stringify(arrowed));
+
+    // An empty field's caret must sit where a full one's does. Skia reports no
+    // lines for empty text, and taking those zeros as metrics dropped the
+    // caret to the bottom of the box.
+    const caretY = async () => page.evaluate(() => {
+        const p = window.__lattePage, r = p.element.getBoundingClientRect();
+        return Math.round(p.editing.element.getBoundingClientRect().top - r.top);
+    });
+    const withText = await caretY();
+    await page.keyboard.press("Control+a");
+    await page.keyboard.press("Meta+a");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.press("Backspace");
+    await page.waitForTimeout(150);
+    const emptied = await valueNow();
+    const whenEmpty = await caretY();
+    check(results, "the field empties", emptied === "", JSON.stringify(emptied));
+    check(results, "an empty field's caret sits where a full one's does",
+        Math.abs(whenEmpty - withText) <= 1, `full ${withText}, empty ${whenEmpty}`);
+
+    // --- every control latte draws, on one screen ------------------------
+    // The gallery is the only page that has all of them, so this is where a
+    // control that stopped publishing a role would show up.
+    await click(page, "Gallery");
+    await page.waitForFunction(
+        () => window.__lattePage.surface.imagesPending() === 0,
+        undefined, { timeout: 15000 });
+    const roles = await page.evaluate(() => [...new Set(
+        [...window.__lattePage.semantics.root.children]
+            .map((e) => e.getAttribute("role")).filter(Boolean))].sort());
+    const WANTED = ["button", "checkbox", "combobox", "group", "image", "meter",
+                    "progressbar", "radio", "radiogroup", "scrollarea", "securetext",
+                    "separator", "slider", "spinbutton", "switch", "table",
+                    "tablist", "text", "textbox"];
+    const absent = WANTED.filter((r) => !roles.includes(r));
+    // Roles, not controls: every shape publishes "image", so this catches a
+    // whole role going missing, not one control. tools/check_gallery.sh does that.
+    check(results, "the gallery publishes every role latte has",
+        absent.length === 0, absent.length ? `missing ${absent.join(", ")}` : `${roles.length} roles`);
+
     // --- an accessibility action -----------------------------------------
     await click(page, "Controls");
     const activated = await page.evaluate(async () => {
@@ -159,17 +255,33 @@ async function run(engineName, engine) {
         drawn.frames > 0 && drawn.readbacks === 0, JSON.stringify(drawn));
 
     // --- resize and scale -------------------------------------------------
-    await page.setViewportSize({ width: 600, height: 500 });
-    await page.waitForTimeout(120);
-    const resized = await facts(page);
-    check(results, "a resize did not break anything", resized.error === "", resized.error);
-    const backing = await page.evaluate(() => ({
-        width: window.__lattePage.element.width,
-        css: window.__lattePage.element.getBoundingClientRect().width,
-        scale: window.__lattePage.surface.scale,
-    }));
-    check(results, "the backing store follows the element",
-        Math.abs(backing.width - backing.css * backing.scale) <= 1, JSON.stringify(backing));
+    // Both ways, and against the box the page gives the canvas rather than the
+    // canvas's own: a canvas pinned at its first size agrees with itself
+    // forever, which is how a frozen one read as correct here for a long time.
+    const box = () => page.evaluate(() => {
+        const element = window.__lattePage.element;
+        const holder = element.parentElement;
+        const seen = element.getBoundingClientRect();
+        return {
+            css: [Math.round(seen.width), Math.round(seen.height)],
+            room: [holder.clientWidth, holder.clientHeight],
+            backing: [element.width, element.height],
+            scale: window.__lattePage.surface.scale,
+        };
+    });
+    for (const [width, height, going] of [[600, 500, "smaller"], [1200, 900, "larger"]]) {
+        await page.setViewportSize({ width, height });
+        await page.waitForTimeout(160);
+        const resized = await facts(page);
+        check(results, `a resize ${going} did not break anything`, resized.error === "", resized.error);
+        const seen = await box();
+        check(results, `the canvas fills its box when the page gets ${going}`,
+            Math.abs(seen.css[0] - seen.room[0]) <= 1 && Math.abs(seen.css[1] - seen.room[1]) <= 1,
+            JSON.stringify(seen));
+        check(results, `the backing store follows it ${going}`,
+            Math.abs(seen.backing[0] - seen.css[0] * seen.scale) <= 1 &&
+            Math.abs(seen.backing[1] - seen.css[1] * seen.scale) <= 1, JSON.stringify(seen));
+    }
 
     // --- a lost GPU context ------------------------------------------------
     const recovered = await page.evaluate(async () => {
@@ -223,7 +335,7 @@ async function main() {
                 continue;
             }
             // A throw is a failure, not a skip: counting it as one is how a
-            // gate reports a crash as an absence.
+            // check reports a crash as an absence.
             console.error(`FAIL ${name}: ${String(error).split("\n")[0]}`);
             failures++;
             ran++;
@@ -243,11 +355,11 @@ async function main() {
     server.close();
     for (const reason of skipped) console.log(`SKIP ${reason} — this engine proved nothing`);
     if (ran === 0) {
-        console.error("no engine ran: every one was skipped, so this gate proved nothing");
+        console.error("no engine ran: every one was skipped, so this check proved nothing");
         process.exit(1);
     }
     if (failures) { console.error(`${failures} failure(s)`); process.exit(1); }
-    console.log(`ui gate green across ${ran} engine(s)`);
+    console.log(`ui check passed across ${ran} engine(s)`);
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

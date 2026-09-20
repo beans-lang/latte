@@ -1,4 +1,4 @@
-// The layout tree as text, for golden files.
+// The layout tree as text, for expected outputs.
 package layout
 
 import latte.geometry
@@ -9,7 +9,7 @@ import latte.geometry
 /// formatter. That one truncates frames to whole points because it reads them
 /// back off live platform objects, where sub-point differences come out of
 /// font metrics that move between OS releases. This one prints the solver's
-/// own arithmetic exactly, because a layout golden that hid a half point would
+/// own arithmetic exactly, because a layout expected output that hid a half point would
 /// hide precisely the bugs this engine can have.
 ///
 /// The format is one line per node:

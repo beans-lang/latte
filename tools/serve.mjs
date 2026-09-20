@@ -1,4 +1,4 @@
-// A static server for the browser gates and the showcase. Its reason to exist
+// A static server for the browser checks and the showcase. Its reason to exist
 // is the media types: `application/wasm`, and `text/javascript` for a module.
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
@@ -50,7 +50,7 @@ const server = createServer(async (request, response) => {
     }
 });
 
-// Listening only when this file is the program: the browser gate imports it
+// Listening only when this file is the program: the browser check imports it
 // and picks its own port, and an import that listened would take the default.
 if (process.argv[1] && import.meta.url === `file://${resolve(process.argv[1])}`) {
     const port = Number(process.argv[2] || PORT);
@@ -60,7 +60,7 @@ if (process.argv[1] && import.meta.url === `file://${resolve(process.argv[1])}`)
 }
 
 /// Starts the server on a free port. Port 0 rather than a fixed one: two
-/// gates at once collided, and a gate that fails that way cannot be trusted.
+/// checks at once collided, and a check that fails that way cannot be trusted.
 export async function listenOnAFreePort(wanted = 0) {
     await new Promise((done, fail) => {
         server.once("error", fail);

@@ -25,7 +25,7 @@
 // which is what makes the debug switch comparable. The folded string is built
 // by serializing the run's **own frame list** — the same list the unfolded
 // calls are generated from, in one walk — so the two cannot describe different
-// markup. They are still gated: `tests/markup.b` renders every case with
+// markup. They are still checked: `tests/markup.b` renders every case with
 // `b.fold` on and off through the real `latte.Serializer` and compares bytes.
 //
 // **Refusals.** Everything `latte.Builder` refuses at run time is refused here
@@ -34,7 +34,7 @@
 // Not for tidiness: the Builder *substitutes or drops*, and a folded constant
 // subtree is serialized here where no Builder ever sees it, so anything
 // refused there and accepted here would make one page say two different things
-// depending on `b.fold`. The mirrored predicates live in `html.b` with the gate
+// depending on `b.fold`. The mirrored predicates live in `html.b` with the check
 // that keeps them in step.
 
 package bx
@@ -122,7 +122,7 @@ class Slot {
 ///
 /// A copy of `latte.Serializer`'s walk, restricted to what a constant subtree
 /// can hold. It has to be a copy: `bx` is a package under the `latte` module
-/// root and "a package cannot import its own module root". The gate that keeps
+/// root and "a package cannot import its own module root". The check that keeps
 /// the two honest is `tests/markup.b`, which renders every case through the
 /// real serializer with `fold` on and off and compares bytes.
 pub fn serialize_constant(frames: List<CFrame>) -> string {
@@ -395,7 +395,7 @@ pub class Emitter {
         // was never closed — a } inside a string or a comment does not close
         // it"), which is the better one because it names what they typed.
         // `tests/markup_refusals.b` records that, and deleting this branch
-        // leaves the golden unchanged. It stays because the two scanners are
+        // leaves the expected output unchanged. It stays because the two scanners are
         // separate code and the day they disagree this is the difference
         // between a refusal and a generated file beansc cannot lex.
         let probe: string = "\"\{{code}\}\""
@@ -1125,7 +1125,7 @@ pub class Emitter {
         // `preserve` and any name that is not a Beans field, and refuses `on:`
         // and `bind:` in `classify_event`/`classify_bind` before that. So no
         // Splat, Preserve, Event or Bind attribute can reach a component tag.
-        // Deleting this line leaves `tests/markup_refusals.b`'s golden
+        // Deleting this line leaves `tests/markup_refusals.b`'s expected output
         // unchanged, which is the evidence, and it stays for the same reason
         // the BeansNode branch above does.
         self.report(attr.span, "{attr.name()} is not something a component tag can take — a component takes its parameters by their Beans names")

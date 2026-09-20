@@ -1,7 +1,7 @@
 // tests/components.b — the half of component behavior `tests/pages.b` does not cover.
 //
 // pages.b owns parameters and required parameters, because both are decided by
-// the startup scan. Everything else in gate 5's row happens at a **mount**:
+// the startup scan. Everything else in check 5's row happens at a **mount**:
 // child content, templated content, a callback marking the component that
 // supplied it, `ref`, `attrs=` splat, `preserve`, and a component three levels
 // down. Those are this file's.
@@ -299,7 +299,7 @@ fn orphan() -> Callback<int> {
     return new Callback<int>(gone, fn(id: int) {})
 }
 
-// ============================================================== the gate
+// ============================================================== the check
 
 fn main() {
     let report: Report = new Report()
@@ -541,7 +541,7 @@ fn main() {
 
     // ---------------------------------------------------------------- §7
     io.println("")
-    io.println("== 7. what gate 5 asks for and latte does not check ==")
+    io.println("== 7. what check 5 asks for and latte does not check ==")
     // `@param(required: true)` on a PAGE is a startup refusal — tests/pages.b
     // owns it, because the scan can compare the field against the route's
     // placeholders. On a CHILD component there is nothing to compare it

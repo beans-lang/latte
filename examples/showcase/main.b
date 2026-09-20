@@ -3,6 +3,7 @@
 package main
 
 import latte.browser
+import latte.platform
 import showcase.generated.site
 
 pub extern "C" fn boot() -> i32 as "latte_boot" {
@@ -11,6 +12,33 @@ pub extern "C" fn boot() -> i32 as "latte_boot" {
 
 pub extern "C" fn mount(width: f64, height: f64, scale: f64) -> i32 as "latte_mount" {
     return browser.PageApp.instance.mount(new site.Shell(), width, height, scale) as i32
+}
+
+/// The screen the next mount opens on, and the shape of the table on it. Set
+/// between an unmount and a mount; `tools/table_bench.mjs` is what calls it.
+pub extern "C" fn shape(rows: i32, columns: i32, page: i32) -> i32 as "latte_shape" {
+    site.ShowcaseShape.instance.set(rows as int, columns as int, page as int)
+    return 0
+}
+
+// ---- where a frame's time went (platform.Probe) ----
+
+pub extern "C" fn probe_enable(on: i32) -> i32 as "latte_probe_enable" {
+    platform.Probe.instance.enable(on == 1)
+    return 0
+}
+pub extern "C" fn probe_reset() -> i32 as "latte_probe_reset" {
+    platform.Probe.instance.reset()
+    return 0
+}
+pub extern "C" fn probe_frames() -> i32 as "latte_probe_frames" {
+    return platform.Probe.instance.frames() as i32
+}
+pub extern "C" fn probe_width() -> i32 as "latte_probe_width" {
+    return platform.Probe.instance.row_width() as i32
+}
+pub extern "C" fn probe_value(frame: i32, slot: i32) -> f64 as "latte_probe_value" {
+    return platform.Probe.instance.value(frame as int, slot as int)
 }
 
 pub extern "C" fn frame(seconds: f64) -> i32 as "latte_frame" {

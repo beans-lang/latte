@@ -1,5 +1,5 @@
 // The same text questions, asked of the browser's own segmenter. Browser-only,
-// and its golden differs from `browser_text.out` on purpose: see that file.
+// and its expected output differs from `browser_text.out` on purpose: see that file.
 package main
 
 import std.io

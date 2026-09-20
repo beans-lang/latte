@@ -92,7 +92,7 @@ fn one_header(name: string, value: string) -> http.Headers {
     return move headers
 }
 
-// ================================================================ the gate
+// ================================================================ the check
 
 fn main() {
     let r: Report = new Report()

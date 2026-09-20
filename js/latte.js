@@ -1082,7 +1082,7 @@
     // The logical tree as text, in exactly the shape `Builder.dump_tree()`
     // prints: one block per component, headed by its id, frames indented by
     // depth, a mount frame a LEAF whose content is the block below. So a
-    // failing gate-3 case reads as two frame lists side by side rather than
+    // failing check-3 case reads as two frame lists side by side rather than
     // two long strings, and the comparison is about the tree the applier
     // reconstructed rather than a string that looks right.
     //
@@ -1254,7 +1254,7 @@
 
         // The clock and the timer are injected for the same reason the socket
         // is: a deadline that can only be observed by waiting is a deadline no
-        // gate can assert. `tests/js_apply.js` drives all three by hand.
+        // check can assert. `tests/js_apply.js` drives all three by hand.
         //
         // WRAPPED, never stored bare. `window.setTimeout` is a method of
         // `window`, so `this.setTimeout(fn, ms)` on a bare copy calls it with
@@ -1570,7 +1570,7 @@
         // Comparing ids here refused every reconnect the whole `adopt`
         // mechanism exists for.
         //
-        // `this.attached` is the gate because it is already what chooses
+        // `this.attached` is the check because it is already what chooses
         // `resume` over `attach` below, so the two can never disagree about
         // which message is going out. It is set by the first batch: a circuit
         // that never received one has nothing to resume and re-attaches.
@@ -2142,7 +2142,7 @@
         this.circuit = options.circuit || null;
         this.host = options.host || null;
         this.maxWindow = options.maxWindow || VIRTUAL_MAX_WINDOW;
-        // Injected for the same reason the socket and the clock are: a gate
+        // Injected for the same reason the socket and the clock are: a check
         // that asserted coalescing by really waiting for a frame could not say
         // which frame it was waiting for.
         this.schedule = options.schedule ||

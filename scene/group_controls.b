@@ -35,9 +35,9 @@ pub class DisclosureRender extends BoxRender {
         return geometry.EdgeInsets { left: 8.0, top: 30.0, right: 8.0, bottom: 8.0 }
     }
     pub override fn child_offset() -> geometry.Point { return geometry.Point.at(8.0, 30.0) }
-    pub override fn semantics() -> SemanticsNode {
+    pub override fn semantics_at(bounds: geometry.Rect) -> SemanticsNode {
         let label: string = if self.a11y_name == "" { self.words } else { self.a11y_name }
-        return new SemanticsNode(self.identity, self.role(), label, if self.expanded { "open" } else { "closed" }, self.bounds, self.enabled)
+        return new SemanticsNode(self.identity, self.role(), label, if self.expanded { "open" } else { "closed" }, bounds, self.enabled)
     }
     pub override fn set_integer(key: int, value: int) -> Result<bool> {
         if key != platform.P_EXPANDED { return super.set_integer(key, value) }

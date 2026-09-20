@@ -11,20 +11,24 @@
             on:click={fn(e: UiEvent) { self.show(3) }} />
     <Button key={"nav-panes"} text="Panes" prominent={self.page == 4}
             on:click={fn(e: UiEvent) { self.show(4) }} />
+    <Button key={"nav-gallery"} text="Gallery" prominent={self.page == 5}
+            on:click={fn(e: UiEvent) { self.show(5) }} />
     <Label text="" grow={1} />
     <Label key={"status"} text={self.status} text_color="#555b6b" />
   </HStack>
   <Separator height={1} />
   $if self.page == 0 {
-    <ControlsPage />
+    <ControlsPage grow={1} />
   } else if self.page == 1 {
-    <EditingPage />
+    <EditingPage grow={1} />
   } else if self.page == 2 {
-    <TablePage />
+    <TablePage grow={1} />
   } else if self.page == 3 {
-    <DrawingPage />
+    <DrawingPage grow={1} />
+  } else if self.page == 4 {
+    <PanesPage grow={1} />
   } else {
-    <PanesPage />
+    <GalleryPage grow={1} />
   }
 </VStack>
 <beans>
@@ -32,6 +36,23 @@ package site
 
 import latte.compose
 import {view} from latte.annotations
+
+/// What opens, and how big the table on it is.
+///
+/// Set before `latte_mount`, which is the only moment it is read: the showcase
+/// is the thing the table benchmark drives, and a benchmark that had to click
+/// its way to a screen would be timing the click.
+pub singleton class ShowcaseShape {
+    pub page: int = 0
+    pub rows: int = 1000000
+    pub columns: int = 200
+    fn init() {}
+    pub fn set(rows: int, columns: int, page: int) {
+        self.rows = rows
+        self.columns = columns
+        self.page = page
+    }
+}
 
 /// The showcase's frame: a row of buttons, and whichever screen they chose.
 ///
@@ -44,7 +65,10 @@ pub partial class Shell extends compose.Component {
     pub page: int = 0
     pub status: string = "ready"
 
-    pub fn init() { super.init() }
+    pub fn init() {
+        self.page = ShowcaseShape.instance.page
+        super.init()
+    }
 
     pub fn show(index: int) {
         if self.page == index { return }
@@ -53,7 +77,7 @@ pub partial class Shell extends compose.Component {
         self.request_render()
     }
 
-    /// Which screen is showing, for a gate that drives the shell rather than
+    /// Which screen is showing, for a check that drives the shell rather than
     /// reaching inside it.
     pub fn showing() -> int { return self.page }
 }

@@ -60,7 +60,9 @@ pub class InputManager {
         if !(dx > -10000000.0 && dx < 10000000.0 && dy > -10000000.0 && dy < 10000000.0) {
             return err("invalid scroll delta", "out_of_range")
         }
+        platform.Probe.instance.enter(platform.PHASE_HIT)
         var target: Option<RenderObject> = root.hit_test(point)
+        platform.Probe.instance.leave(platform.PHASE_HIT)
         for target != none {
             match target {
                 some(object) => {
@@ -139,9 +141,11 @@ pub class InputManager {
     }
     pub fn pointer(root: RenderObject, kind: input.EventKind, position: geometry.Point, button: int, clicks: int = 1, modifiers: int = 0) -> Result<bool> {
         if !root.belongs_to(self.invalidation_value) { return err("input root belongs to another context", "bad_owner") }
+        platform.Probe.instance.enter(platform.PHASE_HIT)
         self.hover_value.update(root, position)
         var target: Option<RenderObject> = self.registry_value.get(self.captured_handle)
         if target == none { target = root.hit_test(position) }
+        platform.Probe.instance.leave(platform.PHASE_HIT)
         match target {
             none => { return ok(false) }
             some(object) => {

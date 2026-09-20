@@ -15,7 +15,7 @@ import latte.scene
 /// bullet glyph substituted does none of it.
 ///
 /// **It does not report its text to a dump.** `display_text` answers "" rather
-/// than the value, so a control tree printed to a log or a golden file does
+/// than the value, so a control tree printed to a log or an expected output does
 /// not carry what somebody typed. `value()` is there for the program that
 /// actually needs it, and it is a call somebody had to write on purpose.
 pub class SecureField extends Widget {

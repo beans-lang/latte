@@ -1,7 +1,7 @@
 // `examples/board/main.b` — the Brew Board, a whole latte application.
 //
 //     beansc run examples/board/main.b -- serve 8080   # open http://127.0.0.1:8080/
-//     beansc run examples/board/main.b -- check        # what the gate runs
+//     beansc run examples/board/main.b -- check        # what the check runs
 //
 // Run it from the latte module root: the client script and the stylesheet are
 // read relative to the working directory.

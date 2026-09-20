@@ -617,7 +617,7 @@ pub fn stream_scan() -> List<string> {
 /// It owns the order — head, then one chunk per region, then the tail — and
 /// nothing about how the bytes travel. A host writes each piece as it comes
 /// back; in a test they go into a string, and the bytes are identical either
-/// way, which is why this file can be gated at all.
+/// way, which is why this file can be checked at all.
 pub class StreamPage {
     pub renderer: Renderer
     pub doc: StreamDocument = new StreamDocument()
@@ -749,7 +749,7 @@ pub class StreamPage {
         // named already wrote the right placeholder, and re-rendering it would
         // be a render pass this page does not need. `tests/w6_stream.b` prints
         // the per-component render counts, so the difference is a number in a
-        // golden rather than a claim here.
+        // expected output rather than a claim here.
         for id: string in self.order {
             if self.made.contains_key(id) { self.mark(id) }
         }

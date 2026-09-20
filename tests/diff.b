@@ -201,7 +201,7 @@ fn labels(order: List<int>, names: List<string>) -> List<string> {
 }
 
 /// Lexicographic next permutation, so the sweep is every arrangement in a
-/// fixed order and the golden is stable.
+/// fixed order and the expected output is stable.
 fn next_permutation(order: List<int>) -> bool {
     var i: int = order.len() - 2
     for i >= 0 {

@@ -13,5 +13,5 @@ options:
   --package <name>   the package the generated file declares
 
 A generated file is checked in — beside its source for html, in a
-mirror for a canvas tree — and a drift gate regenerates and diffs it,
+mirror for a canvas tree — and a drift check regenerates and diffs it,
 so a stale one fails the build rather than shipping.

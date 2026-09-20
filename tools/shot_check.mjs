@@ -24,10 +24,11 @@ const SHOTS = [
     { name: "table", go: "Table" },
     { name: "drawing", go: "Drawing" },
     { name: "panes", go: "Panes" },
+    { name: "gallery", go: "Gallery" },
 ];
 
 /// Only chromium: three engines rasterize text differently enough to need
-/// three sets of references. `tools/ui_gate.mjs` covers the other two.
+/// three sets of references. `tools/ui_check.mjs` covers the other two.
 const engineName = process.env.LATTE_SHOT_ENGINE || "chromium";
 const recording = process.argv.includes("--record");
 
@@ -76,7 +77,7 @@ async function main() {
     }
     if (!existsSync(resolve(ROOT, "build/fonts/latte-regular.ttf"))) {
         console.log("SKIP shots: the fonts are not prepared — run 'node tools/font_prepare.mjs'");
-        console.log("            this gate proved nothing");
+        console.log("            this check proved nothing");
         process.exit(1);
     }
 
@@ -85,7 +86,7 @@ async function main() {
     try {
         browser = await engine.launch();
     } catch (error) {
-        console.log(`SKIP shots: ${engineName} is not installed — this gate proved nothing`);
+        console.log(`SKIP shots: ${engineName} is not installed — this check proved nothing`);
         server.close();
         process.exit(1);
     }
@@ -139,6 +140,15 @@ async function main() {
                 requestAnimationFrame(() => requestAnimationFrame(done))));
         }
 
+        // An image arrives over the network and decodes off-thread, so two
+        // frames do not mean it is on screen. Waiting makes the shot the same
+        // picture twice; not waiting made it whatever had landed by then.
+        await page.waitForFunction(
+            () => window.__lattePage.surface.imagesPending() === 0,
+            undefined, { timeout: 15000 });
+        await page.evaluate(() => new Promise((done) =>
+            requestAnimationFrame(() => requestAnimationFrame(done))));
+
         const taken = await page.screenshot({ scale: "device" });
         const reference = resolve(ROOT, `tests/canvas/shots/${shot.name}.png`);
 
@@ -149,7 +159,7 @@ async function main() {
         }
 
         if (!existsSync(reference)) {
-            console.error(`FAIL ${shot.name}: no reference. Record one: node tools/shot_gate.mjs --record`);
+            console.error(`FAIL ${shot.name}: no reference. Record one: node tools/shot_check.mjs --record`);
             failures++;
             continue;
         }
@@ -178,9 +188,9 @@ async function main() {
 
     await browser.close();
     server.close();
-    if (recording) { console.log("recorded. Commit these, and never record to make a red gate green."); return; }
+    if (recording) { console.log("recorded. Commit these, and never record to make a red check pass."); return; }
     if (failures) { console.error(`${failures} failure(s)`); process.exit(1); }
-    console.log(`shot gate green: ${SHOTS.length} screens in ${engineName}`);
+    console.log(`shot check passed: ${SHOTS.length} screens in ${engineName}`);
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

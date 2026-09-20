@@ -124,12 +124,26 @@ pub class TextFieldRender extends TextRender {
         return ok(geometry.Rect.of(caret.x + self.text_inset() - self.text_offset,
                    caret.y + self.field_top(paragraph) - self.vertical_offset, caret.width, caret.height))
     }
+    /// The caret an input method should follow. Not answered when the field
+    /// does not have the keyboard, so a blurred field ends the session.
+    pub override fn editing_spot() -> Option<EditingSpot> {
+        if !self.has_focus || !self.editable || !self.is_enabled() { return none }
+        match self.caret_rect() {
+            err(problem) => { return none }
+            ok(box) => {
+                return some(new EditingSpot(if self.secure_value { "" } else { self.words },
+                                            self.editor_value.anchor(),
+                                            self.editor_value.caret(), box))
+            }
+        }
+    }
+
     pub override fn needs_template() -> bool { return true }
     pub override fn role() -> string { return "textbox" }
-    pub override fn semantics() -> SemanticsNode {
+    pub override fn semantics_at(bounds: geometry.Rect) -> SemanticsNode {
         return new SemanticsNode(self.identity, if self.secure_value { "securetext" } else { "textbox" },
             if self.a11y_name == "" { self.hint } else { self.a11y_name },
-            if self.secure_value { "" } else { self.words }, self.bounds, self.enabled)
+            if self.secure_value { "" } else { self.words }, bounds, self.enabled)
     }
     pub override fn set_text(text: string) -> Result<bool> {
         self.demand_alive()?

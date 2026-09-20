@@ -97,7 +97,7 @@ pub class Rng {
 }
 
 /// FNV-1a over every page the sweep produced, so the ten thousand cases are
-/// part of the golden rather than merely counted by it. Two backends that
+/// part of the expected output rather than merely counted by it. Two backends that
 /// disagree about one byte of one case disagree about this number.
 pub class Digest {
     pub value: int = 2166136261
@@ -269,8 +269,8 @@ pub class Tnode {
 /// It is a function rather than a literal at the generation site because a tag
 /// mutation has to be able to rebuild it. A constant frame carries the whole
 /// subtree as ONE string, so a tag that changed in the unfolded arm and not in
-/// the folded one would make the two arms print different HTML — which is gate
-/// 2's failure and would show up here as a gate-3 one, pointing at the applier
+/// the folded one would make the two arms print different HTML — which is check
+/// 2's failure and would show up here as a check-3 one, pointing at the applier
 /// for a bug in the test's own generator.
 fn fold_html_of(n: Tnode) -> string {
     return "<{n.tag} {n.fold_name}=\"{escape_attribute(n.fold_value)}\">{escape_text(n.body)}</{n.tag}>"
@@ -482,7 +482,7 @@ pub class Gen {
     pub rng: Rng = new Rng(1)
     pub budget: int = 0
     pub conds: int = 8
-    /// One counter per node kind, so the golden says what the sweep actually
+    /// One counter per node kind, so the expected output says what the sweep actually
     /// built rather than what it was asked to build.
     pub made: List<int> = [0, 0, 0, 0, 0, 0, 0, 0]
     /// Tag swaps this tree's mutations performed.
@@ -776,7 +776,7 @@ fn mutate_keys(g: Gen, node: Tnode) {
 /// no random case at all: deleting the rule left all ten thousand green, which
 /// is how the previous round shipped a fuzz that could not see its own § 1.
 /// `reinserted_mounts` counts the times a case actually gets there, so a
-/// generator that stops producing the shape says so in the golden.
+/// generator that stops producing the shape says so in the expected output.
 ///
 /// A foldable node rebuilds its folded arm, because the tag is baked into that
 /// one string.
@@ -954,7 +954,7 @@ fn buffer_ids(b: Builder, into: List<int>) {
 /// re-inserting one has to bring back the subtree already held for that id
 /// rather than build an empty node.
 ///
-/// It is counted, and the count is in the golden, because a rule a fuzz never
+/// It is counted, and the count is in the expected output, because a rule a fuzz never
 /// reaches is a rule the fuzz cannot guard. Read BEFORE `apply`, which is what
 /// creates the roots a re-inserted mount would be matched against.
 fn reinserted_mounts(batch: Batch, a: Applier) -> int {
@@ -1392,7 +1392,7 @@ fn sweep(r: Report) {
         for step < STEPS {
             if step > 0 { mutate(g, tree, b) }
             // Every case checks the invariant. The two O(a whole page) extras —
-            // the digest that puts the run into the golden, and the
+            // the digest that puts the run into the expected output, and the
             // steady-state re-render — are sampled, on a stride that is coprime
             // with STEPS so the sample walks across the mutation positions
             // rather than always landing on the same one.

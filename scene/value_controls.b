@@ -16,10 +16,10 @@ pub abstract class ToggleRender extends RenderObject {
     pub override fn needs_template() -> bool { return true }
     pub fn checked() -> int { return self.checked_value }
     pub fn allows_mixed() -> bool { return false }
-    pub override fn semantics() -> SemanticsNode {
+    pub override fn semantics_at(bounds: geometry.Rect) -> SemanticsNode {
         let label: string = if self.a11y_name == "" { self.words } else { self.a11y_name }
         let value: string = if self.checked_value == 2 { "mixed" } else if self.checked_value == 1 { "on" } else { "off" }
-        return new SemanticsNode(self.identity, self.role(), label, value, self.bounds, self.enabled)
+        return new SemanticsNode(self.identity, self.role(), label, value, bounds, self.enabled)
     }
     pub override fn exclusive_choice() -> bool { return false }
     pub override fn clear_choice() {}
@@ -125,9 +125,9 @@ pub abstract class RangeRender extends RenderObject {
     pub fn step() -> f64 { return self.increment }
     pub override fn value_event_index(index: int, value: f64) -> int { return self.current_value as int }
     pub override fn value_event_value(index: int, value: f64) -> f64 { return self.current_value }
-    pub override fn semantics() -> SemanticsNode {
+    pub override fn semantics_at(bounds: geometry.Rect) -> SemanticsNode {
         let label: string = if self.a11y_name == "" { self.words } else { self.a11y_name }
-        return new SemanticsNode(self.identity, self.role(), label, "{self.current_value}", self.bounds, self.enabled)
+        return new SemanticsNode(self.identity, self.role(), label, "{self.current_value}", bounds, self.enabled)
     }
     pub override fn set_text(text: string) -> Result<bool> { self.demand_alive()?; return err("range control does not carry text", "unsupported") }
     pub fn fraction() -> f64 {

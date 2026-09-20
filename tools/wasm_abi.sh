@@ -40,7 +40,7 @@ trap 'rm -rf "$tmp"' EXIT
 # What the page supplies — asked of the modules rather than read out of them
 # with a pattern. A regex over the source was what this used to do, and it
 # answered "nothing at all" the first time somebody reindented the file, which
-# is a gate reporting a catastrophe because its own scraper broke.
+# is a check reporting a catastrophe because its own scraper broke.
 node --input-type=module -e '
 import { LatteRuntime } from "./js/latte-runtime.js";
 import { canvasKitImports } from "./js/latte-canvaskit.js";
@@ -101,7 +101,7 @@ missing=$(comm -13 "$tmp/imported" "$tmp/declared_beans" || true)
 if [[ -n "$missing" ]]; then
     echo "--- declared imports the ABI surface never referenced ---" >&2
     echo "$missing" | sed 's/^/    /' >&2
-    echo "    tests/canvas/_abi_surface.b must touch every import, or this gate" >&2
+    echo "    tests/canvas/_abi_surface.b must touch every import, or this check" >&2
     echo "    stops covering the ones it misses." >&2
     status=1
 else

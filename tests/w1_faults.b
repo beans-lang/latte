@@ -281,7 +281,7 @@ fn seeded() -> Applier {
 /// One report site in `apply.b`, one trip, one control.
 pub class ASite {
     /// The site, named by the method it lives in and its message — a name and
-    /// not a line number, because a line number in a golden goes stale the
+    /// not a line number, because a line number in an expected output goes stale the
     /// first time anything above it moves.
     pub site: string = ""
     /// This case's own name. One site is reached by several shapes.
@@ -1716,7 +1716,7 @@ fn swallowed_upstream(r: Report) {
 /// BREAK on it, so every sibling past the stray was silently dropped.
 ///
 /// The two answers were `<b>one</b>` and `<b>onetwo</b>` for one frame list,
-/// with zero faults on the applier's side. That is gate 3's entire comparison
+/// with zero faults on the applier's side. That is check 3's entire comparison
 /// — "the applier must land on the serializer's HTML of the new tree" —
 /// disagreeing with itself over a shape neither walker refuses. `scan_spans`
 /// steps over the stray now, which is what the serializer does, and this

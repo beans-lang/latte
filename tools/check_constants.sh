@@ -20,7 +20,7 @@ need js/latte-runtime.js
 need browser/browser_host.b
 
 # A pair table the JavaScript writes as `NAME: 7,`, against the Beans constant
-# of the same name under `prefix`. An empty side is a gate that stopped reading.
+# of the same name under `prefix`. An empty side is a check that stopped reading.
 compare_named() {
     local label="$1" js_file="$2" js_object="$3" beans_file="$4" prefix="$5"
     js_object="$js_object" perl -0ne 'print $1 if /const \Q$ENV{js_object}\E\s*=\s*\{(.*?)\}/s' \

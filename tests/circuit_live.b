@@ -67,7 +67,7 @@ pub class Report {
 
 // ============================================================== the page
 
-/// One page with every shape gate 7 names: a click, a bound input, a keyed
+/// One page with every shape check 7 names: a click, a bound input, a keyed
 /// list that MOVES rather than rebuilds, a paragraph a cross-thread job
 /// writes, and a handler that panics.
 pub class Board extends Component {
@@ -121,7 +121,7 @@ pub class Board extends Component {
 
     /// First row to the back. Three keys in, three keys out, all still there —
     /// so a differ that rebuilt the list instead of moving one child would
-    /// produce different edits and the golden would say so.
+    /// produce different edits and the expected output would say so.
     fn rotate() {
         var next: List<string> = []
         for index: int in 1..self.rows.len() { next.push(self.rows[index]) }
@@ -160,7 +160,7 @@ pub class Wiring {
     pub fn init() {}
 }
 
-/// Build the page, and — this is the cross-thread half of gate 7 — hand a
+/// Build the page, and — this is the cross-thread half of check 7 — hand a
 /// `Push` to a REAL OS thread which posts a job back into the circuit's inbox.
 ///
 /// `Push` is `unique … implements Send`, so it is moved into the thread's
@@ -481,8 +481,8 @@ const THIRD_ID: string =
 /// for that and one move for a rotate-right — it scans forward from the
 /// current position rather than running a longest-increasing-subsequence pass.
 /// That asymmetry is written down at `diff.b`'s `keyed`, and `tests/diff.b`
-/// already gates BOTH numbers exactly ("rotate left (9 edits)" / "rotate right
-/// (5 edits)"), so it is a decision with a golden and not a bug this suite
+/// already checks BOTH numbers exactly ("rotate left (9 edits)" / "rotate right
+/// (5 edits)"), so it is a decision with an expected output and not a bug this suite
 /// would be blessing. What this suite adds is that the moves survive a socket
 /// and a replay.
 const ROTATE_BATCH_5: string =

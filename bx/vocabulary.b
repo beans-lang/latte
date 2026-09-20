@@ -3,7 +3,7 @@
 // An editor cannot ask latte-bx what a `.bx` file may contain: the extension
 // is a TypeScript bundle and latte-bx is a Beans binary. So the vocabulary is
 // **printed** from here and checked in on the editor side, exactly the way
-// crema printed its own. `tests/w2_editor_data.b` is the printer, its golden
+// crema printed its own. `tests/w2_editor_data.b` is the printer, its expected output
 // is the JSON byte for byte, and `latte-bx vocabulary` prints the same string
 // for a person regenerating it by hand.
 //
@@ -12,7 +12,7 @@
 // enumerated — the same problem `event_names()` has, and it is solved the same
 // way. `tests/markup.b` §1b asks the predicate about **every name in each list
 // here** and about **a control corpus of names that must not be in it**, so a
-// row added to `html.b` and forgotten here fails the gate rather than shipping
+// row added to `html.b` and forgotten here fails the check rather than shipping
 // an editor that has never heard of it. Adding a name to a list here without
 // adding it to `html.b` fails too, from the other side.
 //

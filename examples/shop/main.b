@@ -160,7 +160,7 @@ pub class Storefront extends Component {
 /// `type_of(Component)` bound to a `let` and interpolated afterwards answers
 /// `latte.Component`. Beans 0.1.41 fixed the bug that used to make the
 /// inline spelling answer `shop.Component` instead — a type that does not
-/// exist; `tests/pages.b` § 10 gates it.
+/// exist; `tests/pages.b` § 10 checks it.
 fn identity() {
     let base: reflect.Type = type_of(Component)
     let name: string = base.qualified_name()

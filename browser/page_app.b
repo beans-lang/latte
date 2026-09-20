@@ -22,7 +22,7 @@ pub singleton class PageApp {
     last_error: string = ""
     /// Whether a frame has been asked for and not yet delivered.
     frame_asked: bool = false
-    /// Counts what the page did, for the gates: frames delivered, frames that
+    /// Counts what the page did, for the checks: frames delivered, frames that
     /// painted, and frames asked for.
     pub frames: int = 0
     pub painted: int = 0
@@ -131,6 +131,7 @@ pub singleton class PageApp {
                 if moved { self.painted = self.painted + 1 }
                 self.publish_semantics(page)
                 if page.has_active_animations() { self.ask_for_frame() }
+                platform.Probe.instance.mark_frame()
                 return if moved { 1 } else { 0 }
             }
         }
@@ -154,6 +155,8 @@ pub singleton class PageApp {
 
     pub fn pointer(kind: int, x: f64, y: f64, button: int, clicks: int,
                    modifiers: int) -> int {
+        platform.Probe.instance.enter(platform.PHASE_INPUT)
+        defer platform.Probe.instance.leave(platform.PHASE_INPUT)
         match self.with_scene("send a pointer event") {
             err(problem) => { self.fail(problem.msg); return -1 }
             ok(page) => {
@@ -169,6 +172,8 @@ pub singleton class PageApp {
     /// A key press or release. Text is `text_input`, and a text kind arriving
     /// here is refused by the input manager rather than quietly mis-read.
     pub fn key(kind: int, key: int, text: string, modifiers: int) -> int {
+        platform.Probe.instance.enter(platform.PHASE_INPUT)
+        defer platform.Probe.instance.leave(platform.PHASE_INPUT)
         match self.with_scene("send a key event") {
             err(problem) => { self.fail(problem.msg); return -1 }
             ok(page) => {
@@ -181,6 +186,8 @@ pub singleton class PageApp {
     }
 
     pub fn scroll(x: f64, y: f64, dx: f64, dy: f64) -> int {
+        platform.Probe.instance.enter(platform.PHASE_INPUT)
+        defer platform.Probe.instance.leave(platform.PHASE_INPUT)
         match self.with_scene("scroll") {
             err(problem) => { self.fail(problem.msg); return -1 }
             ok(page) => {
@@ -195,6 +202,8 @@ pub singleton class PageApp {
     }
 
     pub fn text_input(kind: int, text: string, anchor: int, caret: int) -> int {
+        platform.Probe.instance.enter(platform.PHASE_INPUT)
+        defer platform.Probe.instance.leave(platform.PHASE_INPUT)
         match self.with_scene("send text") {
             err(problem) => { self.fail(problem.msg); return -1 }
             ok(page) => {
@@ -242,37 +251,122 @@ pub singleton class PageApp {
     /// tree and ask for a frame. A click that moved focus changed both.
     fn after_input(page: stage.Scene) {
         self.publish_semantics(page)
+        self.publish_editing(page)
         self.ask_for_frame()
     }
 
-    semantics_revision: int = -1
+    editing_open: bool = false
 
-    /// Hands the page the semantics tree when it changed, whole rather than as
-    /// a diff: a diff is a second model to keep in step by hand.
-    fn publish_semantics(page: stage.Scene) {
+    /// Puts the page's editing element under the caret and focuses it, which
+    /// is what makes a real keystroke reach Beans at all.
+    fn publish_editing(page: stage.Scene) {
         match self.host {
             none => {}
             some(page_host) => {
-                if !page_host.can(platform.Capability.accessibility) { return }
-                match page_host.semantics_begin() {
-                    err(_) => { return }
-                    ok(_) => {}
+                if !page_host.can(platform.Capability.text_input) { return }
+                match page.editing_spot() {
+                    some(spot) => {
+                        self.editing_open = true
+                        page_host.text_input(true, spot.text, spot.anchor, spot.caret,
+                                             spot.rect.x, spot.rect.y,
+                                             spot.rect.width, spot.rect.height)
+                    }
+                    none => {
+                        // Only on the way down. Sending it every frame would
+                        // blur the element between every keystroke.
+                        if self.editing_open {
+                            self.editing_open = false
+                            page_host.text_input(false, "", 0, 0, 0.0, 0.0, 0.0, 0.0)
+                        }
+                    }
                 }
-                match page.focused_object() {
-                    some(focused) => { self.send_nodes(page, page_host, focused.handle()) }
-                    none => { self.send_nodes(page, page_host, 0) }
-                }
-                page_host.semantics_end()
             }
         }
     }
 
+    semantics_revision: int = -1
+    semantics_focus: u64 = 0
+
+    /// Hands the page the semantics tree when it changed, whole rather than as
+    /// a diff: a diff is a second model to keep in step by hand.
+    ///
+    /// "When it changed" is the scene's own semantics revision, which every
+    /// frame, bounds and label change already moves. An idle frame therefore
+    /// publishes nothing at all, and a page that is only animating a colour
+    /// does not rebuild its accessibility tree sixty times a second.
+    fn publish_semantics(page: stage.Scene) {
+        platform.Probe.instance.enter(platform.PHASE_A11Y)
+        defer platform.Probe.instance.leave(platform.PHASE_A11Y)
+        match self.host {
+            none => {}
+            some(page_host) => {
+                if !page_host.can(platform.Capability.accessibility) { return }
+                var focused: u64 = 0
+                match page.focused_object() { some(node) => { focused = node.handle() } none => {} }
+                let revision: int = page.semantics_version()
+                if revision == self.semantics_revision && focused == self.semantics_focus { return }
+                match page_host.semantics_begin() {
+                    err(_) => { return }
+                    ok(_) => {}
+                }
+                self.send_nodes(page, page_host, focused)
+                page_host.semantics_end()
+                self.semantics_revision = revision
+                self.semantics_focus = focused
+            }
+        }
+    }
+
+    /// What one node was last published as, so a node that only moved can be
+    /// sent as four numbers instead of three strings.
+    said: Map<u64, SpokenNode> = {}
+    said_round: int = 0
+
     fn send_nodes(page: stage.Scene, page_host: BrowserHost, focused: u64) {
-        for node: scene.SemanticsNode in page.semantics() {
+        var published: int = 0
+        let tree: List<scene.SemanticsNode> = page.semantics()
+        platform.Probe.instance.enter(platform.PHASE_A11Y_PUBLISH)
+        self.said_round = self.said_round + 1
+        for node: scene.SemanticsNode in tree {
+            published = published + 1
             let box: geometry.Rect = node.bounds()
-            page_host.semantics_node(node.id(), node.role(), node.label(), node.value(),
-                                     box.x, box.y, box.width, box.height,
-                                     node.enabled(), node.id() == focused)
+            let id: u64 = node.id()
+            var spoken: bool = false
+            match self.said.get(id) {
+                some(before) => {
+                    if before.same(node) {
+                        before.round = self.said_round
+                        page_host.semantics_move(id, box.x, box.y, box.width, box.height,
+                                                 id == focused)
+                        spoken = true
+                    }
+                }
+                none => {}
+            }
+            if !spoken {
+                page_host.semantics_node(id, node.role(), node.label(), node.value(),
+                                         box.x, box.y, box.width, box.height,
+                                         node.enabled(), id == focused)
+                if node.in_grid() {
+                    page_host.semantics_grid(id, node.row(), node.column(),
+                                             node.rows(), node.columns())
+                }
+                self.said[id] = new SpokenNode(node, self.said_round)
+            }
+        }
+        // Only when it grew: a tree that shed nodes has to give their records
+        // back, and one that did not has nothing to walk.
+        if self.said.len() > published { self.forget_unsaid() }
+        platform.Probe.instance.leave(platform.PHASE_A11Y_PUBLISH)
+        platform.Probe.instance.note(platform.TALLY_A11Y_NODES, published)
+    }
+
+    fn forget_unsaid() {
+        for id: u64 in self.said.keys() {
+            match self.said.get(id) {
+                some(before) => { if before.round != self.said_round { self.said.remove(id) } }
+                none => {}
+            }
         }
     }
 
@@ -289,6 +383,37 @@ pub singleton class PageApp {
         self.renderer_value = none
         self.frame_asked = false
         self.last_seconds = -1.0
+        self.semantics_revision = -1
+        self.semantics_focus = 0
+        self.editing_open = false
+        self.said = {}
+        self.said_round = 0
         return 0
+    }
+}
+
+/// The words one accessibility node was last published with.
+class SpokenNode {
+    role: string
+    label: string
+    value: string
+    enabled: bool
+    pub round: int
+    row: int
+    column: int
+    rows: int
+    columns: int
+    pub fn init(node: scene.SemanticsNode, round: int) {
+        self.role = node.role(); self.label = node.label(); self.value = node.value()
+        self.enabled = node.enabled(); self.round = round
+        self.row = node.row(); self.column = node.column()
+        self.rows = node.rows(); self.columns = node.columns()
+    }
+    /// Whether the page already has everything but this node's box.
+    pub fn same(node: scene.SemanticsNode) -> bool {
+        return self.enabled == node.enabled() && self.role == node.role() &&
+               self.label == node.label() && self.value == node.value() &&
+               self.row == node.row() && self.column == node.column() &&
+               self.rows == node.rows() && self.columns == node.columns()
     }
 }

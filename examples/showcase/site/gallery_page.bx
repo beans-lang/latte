@@ -1,0 +1,281 @@
+<ScrollView height={520}>
+  <VStack padding={16} spacing={10} align="stretch">
+    <Label text="Gallery" font_size={23} />
+    <Label key={"gallery-note"} text={self.headline()} text_color="#555b6b" />
+
+    <HStack spacing={16} align="start" wrap>
+
+      <VStack grow={1} spacing={6} align="stretch">
+        <Label text="ACTIONS" font_size={10} text_color="#8a8f9c" />
+        <HStack spacing={6} align="center" wrap>
+          <Button key={"act-order"} text="Order" on:click={fn(e: UiEvent) { self.order() }} />
+          <Button key={"act-undo"} text="Undo" on:click={fn(e: UiEvent) { self.undo() }} />
+          <Button key={"act-clear"} text="Clear" on:click={fn(e: UiEvent) { self.clear() }} />
+        </HStack>
+        <HStack spacing={6} align="center" wrap>
+          <Button key={"act-normal"} text="Normal" />
+          <Button key={"act-prominent"} text="Prominent" prominent />
+          <Button key={"act-off"} text="Disabled" enabled={false} />
+          <Button key={"act-prominent-off"} text="Prominent off" prominent enabled={false} />
+        </HStack>
+
+        <Separator height={1} />
+        <Label text="TOGGLES" font_size={10} text_color="#8a8f9c" />
+        <HStack spacing={12} align="center" wrap>
+          <CheckBox key={"tog-on"} text="Checked" checked />
+          <CheckBox key={"tog-off"} text="Unchecked" />
+          <CheckBox key={"tog-dis"} text="Disabled" checked enabled={false} />
+        </HStack>
+        <CheckBox key={"tog-milk"} text="Include milk" checked={self.milk}
+                  on:change={fn(e: UiEvent) { self.set_milk(e.index) }} />
+        <HStack spacing={12} align="center" wrap>
+          <RadioButton key={"tog-small"} text="Small" checked={self.size == 0}
+                       on:change={fn(e: UiEvent) { self.set_size(0, e.index) }} />
+          <RadioButton key={"tog-medium"} text="Medium" checked={self.size == 1}
+                       on:change={fn(e: UiEvent) { self.set_size(1, e.index) }} />
+          <RadioButton key={"tog-large"} text="Large" checked={self.size == 2}
+                       on:change={fn(e: UiEvent) { self.set_size(2, e.index) }} />
+        </HStack>
+        <HStack spacing={6} align="center">
+          <Label text="Notify when ready" grow={1} />
+          <Switch key={"tog-notify"} checked={self.notify}
+                  on:change={fn(e: UiEvent) { self.set_notify(e.index) }} />
+        </HStack>
+
+        <Separator height={1} />
+        <Label text="TYPOGRAPHY" font_size={10} text_color="#8a8f9c" />
+        <Label text="Large title" font_size={26} />
+        <Label text="Title" font_size={22} />
+        <Label text="Headline" font_size={13} font_weight={5} />
+        <Label text="Body — the control font at its default size" />
+        <Label text="Footnote" font_size={10} text_color="#8a8f9c" />
+
+        <Separator height={1} />
+        <Label text="VALUES" font_size={10} text_color="#8a8f9c" />
+        <HStack spacing={6} align="center">
+          <Label key={"val-strength"} text={"Strength {self.strength as int}"} width={92} />
+          <Slider key={"val-slider"} min={0.0} max={100.0} value={self.strength} step={5.0} grow={1}
+                  on:change={fn(e: UiEvent) { self.set_strength(e.index) }} />
+        </HStack>
+        <HStack spacing={6} align="center">
+          <Label key={"val-shots"} text={"Shots {self.shots as int}"} width={92} />
+          <Stepper key={"val-stepper"} min={0.0} max={6.0} value={self.shots} step={1.0}
+                   on:change={fn(e: UiEvent) { self.set_shots(e.index) }} />
+          <Box grow={1} />
+        </HStack>
+        <HStack spacing={6} align="center">
+          <Label text="Brewing" width={92} text_color="#8a8f9c" font_size={10} />
+          <ProgressBar key={"val-progress"} min={0.0} max={100.0} value={self.strength} grow={1} />
+        </HStack>
+        <HStack spacing={6} align="center">
+          <Label text="Working" width={92} text_color="#8a8f9c" font_size={10} />
+          <ProgressBar key={"val-spin"} indeterminate grow={1} />
+        </HStack>
+        <HStack spacing={6} align="center">
+          <Label text="Bean level" width={92} text_color="#8a8f9c" font_size={10} />
+          <LevelIndicator key={"val-level"} min={0.0} max={100.0} value={self.strength} grow={1} />
+        </HStack>
+      </VStack>
+
+      <VStack grow={1} spacing={6} align="stretch">
+        <Label text="TEXT" font_size={10} text_color="#8a8f9c" />
+        <HStack spacing={6} align="center">
+          <Label text="Name" width={60} text_color="#8a8f9c" font_size={10} />
+          <TextField key={"txt-name"} bind:value={self.name} a11y_label="Your name" grow={1} />
+        </HStack>
+        <HStack spacing={6} align="center">
+          <Label text="Search" width={60} text_color="#8a8f9c" font_size={10} />
+          <SearchField key={"txt-search"} bind:value={self.query} a11y_label="Search orders" grow={1} />
+        </HStack>
+        <HStack spacing={6} align="center">
+          <Label text="Secret" width={60} text_color="#8a8f9c" font_size={10} />
+          <SecureField key={"txt-secret"} bind:value={self.secret} a11y_label="Password" grow={1} />
+        </HStack>
+        <TextArea key={"txt-note"} bind:value={self.note} height={52} a11y_label="Order notes" />
+
+        <Separator height={1} />
+        <Label text="CHOICES" font_size={10} text_color="#8a8f9c" />
+        <HStack spacing={6} align="center">
+          <Label text="Drink" width={60} text_color="#8a8f9c" font_size={10} />
+          <ComboBox key={"chc-drink"} items={self.drinks} selected={self.drink}
+                    on:change={fn(e: UiEvent) { self.set_drink(e.index) }} />
+          <Box grow={1} />
+        </HStack>
+        <Segmented key={"chc-roast"} items={self.roasts} selected={self.roast}
+                   on:change={fn(e: UiEvent) { self.set_roast(e.index) }} />
+        <TabView key={"chc-tabs"} labels={self.tabs} selected={self.tab} height={92}
+                 on:change={fn(e: UiEvent) { self.set_tab(e.index) }}>
+          <VStack padding={8} spacing={2} align="stretch">
+            <Label key={"chc-recipe"} text={self.recipe()} />
+            <Label key={"chc-extras"} text={self.extras()} text_color="#8a8f9c" font_size={10} />
+          </VStack>
+          <VStack padding={8} align="stretch">
+            <Label key={"chc-notes"} text={if self.note == "" { "No notes yet." } else { self.note }} />
+          </VStack>
+        </TabView>
+
+        <Separator height={1} />
+        <Label text="CONTAINERS" font_size={10} text_color="#8a8f9c" />
+        <GroupBox text="Order options" height={58}>
+          <Label text="Beans, milk, and cup size" />
+        </GroupBox>
+        <Disclosure key={"con-details"} text="Order details" open={self.details} height={62}
+                    on:change={fn(e: UiEvent) { self.set_details(e.index) }}>
+          <Button key={"con-roasted"} text="Roasted today"
+                  on:click={fn(e: UiEvent) { self.order() }} />
+        </Disclosure>
+        <SplitView key={"con-split"} stacked={false} divider={self.divider} height={64}>
+          <VStack padding={6} align="stretch" background="#f6f6f8">
+            <Label text="Drag the divider" />
+          </VStack>
+          <VStack padding={6} align="stretch">
+            <Label key={"con-across"} text={"{self.divider as int} across"}
+                   text_color="#8a8f9c" font_size={10} />
+          </VStack>
+        </SplitView>
+
+        <Label text="A Grid places its children on named tracks." text_color="#8a8f9c" font_size={10} />
+        <Grid columns="72 1fr auto" column_gap={8} row_gap={4}>
+          <Label text="Roast" text_color="#8a8f9c" font_size={10} />
+          <Label key={"grd-roast"} text={self.roasts[self.roast]} />
+          <Label text="•" text_color="#8a8f9c" />
+          <Label text="Drink" text_color="#8a8f9c" font_size={10} />
+          <Label key={"grd-drink"} text={self.drinks[self.drink]} />
+          <Label text="•" text_color="#8a8f9c" />
+        </Grid>
+
+        <Label text="A Container holds a subtree and places nothing itself." text_color="#8a8f9c" font_size={10} />
+        <Container height={30} background="#f6f6f8" corner_radius={6} />
+      </VStack>
+    </HStack>
+
+    <Separator height={1} />
+    <Label text="DRAWING" font_size={10} text_color="#8a8f9c" />
+    <HStack spacing={12} align="center" wrap>
+      <Box width={76} height={48}>
+        <Rectangle fill="#2f6f4f" clip_radius={10} />
+      </Box>
+      <Box width={76} height={48}>
+        <Ellipse fill="#365eea" stroke="#101828" stroke_width={2} />
+      </Box>
+      <Box width={76} height={48}>
+        <Path d="M8 42 L38 8 L68 42 Z" fill="#b03030" stroke="#5a1414" stroke_width={2} />
+      </Box>
+      <Box width={76} height={48}>
+        <Rectangle gradient_start="#d5a665" gradient_end="#87582f" clip_radius={8}
+                   shadow_color="#00000055" shadow_blur={10} shadow_dy={3} />
+      </Box>
+      <Box width={48} height={48}>
+        <ResourceImage source="mark.png" />
+      </Box>
+    </HStack>
+
+    <Separator height={1} />
+    <Label text="TABLE — 500 rows, only the visible ones are read" font_size={10} text_color="#8a8f9c" />
+    <Table key={"gal-orders"} columns={self.titles} column_widths={self.widths}
+           source={self.rows} height={160}
+           on:select={fn(e: UiEvent) { self.select_row(e.index) }} />
+    <Label key={"gal-row"} text={self.row_note()} text_color="#555b6b" />
+  </VStack>
+</ScrollView>
+<beans>
+package site
+
+import latte.compose
+import latte.controls
+import {view} from latte.annotations
+
+/// Five hundred rows built as they are asked for, so the table has something
+/// to be virtual about without holding anything.
+pub class GalleryRows implements controls.TableRows {
+    pub fn init() {}
+    pub fn row_count() -> int { return 500 }
+    pub fn cell(row: int, column: int) -> string {
+        if column == 0 { return "#{1000 + row}" }
+        if column == 1 {
+            if row % 3 == 0 { return "Espresso" }
+            if row % 3 == 1 { return "Latte" }
+            return "Cortado"
+        }
+        return "{2 + row % 4} min"
+    }
+}
+
+/// Every control latte draws, on one screen.
+///
+/// `<Canvas>` is the one tag missing and it is not an oversight: see
+/// `docs/unfinished.md`. The shapes below ARE canvas nodes.
+@view
+pub partial class GalleryPage extends compose.Component {
+    pub milk: bool = false
+    pub size: int = 1
+    pub notify: bool = true
+    pub strength: f64 = 45.0
+    pub shots: f64 = 2.0
+    pub orders: int = 0
+
+    pub name: string = "Julfikar"
+    pub query: string = ""
+    pub secret: string = ""
+    pub note: string = ""
+
+    pub drinks: List<string> = ["Espresso", "Latte", "Cortado", "Flat white"]
+    pub drink: int = 2
+    pub roasts: List<string> = ["Light", "Medium", "Dark"]
+    pub roast: int = 1
+    pub sizes: List<string> = ["Small", "Medium", "Large"]
+    pub tabs: List<string> = ["Recipe", "Notes"]
+    pub tab: int = 0
+
+    pub details: bool = false
+    pub divider: f64 = 140.0
+
+    pub rows: GalleryRows
+    pub titles: List<string> = ["Order", "Drink", "Wait"]
+    pub widths: List<f64> = [120.0, 160.0, 100.0]
+    pub row: int = -1
+
+    pub fn init() { self.rows = new GalleryRows(); super.init() }
+
+    pub fn headline() -> string {
+        return "Thirty-one controls, one .bx file. {self.orders} order(s) placed."
+    }
+
+    pub fn order() { self.orders = self.orders + 1; self.request_render() }
+    pub fn undo() { if self.orders > 0 { self.orders = self.orders - 1; self.request_render() } }
+    pub fn clear() { self.orders = 0; self.request_render() }
+
+    pub fn set_milk(value: int) { self.milk = value == 1; self.request_render() }
+    pub fn set_notify(value: int) { self.notify = value == 1; self.request_render() }
+    pub fn set_details(value: int) { self.details = value == 1; self.request_render() }
+    pub fn set_strength(value: int) { self.strength = value as f64; self.request_render() }
+    pub fn set_shots(value: int) { self.shots = value as f64; self.request_render() }
+    pub fn set_drink(index: int) { self.drink = index; self.request_render() }
+    pub fn set_roast(index: int) { self.roast = index; self.request_render() }
+    pub fn set_tab(index: int) { self.tab = index; self.request_render() }
+    pub fn select_row(index: int) { self.row = index; self.request_render() }
+
+    /// A radio group is three controls and one fact. The one switching OFF
+    /// raises a change too, and acting on it would clear the new choice.
+    pub fn set_size(which: int, on: int) {
+        if on != 1 { return }
+        self.size = which
+        self.request_render()
+    }
+
+    pub fn recipe() -> string {
+        return "{self.roasts[self.roast]} · {self.drinks[self.drink]} · {self.sizes[self.size]}"
+    }
+
+    pub fn extras() -> string {
+        let milk: string = if self.milk { "with milk" } else { "black" }
+        let told: string = if self.notify { "notify" } else { "quiet" }
+        return "{self.shots as int} shots, strength {self.strength as int}, {milk}, {told}"
+    }
+
+    pub fn row_note() -> string {
+        if self.row < 0 { return "No row selected" }
+        return "Row {self.row} selected"
+    }
+}
+</beans>

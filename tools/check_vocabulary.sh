@@ -19,7 +19,7 @@ listed=$(grep -oE 'every\.push\(WidgetKind\.[a-z_]+\)' "$SRC" | sed -E 's/.*Widg
 
 if [[ -z "$declared" ]]; then
     echo "--- vocabulary FAILED: no enum cases were found in controls/widget_kind.b ---" >&2
-    echo "    The enum's shape changed and this gate stopped reading it." >&2
+    echo "    The enum's shape changed and this check stopped reading it." >&2
     exit 1
 fi
 if [[ -z "$listed" ]]; then
@@ -31,7 +31,7 @@ if [[ "$declared" != "$listed" ]]; then
     echo "--- vocabulary FAILED: WidgetKind.all() is not the enum ---" >&2
     diff <(echo "$declared") <(echo "$listed") | sed 's/^/    /' >&2
     echo "    < declared in the enum, > pushed by all(). Order matters: the" >&2
-    echo "    doc comment on all() says declaration order, and a golden reads it." >&2
+    echo "    doc comment on all() says declaration order, and an expected output reads it." >&2
     exit 1
 fi
 

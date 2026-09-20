@@ -11,7 +11,7 @@
 // The names in the expected faults are `latte$entry.X` and not `main.X`: a
 // library's `tests/` entry gets a synthetic package, and the `0:` in front is
 // the id of the buffer that raised the fault. Both are what a reader of a real
-// fault list sees, so they are in the goldens rather than filed off.
+// fault list sees, so they are in the expected outputs rather than filed off.
 //
 // The source here is a hand-written `ServiceSource` and not a container. That
 // is the point of the interface: latte's core knows what a service source is
