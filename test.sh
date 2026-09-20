@@ -1750,6 +1750,24 @@ run_generated_leg() {
 
 run_generated_leg
 
+# --- the command-line leg ----------------------------------------------
+#
+# `latte init` writes a project and `latte build` builds it, for both targets,
+# for real. tests/cli.b covers everything the command line decides without
+# touching a disk; this is the half that can only be a script.
+run_cli_leg() {
+    if (cd "$ROOT" && bash tools/check_cli.sh) >"$tmp/cli.log" 2>&1; then
+        sed 's/^/  /' "$tmp/cli.log"
+        legs=$((legs + 1))
+    else
+        echo "--- cli FAILED ---" >&2
+        cat "$tmp/cli.log" >&2
+        failed=1
+    fi
+}
+
+[[ $canvas_only -eq 1 ]] || run_cli_leg
+
 if [[ -z "$only" || $canvas_only -eq 1 ]]; then
     run_canvas_leg
     [[ $browser_leg -eq 0 ]] || run_browser_leg

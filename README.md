@@ -66,7 +66,7 @@ node tools/serve.mjs 8731   # then open /examples/showcase/index.html
 
 ## Contents
 
-- [Requirements](#requirements) · [Try it](#try-it) · [Commands](#commands)
+- [Requirements](#requirements) · [Try it](#try-it) · [Building an application](#building-an-application) · [Commands](#commands)
 - [Markup](#markup) · [Annotations](#annotations)
 - [Writing an application](#writing-an-application) — [the minimum](#the-minimum),
   [services](#services-barista), [view-models](#view-models-signals-and-commands),
@@ -117,6 +117,99 @@ imports `latte` and `latte_app` needs no row for either.
 beansc run examples/board/main.b -- serve 8080   # the Brew Board, with Tailwind
 beansc run examples/cafe/main.b  -- serve 8080   # the worked example
 ```
+
+## Building an application
+
+```bash
+beansc build examples/latte_cli.b -o build/latte   # the tool
+
+build/latte init myapp && cd myapp                 # an html application
+build/latte init myapp --target canvas             # or one drawn on a canvas
+build/latte build
+```
+
+`init` writes a project that renders on the first build: the two manifests, an
+entry, a layout, a page, and nothing else. `generated/` is not among them — the
+first build writes it, because a scaffolder that wrote it too would be a second
+implementation of the mirror rule.
+
+```
+myapp/
+├── beans.pot        the module, and what it depends on
+├── latte.pot        the application: name, target, fonts, profiles
+├── main.b           the entry
+├── site/            one .bx per screen — markup on top, a partial class under it
+└── generated/       the .b half of every .bx, mirroring its folder
+```
+
+**An application does not need latte to build.** `generated/` is checked in, so
+a clone compiles with plain `beansc` and no latte binary present at all. `latte`
+is what you need to *write* a project: to scaffold one, and to regenerate the
+markup as part of every build.
+
+**Every build regenerates the markup first.** Markup and the code built from it
+are two files, and any process where a person can compile one without the other
+eventually ships the pair out of step — a generated file that still compiles,
+still renders last week's screen, and says nothing. `latte build` cannot produce
+one. `latte check --drift` is the gate form, for the ways a file goes stale that
+a build never sees: a merge, or somebody running `beansc` directly.
+
+**Two configurations, the way `dotnet` has two.**
+
+| | `beansc` | where it lands |
+|---|---|---|
+| `latte build` | `--debug` — `-O0`, frame pointers, DWARF line tables | `build/debug/` |
+| `latte build -c Release` | `--release` — `-O3`, `NDEBUG` | `build/release/` |
+
+```
+latte init <name> [--target html|canvas] [--latte <path>] [--here]
+latte build [-c Release]     regenerate, then compile
+latte check [--drift]        type-check; --drift fails on a stale generated file
+latte generate               the markup only
+latte clean [--generated]    remove build/
+latte vocabulary             the .bx surface as JSON, for an editor
+```
+
+**A canvas build writes a directory you can serve**, not just a module: the page,
+latte's own JavaScript, CanvasKit and the fonts, all staged out of whichever
+latte the project is built against. None of it is checked in, so a latte that
+fixed something is a rebuild away rather than a copy somebody has to notice went
+stale.
+
+```
+build/debug/
+├── index.html      written by the build, from the project's name and title
+├── myapp.wasm
+├── latte/          latte's js/
+├── canvaskit/
+└── fonts/
+```
+
+Every path in the page is relative, so any static file server will do, under any
+prefix. `latte.pot` names the target:
+
+```
+name    myapp
+target  canvas
+markup  site
+title   "My Application"
+font    fonts/inter.ttf      # CanvasKit ships none; with no row, latte's are staged
+```
+
+`--latte <path>` is for working on latte itself: it writes `require path` rows
+against a checkout you name, so a project builds against uncommitted changes.
+The path is asked for rather than guessed, because a row pointing at a directory
+that is not there fails later with a message about a missing package rather than
+about the row.
+
+**There is no `run` and no `watch`**, and that is a decision rather than a gap.
+Both mean "start the thing and keep it alive", and latte's two targets disagree
+about what the thing is: an html application is a server this tool would own the
+lifetime of, and a canvas application is a directory that needs an HTTP server
+in front of it — which latte has, over espresso, but this tool deliberately does
+not link, so that `latte build` works on a machine that cannot build espresso at
+all. Adding them means choosing to depend on espresso here, and that is the
+change to make when somebody needs it.
 
 ## Commands
 
@@ -654,6 +747,7 @@ Beyond the suites, it runs legs that answer questions a suite cannot:
 | `browser-apply` | `js/latte.js` lands the Beans applier's HTML in a real Chrome |
 | `csp-browser` | under latte's policy Chrome loads the script and reaches the origin; under espresso's it runs nothing |
 | `wasm-core` | the core needs no OS capability, and `std.net`/`std.fs` are still refused for it |
+| `cli` | `latte init` writes a project that `latte build` builds, for both targets, and a canvas build stages every script its page imports |
 
 A refusal test needs a positive control beside it. Without one you cannot tell
 "refused for the right reason" from "refused earlier, for a different one" — and

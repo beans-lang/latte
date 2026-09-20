@@ -1,0 +1,23 @@
+usage: latte <command> [options]
+
+commands:
+  init <name>    write a project: a layout, a page, and the manifests
+  build          regenerate the markup, then compile
+  check          regenerate and type-check; nothing is compiled
+  generate       compile the markup and stop
+  clean          remove the build directory
+  vocabulary     print latte's .bx surface as JSON, for an editor
+  version        print the version and stop
+
+options:
+  -c, --configuration <debug|release>   which profile (default: debug)
+      --release / --debug               the same two, spelled the short way
+      --target <html|canvas>            (init) which target; default html
+      --latte <path>                    (init) build against a latte checkout
+      --here                            (init) write into this directory
+      --drift                           (check) fail on a stale generated file
+      --generated                       (clean) remove generated/ as well
+
+An application does not need latte to build: generated/ is checked in, so a
+clone compiles with plain beansc and no latte binary present at all. This is
+what you need to write one.
