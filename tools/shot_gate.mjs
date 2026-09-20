@@ -102,6 +102,10 @@ async function main() {
 
     await page.goto(`http://127.0.0.1:${PORT}/examples/showcase/index.html`, { waitUntil: "load" });
     await page.waitForFunction(() => window.__latteReady === true, undefined, { timeout: 30000 });
+    // __latteReady is set on the failure path too, so the page can be "ready"
+    // and dead. Say which, rather than tripping over a missing global later.
+    const booted = await page.evaluate(() => window.__latteFailed || "");
+    if (booted) throw new Error(`the showcase never booted: ${booted}`);
 
     mkdirSync(resolve(ROOT, "tests/canvas/shots"), { recursive: true });
     mkdirSync(resolve(ROOT, "build/shots"), { recursive: true });

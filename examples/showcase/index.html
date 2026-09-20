@@ -82,8 +82,16 @@ try {
     error: page.lastError(),
   });
 } catch (error) {
-  show(String((error && error.stack) || error));
+  const failure = String((error && error.stack) || error);
+  show(failure);
+  window.__latteFailed = failure;
+  // Defined on this path too. A gate that waits for __latteReady and then
+  // calls this reported "not a function" instead of the boot error.
+  window.__latteFacts = () => ({
+    software: false, surfaceFrames: 0, resources: 0,
+    frames: 0, painted: 0, requests: 0, a11yNodes: 0,
+    error: failure,
+  });
   window.__latteReady = true;
-  window.__latteFailed = String((error && error.stack) || error);
 }
 </script>

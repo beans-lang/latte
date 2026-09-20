@@ -68,6 +68,10 @@ async function run(engineName, engine) {
     const results = [];
     await page.goto(`http://127.0.0.1:${PORT}/examples/showcase/index.html`, { waitUntil: "load" });
     await page.waitForFunction(() => window.__latteReady === true, undefined, { timeout: 30000 });
+    // __latteReady is set on the failure path too, so the page can be "ready"
+    // and dead. Say which, rather than tripping over a missing global later.
+    const booted = await page.evaluate(() => window.__latteFailed || "");
+    if (booted) throw new Error(`the showcase never booted: ${booted}`);
 
     const opened = await facts(page);
     check(results, "the module mounted", opened.error === "", opened.error);
