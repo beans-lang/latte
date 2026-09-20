@@ -86,6 +86,7 @@ export class LattePage {
         page.editing = options.editing === false
             ? null
             : new EditingHost(options.editingRoot || element.parentElement, {
+                canvas: element,
                 onText: (kind, text, anchor, caret) =>
                     page.withText(text, (pointer, length) =>
                         page.call("latte_text_input", kind, pointer, length, anchor, caret)),
@@ -214,7 +215,10 @@ export class LattePage {
     /// everything, because a new surface holds none of the old pixels.
     contextLost() {
         this.surface.noteContextLost();
-        this.call("latte_resize", ...Object.values(this.measure()));
+        // Named rather than spread: `measure()` answers an object, and a
+        // spread of its values depends on the order the keys were written in.
+        const size = this.measure();
+        this.call("latte_resize", size.width, size.height, size.scale);
     }
 
     /// Everything goes: the input listeners, the accessibility elements, the

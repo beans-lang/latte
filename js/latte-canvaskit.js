@@ -375,10 +375,7 @@ export class CanvasKitSurface {
                     this.ck.BlurStyle.Normal, shadowBlur / 2, false));
                 this.canvas.save();
                 this.canvas.translate(shadowDx, shadowDy);
-                const wasFill = this.fillPaint;
-                this.fillPaint = shadow;
                 drawWith(shadow);
-                this.fillPaint = wasFill;
                 this.canvas.restore();
                 shadow.delete();
             }

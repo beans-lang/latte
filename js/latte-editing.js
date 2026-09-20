@@ -18,6 +18,9 @@
 export class EditingHost {
     constructor(parent, options = {}) {
         this.parent = parent || document.body;
+        // The canvas the coordinates are relative to, when it is not the
+        // parent itself.
+        this.canvas = options.canvas || null;
         this.onText = options.onText || (() => {});
         this.listeners = [];
         this.element = document.createElement("div");
@@ -90,16 +93,28 @@ export class EditingHost {
             }
             return;
         }
-        // Positioned relative to the parent, which is the canvas's own
-        // container — the coordinates Beans sends are in the scene's space and
-        // the container is where the scene is.
-        this.element.style.left = `${Math.round(state.x)}px`;
-        this.element.style.top = `${Math.round(state.y)}px`;
+        // The coordinates are the scene's, and the scene is the canvas — so
+        // they are offset by wherever the canvas sits inside this element's
+        // parent. In the common case the canvas fills its container and the
+        // offset is zero; a Latte panel beside other HTML is where it is not,
+        // and an input method's candidate window would otherwise appear that
+        // far away from the text.
+        const origin = this.originOf();
+        this.element.style.left = `${Math.round(origin.x + state.x)}px`;
+        this.element.style.top = `${Math.round(origin.y + state.y)}px`;
         this.element.style.height = `${Math.max(1, Math.round(state.height))}px`;
         if (!this.active) {
             this.active = true;
             this.element.focus({ preventScroll: true });
         }
+    }
+
+    /// Where the canvas is inside the element this one is positioned against.
+    originOf() {
+        if (!this.canvas || !this.parent) return { x: 0, y: 0 };
+        const canvas = this.canvas.getBoundingClientRect();
+        const parent = this.parent.getBoundingClientRect();
+        return { x: canvas.left - parent.left, y: canvas.top - parent.top };
     }
 
     close() {
