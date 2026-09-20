@@ -652,11 +652,41 @@ run_examples_leg() {
     # A `.bx` with no `.b` beside it is a FAILURE for the same reason a missing
     # golden is: the check would otherwise vanish the moment the file it
     # watches is renamed.
+    # A canvas tree generates into a mirror, not beside its source. The list
+    # comes out of tools/generate.sh so there is no second list to drift.
+    local mirrors
+    mirrors=$(grep -oE 'generate_tree canvas [^ ]+ [^ ]+' "$ROOT/tools/generate.sh" \
+        | awk '{ print $3" "$4 }')
+    if [[ -z "$mirrors" ]]; then
+        echo "--- examples FAILED: tools/generate.sh names no canvas tree ---" >&2
+        echo "    The generator's shape changed and this stopped reading it, which" >&2
+        echo "    would make every canvas .bx look like one with no generated file." >&2
+        failed=1
+    fi
     if [[ -z "$only" ]]; then
         local bx
         while IFS= read -r bx; do
             local generated="${bx%.bx}.b"
             local stem; stem=$(basename "${bx%.bx}")
+            local rel="${bx#"$ROOT"/}"
+            local mirrored="" src dst
+            while read -r src dst; do
+                [[ -z "$src" ]] && continue
+                [[ "$rel" == "$src"/* ]] || continue
+                mirrored="$ROOT/$dst/$stem.b"
+            done <<< "$mirrors"
+            if [[ -n "$mirrored" ]]; then
+                # tools/check_generated.sh regenerates and diffs the mirror.
+                # All this asserts is that it is there.
+                if [[ ! -f "$mirrored" ]]; then
+                    echo "--- examples FAILED: $rel has no generated .b in its mirror ---" >&2
+                    echo "    Expected ${mirrored#"$ROOT"/}. Run: bash tools/generate.sh" >&2
+                    failed=1
+                    continue
+                fi
+                echo "ok examples/markup — $rel generates into ${mirrored#"$ROOT"/}"
+                continue
+            fi
             if [[ ! -f "$generated" ]]; then
                 echo "--- examples FAILED: ${bx#"$ROOT"/} has no generated .b beside it ---" >&2
                 echo "    A .bx ships with the Beans it compiles to, checked in, so a" >&2
@@ -706,6 +736,21 @@ run_examples_leg() {
         local base=${entry%.b}
         local want_out="$base.out"
         local want_err="$base.err"
+
+        # A browser module cannot link natively: the imports behind its
+        # extern entries exist only in WebAssembly. The ui leg builds it.
+        if grep -qE '^import latte\.(browser|canvaskit)' "$entry"; then
+            if (cd "$ROOT" && "$BEANSC" check "$rel") >"$tmp/ex_$slug.check" 2>&1; then
+                echo "ok examples/$name — a browser module: it checks here, and the ui leg builds it for WebAssembly"
+                ran=$((ran + 1))
+                summary="$summary, $name (checked, not run)"
+                continue
+            fi
+            echo "--- examples FAILED: $rel does not check ---" >&2
+            cat "$tmp/ex_$slug.check" >&2
+            failed=1
+            continue
+        fi
 
         if [[ ! -f "$want_out" ]]; then
             echo "--- examples FAILED: $rel has no golden ($(basename "$want_out")) ---" >&2
@@ -819,7 +864,9 @@ run_examples_leg() {
     [[ $native -eq 1 ]] || how="the interpreter only (--interp)"
     # The sizes are in the line on purpose. "3 examples ran" reads the same
     # whether all three asserted a page or one of them asserted a newline.
-    echo "ok examples — $ran entry(ies) built, RUN and byte-identical to their goldens on $how:${summary#,}"
+    # "(checked, not run)" beside a name is a browser module, and the count
+    # would otherwise read as a claim that every one of them was run.
+    echo "ok examples — $ran entry(ies) on $how, each built, RUN and byte-identical to its golden except where it says otherwise:${summary#,}"
 }
 
 if [[ $examples_only -eq 1 ]]; then
@@ -1078,6 +1125,11 @@ run_refusal_coverage_leg() {
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
     refusal_coverage_pending render.b 3
+    # Like the html builder's 24: reachable only by a call the markup
+    # compiler would not emit. Pinned so the count cannot grow unaudited.
+    refusal_coverage_pending compose/builder.b 84
+    refusal_coverage_for compose/mount_plan.b tests/canvas/golden/mount_cost.out \
+        "tests/canvas/mount_cost.b § 6"
     refusal_coverage_pending pages.b 34
     refusal_coverage_pending circuit.b 4
     refusal_coverage_sweep

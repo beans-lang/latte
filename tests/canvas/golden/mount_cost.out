@@ -13,3 +13,16 @@ after thirty more screens: 0
 
 == 5 — a type nobody has used yet is scanned when it is ==
 a new control scanned more: true
+
+== 6 — every fault site in compose/mount_plan.b ==
+-- a @param that is not pub
+   site:    of / X.y is @param but is not pub
+   faults:  latte$entry.PrivateParam.rows is @param but is not pub, so nothing can set it
+ok a @param that is not pub: the exact fault
+-- the control, the same field made pub
+   faults:  
+ok the control is accepted, and raises nothing
+
+-- the sites in compose/mount_plan.b, and how many shapes reach each
+   1x of / X.y is @param but is not pub
+ok every fault site in compose/mount_plan.b has a case

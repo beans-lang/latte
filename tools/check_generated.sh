@@ -42,7 +42,8 @@ while IFS= read -r file; do
     fi
 done < <(find "$tmp" -name "*.b" | sort)
 
-# And the other direction: a generated file whose markup is gone.
+# And the other direction: a generated file whose markup is gone. Every mirror
+# generate.sh writes into, read from it so a new tree is covered by being added.
 while IFS= read -r file; do
     relative=${file#"$ROOT/"}
     if [[ ! -f "$tmp/$relative" ]]; then
@@ -50,7 +51,11 @@ while IFS= read -r file; do
         echo "    delete it, or restore the .bx file it came from." >&2
         status=1
     fi
-done < <(find "$ROOT/generated" -name "*.b" 2>/dev/null | sort)
+done < <(grep -oE 'generate_tree [a-z]+ [^ ]+ [^ ]+' "$ROOT/tools/generate.sh" \
+             | awk -v r="$ROOT" '{ print r"/"$4 }' \
+             | sort -u | while read -r dir; do
+                 if [[ -d "$dir" ]]; then find "$dir" -name "*.b"; fi
+             done | sort)
 
 if [[ $checked -eq 0 ]]; then
     echo "--- generated FAILED: nothing was compared ---" >&2

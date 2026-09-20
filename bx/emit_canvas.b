@@ -82,6 +82,10 @@ pub class CanvasEmitter {
     /// gets a name of its own. Not the sequence number: nested loops share one.
     loops: int = 0
 
+    /// The same rules the parser used, so a tag it already refused is not
+    /// refused twice with a different list of names.
+    rules: CanvasRules = new CanvasRules()
+
     pub fn init(file: string) {
         self.file = file
     }
@@ -314,11 +318,9 @@ pub class CanvasEmitter {
             return
         }
         if !element.component && !canvas_is_widget_tag(element.tag) {
-            let gone: string = canvas_retired_tag(element.tag)
-            if gone != "" {
-                self.report(element.span, gone)
-                return
-            }
+            // The parser refuses these at the same span, with the same rules
+            // and a suggestion; this is the backstop for an unparsed tree.
+            if self.rules.tag_refusal(element.tag) != "" { return }
             let near: string = canvas_nearest_of(element.tag, canvas_widget_tags())
             if near == "" {
                 self.report(element.span, "<{element.tag}> is not a control latte has — the controls are {canvas_widget_list()}, and a capitalised name that is not one of them is taken to be a component")

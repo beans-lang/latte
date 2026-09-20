@@ -66,7 +66,7 @@ generate_tree() {
     echo "ok generate/$sources — ${#files[@]} file(s) for the $target target"
 }
 
+# Not guarded on the directory existing. A tree named here and absent means the
+# layout moved, and a generator that shrugged would leave the drift gate blind.
 generate_tree canvas templates generated/templates
-if [[ -d "$ROOT/examples/showcase/site" ]]; then
-    generate_tree canvas examples/showcase/site examples/showcase/generated/site
-fi
+generate_tree canvas examples/showcase/site examples/showcase/generated/site

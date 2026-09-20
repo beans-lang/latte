@@ -30,6 +30,8 @@ pub class CanvasRules implements TargetRules {
         if canvas_names_a_component(tag) { return "" }
         // Lower case and unknown — HTML element names are what this catches,
         // so a page copied from the html target says so rather than drawing.
+        let near: string = canvas_nearest_of(tag, canvas_widget_tags())
+        if near != "" { return "<{tag}> is not a control latte draws — did you mean <{near}>?" }
         return "<{tag}> is not a control latte draws — a canvas component is built from {canvas_drawn_list()}"
     }
 

@@ -36,9 +36,9 @@ fn usage() {
     io.eprintln("  --latte <module>   the module Builder comes from (default: latte)")
     io.eprintln("  --package <name>   the package the generated file declares")
     io.eprintln("")
-    io.eprintln("A generated file is checked in beside its source, and a drift gate")
-    io.eprintln("regenerates and diffs it, so a stale one fails the build rather than")
-    io.eprintln("shipping.")
+    io.eprintln("A generated file is checked in — beside its source for html, in a")
+    io.eprintln("mirror for a canvas tree — and a drift gate regenerates and diffs it,")
+    io.eprintln("so a stale one fails the build rather than shipping.")
 }
 
 fn main() {

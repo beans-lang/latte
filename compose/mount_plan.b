@@ -58,9 +58,7 @@ class MountPlan {
                 var binding: InjectBinding = new InjectBinding(field, field.type())
                 if !field.is_public() {
                     // Reflection does not bypass visibility, so a private
-                    // field marked for injection is not a field that gets
-                    // filled quietly — it is one that never gets filled at
-                    // all. Saying so beats an empty service found later.
+                    // @inject field is never filled and never says so.
                     binding.fault =
                         "{owner}.{field.name()} is @inject but is not pub, and reflection cannot write what it cannot see"
                 }

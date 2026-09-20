@@ -657,11 +657,9 @@ refused: a key= expression over two lines
 refused: an HTML element name
   | <div />
   refusal.bx:6:1: error: <div> is not a control latte draws — a canvas component is built from Box, Button, Canvas, CheckBox, ComboBox, Container, Disclosure, Grid, GroupBox, HStack, Label, LevelIndicator, ProgressBar, RadioButton, ScrollView, SecureField, SearchField, Segmented, Separator, Slider, SplitView, Stepper, Switch, TabView, Table, TextArea, TextField, VStack, Ellipse, Path, Rectangle, ResourceImage
-  refusal.bx:6:1: error: <div> is not a control latte has — the controls are Box, Button, Canvas, CheckBox, ColorWell, ComboBox, Container, DatePicker, Disclosure, Grid, GroupBox, HStack, Image, Label, LevelIndicator, Link, ProgressBar, RadioButton, ScrollView, SecureField, SearchField, Segmented, Separator, Slider, Spinner, SplitView, Stepper, Switch, TabView, Table, TextArea, TextField, VStack, OutlineView, WebView, Ellipse, Path, Rectangle, ResourceImage, and a capitalised name that is not one of them is taken to be a component
 refused: a misspelled control in lower case
   | <labl />
-  refusal.bx:6:1: error: <labl> is not a control latte draws — a canvas component is built from Box, Button, Canvas, CheckBox, ComboBox, Container, Disclosure, Grid, GroupBox, HStack, Label, LevelIndicator, ProgressBar, RadioButton, ScrollView, SecureField, SearchField, Segmented, Separator, Slider, SplitView, Stepper, Switch, TabView, Table, TextArea, TextField, VStack, Ellipse, Path, Rectangle, ResourceImage
-  refusal.bx:6:1: error: <labl> is not a control latte has — did you mean <Label>?
+  refusal.bx:6:1: error: <labl> is not a control latte draws — did you mean <Label>?
 refused: an attribute the control has not got
   | <Label text="one" checked />
   refusal.bx:6:19: error: <Label> has no checked — checked is carried by Button, CheckBox, RadioButton, Switch

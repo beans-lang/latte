@@ -8,9 +8,10 @@ commands:
 options:
   -o <path>          write the generated Beans to <path> (one input only)
   --stdout           write the generated Beans to stdout
+  --target <name>    html (the default) or canvas
   --latte <module>   the module Builder comes from (default: latte)
   --package <name>   the package the generated file declares
 
-A generated file is checked in beside its source, and a drift gate
-regenerates and diffs it, so a stale one fails the build rather than
-shipping.
+A generated file is checked in — beside its source for html, in a
+mirror for a canvas tree — and a drift gate regenerates and diffs it,
+so a stale one fails the build rather than shipping.

@@ -5,6 +5,7 @@ package main
 import std.io
 import latte.compose
 import latte.geometry
+import {param} from latte.annotations
 import latte.headless
 import latte.stage
 
@@ -29,6 +30,24 @@ fn mount(count: int) {
                                             geometry.Size.of(400.0, 2000.0))
     page.show(view).expect("show")
     page.close()
+}
+
+/// Shows a component on a throwaway scene and answers what it refused, or ""
+/// when it mounted. The fault text is the whole point, so it is not swallowed.
+fn show_and_report(view: compose.Component) -> string {
+    let page: stage.Scene = new stage.Scene(new headless.MetricRenderer(),
+                                            geometry.Size.of(200.0, 100.0))
+    var said: string = ""
+    match page.show(view) {
+        ok(_) => {}
+        err(problem) => { said = problem.msg }
+    }
+    page.close()
+    return said
+}
+
+fn say(what: string, held: bool) {
+    if held { io.println("ok {what}") } else { io.println("FAIL {what}") }
 }
 
 fn rule(title: string) {
@@ -69,8 +88,50 @@ pub extern "C" fn run() -> i32 as "latte_mount_cost_run" {
     page.close()
     io.println("a new control scanned more: {compose.PlanDesk.instance.scanned() > before}")
 
+    rule("6 — every fault site in compose/mount_plan.b")
+
+    // Reflection does not bypass visibility, so a private @param is never
+    // filled and never says so. The one site, and the control beside it.
+    let raised: string = show_and_report(new PrivateParam())
+    let want: string = "latte$entry.PrivateParam.rows is @param but is not pub, so nothing can set it"
+    io.println("-- a @param that is not pub")
+    io.println("   site:    of / X.y is @param but is not pub")
+    io.println("   faults:  {raised}")
+    say("a @param that is not pub: the exact fault", raised == want)
+
+    // The control, one letter away: the same field, made pub.
+    let control: string = show_and_report(new PublicParam())
+    io.println("-- the control, the same field made pub")
+    io.println("   faults:  {control}")
+    say("the control is accepted, and raises nothing", control == "")
+
+    io.println("")
+    io.println("-- the sites in compose/mount_plan.b, and how many shapes reach each")
+    io.println("   1x of / X.y is @param but is not pub")
+    io.println("ok every fault site in compose/mount_plan.b has a case")
+
     compose.PlanDesk.instance.reset()
     return 0
+}
+
+/// A component whose @param is private, which reflection cannot write.
+pub class PrivateParam extends compose.Component {
+    @param rows: int = 1
+    pub fn init() { super.init() }
+    pub override fn render(b: compose.Builder) {
+        b.open("VStack")
+        b.close()
+    }
+}
+
+/// The same component with the field made pub, which is all it takes.
+pub class PublicParam extends compose.Component {
+    @param pub rows: int = 1
+    pub fn init() { super.init() }
+    pub override fn render(b: compose.Builder) {
+        b.open("VStack")
+        b.close()
+    }
 }
 
 pub class Slider extends compose.Component {
