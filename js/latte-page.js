@@ -163,6 +163,9 @@ export class LattePage {
             key: (kind, code, text, modifiers) =>
                 this.withText(text, (pointer, length) =>
                     this.call("latte_key", kind, code, pointer, length, modifiers)),
+            text: (kind, text, anchor, caret) =>
+                this.withText(text, (pointer, length) =>
+                    this.call("latte_text_input", kind, pointer, length, anchor, caret)),
             scroll: (x, y, dx, dy) => this.call("latte_scroll", x, y, dx, dy),
             clipboard: (text) => this.runtime.noteClipboard(text),
             editing: this.editing,

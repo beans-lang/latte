@@ -190,6 +190,8 @@ pub singleton class PageApp {
         }
     }
 
+    /// A key press or release. Text is `text_input`, and a text kind arriving
+    /// here is refused by the input manager rather than quietly mis-read.
     pub fn key(kind: int, key: int, text: string, modifiers: int) -> int {
         match self.with_scene("send a key event") {
             err(problem) => { self.fail(problem.msg); return -1 }

@@ -116,8 +116,20 @@ export function attachInput(element, handlers) {
         // Capture, so a drag that leaves the canvas keeps arriving. Without it
         // a slider dragged past its own edge stops moving and never hears the
         // release, so it stays stuck down.
-        element.setPointerCapture?.(event.pointerId);
-        captured = event.pointerId;
+        //
+        // In a try, and the catch is not defensive padding. Firefox throws
+        // NotFoundError for a pointer id it has no active pointer for — which
+        // a synthetic event has, and a real one can have if the pointer was
+        // released between the event and this line. The throw would abort the
+        // rest of this handler, so the *click* would be lost: the control
+        // would never hear the press, and the only sign would be a console
+        // error nobody was reading.
+        try {
+            element.setPointerCapture?.(event.pointerId);
+            captured = event.pointerId;
+        } catch {
+            captured = null;
+        }
         element.focus({ preventScroll: true });
         const [x, y] = pointAt(event);
         handlers.pointer(EVENT.POINTER_DOWN, x, y,
@@ -134,7 +146,7 @@ export function attachInput(element, handlers) {
 
     const release = (event) => {
         if (captured !== null) {
-            element.releasePointerCapture?.(captured);
+            try { element.releasePointerCapture?.(captured); } catch { /* already gone */ }
             captured = null;
         }
         const [x, y] = pointAt(event);
@@ -189,6 +201,13 @@ export function attachInput(element, handlers) {
     // The editing element is where text really arrives. It is a hidden
     // contenteditable placed under the caret, so an input method's candidate
     // window appears in the right place; `latte-editing.js` owns it.
+    // Text goes through the *text* entry, never through the key one.
+    //
+    // They are two entries because a text event carries a replacement range
+    // and a key event carries a key code, and the two share a field on the
+    // wire. Sending text as a key set the range to the key code — 0 — so a
+    // field read every character as "replace bytes 0..0" and typing "Zoe"
+    // produced "eoZ". `-1, -1` is "no range: replace whatever is selected".
     if (handlers.editing) {
         handlers.editing.attach({
             onBeforeInput(event) {
@@ -198,15 +217,15 @@ export function attachInput(element, handlers) {
                     handlers.clipboard?.(text);
                 }
                 if (!text) return;
-                handlers.key(EVENT.TEXT_INPUT, 0, text, 0);
+                handlers.text(EVENT.TEXT_INPUT, text, -1, -1);
             },
             onCompositionStart() { composing = true; },
             onCompositionUpdate(event) {
-                handlers.key(EVENT.COMPOSITION_UPDATE, 0, event.data ?? "", 0);
+                handlers.text(EVENT.COMPOSITION_UPDATE, event.data ?? "", -1, -1);
             },
             onCompositionEnd(event) {
                 composing = false;
-                handlers.key(EVENT.TEXT_INPUT, 0, event.data ?? "", 0);
+                handlers.text(EVENT.TEXT_INPUT, event.data ?? "", -1, -1);
             },
         });
     }
@@ -225,9 +244,9 @@ export function attachInput(element, handlers) {
     // Focus leaving the page is not the same as focus leaving a control, and
     // Latte has to know: a text field that keeps its caret blinking while the
     // window is behind another one looks broken.
-    on(window, "blur", () => handlers.key(EVENT.COMPOSITION_CANCEL, 0, "", 0));
+    on(window, "blur", () => handlers.text(EVENT.COMPOSITION_CANCEL, "", -1, -1));
     on(document, "visibilitychange", () => {
-        if (document.hidden) handlers.key(EVENT.COMPOSITION_CANCEL, 0, "", 0);
+        if (document.hidden) handlers.text(EVENT.COMPOSITION_CANCEL, "", -1, -1);
     });
 
     return () => { for (const off of listeners) off(); };

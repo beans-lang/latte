@@ -1583,6 +1583,32 @@ run_browser_leg() {
         cat "$tmp/browser.log" >&2
         failed=1
     fi
+
+    # And the half a Beans suite cannot reach: real pointer events, a real
+    # input method's composition, a screen reader's activate, a resize, a lost
+    # GPU context and a teardown. It needs the showcase built.
+    if ! (cd "$ROOT" && bash tools/wasm_build.sh examples/showcase/main.b \
+            build/browser/showcase.wasm) >"$tmp/showcase.log" 2>&1; then
+        echo "--- ui FAILED: the showcase did not build ---" >&2
+        cat "$tmp/showcase.log" >&2
+        failed=1
+        return 0
+    fi
+    if [[ ! -f "$ROOT/build/fonts/latte-regular.ttf" ]]; then
+        if ! (cd "$ROOT" && node tools/font_prepare.mjs) >"$tmp/fonts.log" 2>&1; then
+            echo "SKIP ui: the fonts are not prepared — run 'npm install && node tools/font_prepare.mjs'"
+            skipped=$((skipped + 1))
+            return 0
+        fi
+    fi
+    if (cd "$ROOT" && node tools/ui_gate.mjs) >"$tmp/ui.log" 2>&1; then
+        sed 's/^/  /' "$tmp/ui.log"
+        legs=$((legs + 1))
+    else
+        echo "--- ui FAILED ---" >&2
+        cat "$tmp/ui.log" >&2
+        failed=1
+    fi
 }
 
 # --- the generated-file leg --------------------------------------------

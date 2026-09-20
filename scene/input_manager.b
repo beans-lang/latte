@@ -98,8 +98,23 @@ pub class InputManager {
             }
         }
     }
+    /// A key. **Not text** — see the refusal below.
     pub fn key(root: RenderObject, kind: input.EventKind, key: input.Key, text: string, modifiers: int) -> Result<bool> {
         if !root.belongs_to(self.invalidation_value) { return err("input root belongs to another context", "bad_owner") }
+        // `index` means "which key" here and "where the replacement starts"
+        // on a text event, and one field cannot mean both. Sending text down
+        // this road set index to the key code — 0 for a key that types
+        // something — and a text field read that as "replace bytes 0..0", so
+        // every character landed at the start of the line and typing "Zoe"
+        // produced "eoZ". It is refused by name rather than left to be
+        // rediscovered: `UiContext.text_input` is the road, and it takes the
+        // range explicitly.
+        if kind == input.EventKind.text_input ||
+           kind == input.EventKind.composition_update ||
+           kind == input.EventKind.composition_cancel {
+            return err("could not deliver {kind.name()} as a key: text carries a replacement range and a key carries a key code, and they share a field. Send it through text_input",
+                       "wrong_road")
+        }
         self.focus_value.validate()
         if kind == input.EventKind.key_down && key == input.Key.tab {
             return self.focus_value.advance(root, (modifiers & platform.MOD_SHIFT) != 0)
