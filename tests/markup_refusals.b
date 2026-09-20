@@ -193,6 +193,50 @@ pub class Suite {
         if found == 0 { io.println("  (no component tag, so no assertion)") }
     }
 
+    /// The canvas target's own options. Every case above is the html target's,
+    /// which is what a `.bx` file means when nobody says otherwise.
+    fn canvas_options() -> bx.Options {
+        var options: bx.Options = new bx.Options()
+        options.target = bx.Target.canvas
+        return options
+    }
+
+    /// The canvas wrapper, a fixed five lines, so a diagnostic's line number
+    /// reads against the markup echoed under each label.
+    fn wrap_canvas(decls: string, markup: string) -> string {
+        return "<beans>\npackage pages\nimport latte.compose\npub partial class Refusal extends compose.Component \{ {decls} pub fn init() \{ super.init() \} \}\n</beans>\n{markup}"
+    }
+
+    /// Canvas markup that must be refused.
+    fn refused_canvas(label: string, decls: string, markup: string) {
+        io.println("refused: {label}")
+        self.echo(markup)
+        let compiled: bx.Compiled = bx.compile_source(
+            self.wrap_canvas(decls, markup), "refusal.bx", self.canvas_options())
+        if compiled.is_ok() {
+            self.failures = self.failures + 1
+            io.println("  FAIL it was ACCEPTED — the refusal did not fire")
+            return
+        }
+        self.refusals = self.refusals + 1
+        self.show_diags(compiled)
+    }
+
+    /// The control next door, which must compile for the canvas.
+    fn accepted_canvas(label: string, decls: string, markup: string) {
+        let compiled: bx.Compiled = bx.compile_source(
+            self.wrap_canvas(decls, markup), "refusal.bx", self.canvas_options())
+        if !compiled.is_ok() {
+            self.failures = self.failures + 1
+            io.println("FAIL the control was REFUSED: {label}")
+            self.echo(markup)
+            self.show_diags(compiled)
+            return
+        }
+        self.controls = self.controls + 1
+        io.println("accepted: {label}")
+    }
+
     fn heading(text: string) {
         io.println("")
         io.println("======== {text} ========")
@@ -876,6 +920,79 @@ pub class Suite {
                         r#"<Hint>$slot:extra as n: int { <Panel /> }</Hint>"#)
         self.assertions("no component tag at all", "", r#"<p>plain</p>"#)
     }
+
+    // =============================================================== SECTION 16
+    //
+    // **The canvas target's own refusals.** Every section above compiles for
+    // the html target. The canvas target has a second emitter with its own
+    // copy of these messages, and until this section existed not one of them
+    // had ever been printed.
+
+    fn canvas_refusals() {
+        self.heading("the canvas target's refusals")
+
+        // The two the canvas emitter answers itself. A generated canvas frame
+        // is `b.text(n, "{code}")`, so an expression that cannot sit inside a
+        // Beans string literal has no correct emission at all.
+        self.refused_canvas("a text expression over two lines",
+                            r#"pub name: string = """#,
+                            lines([r#"<Label text={self.name +"#,
+                                   r#"  "x"} />"#]))
+        self.refused_canvas("an a11y_label expression over two lines",
+                            r#"pub name: string = """#,
+                            lines([r#"<Label text="one" a11y_label={self.name +"#,
+                                   r#"  "x"} />"#]))
+        self.refused_canvas("a literal whose own interpolation spans two lines",
+                            r#"pub name: string = """#,
+                            lines([r#"<Label text={"n {self.name +"#,
+                                   r#"  "x"}"} />"#]))
+        self.refused_canvas("a key= expression over two lines",
+                            r#"pub id: string = """#,
+                            lines([r#"<Label key={self.id +"#,
+                                   r#"  "x"} text="one" />"#]))
+
+        // The closed vocabulary. HTML is open and an unknown element may still
+        // be meaningful; a control the renderer has not got is a misspelling,
+        // and one that compiled to a silent no-op is how an interface stops
+        // matching the markup that describes it.
+        self.refused_canvas("an HTML element name", "", r#"<div />"#)
+        self.refused_canvas("a misspelled control in lower case", "", r#"<labl />"#)
+        self.refused_canvas("an attribute the control has not got", "",
+                            r#"<Label text="one" checked />"#)
+        self.refused_canvas("a misspelled attribute", "", r#"<Label txt="one" />"#)
+        self.refused_canvas("an event nothing raises", "",
+                            r#"<Button text="go" on:hover={fn(e: UiEvent) { }} />"#)
+
+        // The three forms that are HTML's and have nothing here to act on.
+        // Refused by name, because "there is no attribute called attrs" sends
+        // the author looking for a spelling mistake they did not make.
+        self.refused_canvas("attrs= on a control", r#"pub extra: string = """#,
+                            r#"<Label text="one" attrs={self.extra} />"#)
+        self.refused_canvas("$html", r#"pub markup: string = """#, r#"$html(self.markup)"#)
+        self.refused_canvas("a doctype", "", r#"<!DOCTYPE html>"#)
+
+        // The controls. Each is the nearest legal shape to a refusal above: a
+        // refusal that fires on the line next door is as broken as one that
+        // never fires.
+        self.accepted_canvas("the same expression on one line", r#"pub count: int = 0"#,
+                             r#"<Label text={"n {self.count + 1}"} />"#)
+        self.accepted_canvas("a control that does carry checked", "",
+                             r#"<CheckBox text="on" checked />"#)
+        self.accepted_canvas("an event the control does raise", "",
+                             r#"<Button text="go" on:click={fn(e: UiEvent) { }} />"#)
+        // A capitalised misspelling is a component tag, not a refusal: every
+        // control is capitalised here, so `<Labl>` is a type beansc names.
+        self.accepted_canvas("a capitalised misspelling is a component tag", "",
+                             r#"<Labl text="one" />"#)
+        self.accepted_canvas("a number over two lines, which is not in a string",
+                             r#"pub width: f64 = 0.0"#,
+                             lines([r#"<Box width={self.width +"#, r#"  1.0} />"#]))
+        self.accepted_canvas("a stack of two controls", r#"pub count: int = 0"#,
+                             lines([r#"<VStack spacing={8}>"#,
+                                    r#"  <Label text={"n {self.count}"} />"#,
+                                    r#"  <Button text="add" />"#,
+                                    r#"</VStack>"#]))
+    }
 }
 
 fn main() {
@@ -895,6 +1012,7 @@ fn main() {
     suite.beans_block()
     suite.bindings_and_live()
     suite.component_assertions()
+    suite.canvas_refusals()
 
     io.println("")
     io.println("{suite.refusals} refusal(s) fired, {suite.controls} control(s) compiled")

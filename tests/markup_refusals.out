@@ -637,5 +637,55 @@ accepted: no component tag at all
   | <p>plain</p>
   (no component tag, so no assertion)
 
-126 refusal(s) fired, 66 control(s) compiled
+======== the canvas target's refusals ========
+refused: a text expression over two lines
+  | <Label text={self.name +
+  |   "x"} />
+  refusal.bx:6:8: error: an attribute expression spans more than one line, and it is interpolated into a generated string — a Beans string literal cannot span lines, and joining the lines would swallow the rest of a // comment. Put the expression on one line, or compute it in a ${ ... } block and interpolate the result
+refused: an a11y_label expression over two lines
+  | <Label text="one" a11y_label={self.name +
+  |   "x"} />
+  refusal.bx:6:19: error: an attribute expression spans more than one line, and it is interpolated into a generated string — a Beans string literal cannot span lines, and joining the lines would swallow the rest of a // comment. Put the expression on one line, or compute it in a ${ ... } block and interpolate the result
+refused: a literal whose own interpolation spans two lines
+  | <Label text={"n {self.name +
+  |   "x"}"} />
+  refusal.bx:6:8: error: an attribute value spans more than one line, and it is written into a generated file as it stands — a Beans string literal cannot span lines. Put it on one line, or build it in a ${ ... } block
+refused: a key= expression over two lines
+  | <Label key={self.id +
+  |   "x"} text="one" />
+  refusal.bx:6:8: error: key={ } spans more than one line, and it is interpolated into a generated string — a Beans string literal cannot span lines, and joining the lines would swallow the rest of a // comment. Put the expression on one line, or compute it in a ${ ... } block and interpolate the result
+refused: an HTML element name
+  | <div />
+  refusal.bx:6:1: error: <div> is not a control latte draws — a canvas component is built from Box, Button, Canvas, CheckBox, ComboBox, Container, Disclosure, Grid, GroupBox, HStack, Label, LevelIndicator, ProgressBar, RadioButton, ScrollView, SecureField, SearchField, Segmented, Separator, Slider, SplitView, Stepper, Switch, TabView, Table, TextArea, TextField, VStack, Ellipse, Path, Rectangle, ResourceImage
+  refusal.bx:6:1: error: <div> is not a control latte has — the controls are Box, Button, Canvas, CheckBox, ColorWell, ComboBox, Container, DatePicker, Disclosure, Grid, GroupBox, HStack, Image, Label, LevelIndicator, Link, ProgressBar, RadioButton, ScrollView, SecureField, SearchField, Segmented, Separator, Slider, Spinner, SplitView, Stepper, Switch, TabView, Table, TextArea, TextField, VStack, OutlineView, WebView, Ellipse, Path, Rectangle, ResourceImage, and a capitalised name that is not one of them is taken to be a component
+refused: a misspelled control in lower case
+  | <labl />
+  refusal.bx:6:1: error: <labl> is not a control latte draws — a canvas component is built from Box, Button, Canvas, CheckBox, ComboBox, Container, Disclosure, Grid, GroupBox, HStack, Label, LevelIndicator, ProgressBar, RadioButton, ScrollView, SecureField, SearchField, Segmented, Separator, Slider, SplitView, Stepper, Switch, TabView, Table, TextArea, TextField, VStack, Ellipse, Path, Rectangle, ResourceImage
+  refusal.bx:6:1: error: <labl> is not a control latte has — did you mean <Label>?
+refused: an attribute the control has not got
+  | <Label text="one" checked />
+  refusal.bx:6:19: error: <Label> has no checked — checked is carried by Button, CheckBox, RadioButton, Switch
+refused: a misspelled attribute
+  | <Label txt="one" />
+  refusal.bx:6:8: error: <Label> has no attribute called txt — did you mean text?
+refused: an event nothing raises
+  | <Button text="go" on:hover={fn(e: UiEvent) { }} />
+  refusal.bx:6:19: error: on:hover is not an event latte has — the table is activate, blur, change, click, commit, focus, key_down, key_up, pointer_down, pointer_move, pointer_up, select
+refused: attrs= on a control
+  | <Label text="one" attrs={self.extra} />
+  refusal.bx:6:19: error: attrs={ } splats a map of HTML attributes onto an element, and a canvas control has a closed set of typed properties rather than a bag of strings. Write the ones you mean
+refused: $html
+  | $html(self.markup)
+  refusal.bx:6:1: error: $html writes unescaped HTML and a canvas component draws controls, so there is nothing for it to write into. Build the controls you want with tags
+refused: a doctype
+  | <!DOCTYPE html>
+  refusal.bx:6:1: error: <!DOCTYPE html> declares the grammar of an HTML document, and a canvas component draws controls — there is no document for it to be the first line of. Delete it; the surface a component renders into is made by the application, not by the markup
+accepted: the same expression on one line
+accepted: a control that does carry checked
+accepted: an event the control does raise
+accepted: a capitalised misspelling is a component tag
+accepted: a number over two lines, which is not in a string
+accepted: a stack of two controls
+
+138 refusal(s) fired, 72 control(s) compiled
 ======== markup refusals: every check passed ========

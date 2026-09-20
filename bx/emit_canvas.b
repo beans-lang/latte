@@ -1,64 +1,5 @@
 // emit_canvas.b — the markup tree as `Builder` calls.
-//
-// This file decides three things, and each of them can be wrong in a way that
-// still compiles. That is why they are here together rather than spread out.
-//
-// **Sequence numbers.** A number is a *source position*, not a counter, and
-// two frames carrying one number in two renders of one component must describe
-// the same place in the file. The rules: source order from 0 per component
-// per render; the arms of a branch take **disjoint
-// ranges** out of the enclosing counter, so a number never means two things in
-// one render; a region and a fragment body **restart at 0**; a child's frames
-// are numbered in the child's own space. `CanvasCounters` below is a stack, one
-// entry per scope that restarts, and `next()` is the only thing that hands a
-// number out.
-//
-// **No constant folding.** latte folds an expression-free subtree into one
-// HTML string, because its output is text. latte's output is native
-// controls, so there is nothing to fold into — and an unchanging subtree costs
-// nothing anyway: the differ compares it once per render and finds no
-// difference, which is one integer comparison per attribute and no platform
-// call at all.
-//
-// The removed machinery is worth naming so nobody restores it by reflex: latte
-// has a second serializer that must produce byte-identical output to the
-// unfolded walk, a mirrored predicate table, and a gate that runs both. None
-// of it has a counterpart here.
-//
-// (latte's own explanation, for the reader who knows that codebase:) A subtree
-// with no expression anywhere inside it is
-// serialized here, at build time, into one `constant` frame. Both arms are
-// emitted:
-//
-//     if b.fold { b.constant(5, "…") }
-//     else      { b.open(5, "span"); b.attr(6, "class", "icon"); … b.close() }
-//
-// The folded arm takes the first number of the range and the unfolded arm
-// takes all of them; **numbering after the pair is the same either way**,
-// which is what makes the debug switch comparable. The folded string is built
-// by serializing the run's **own frame list** — the same list the unfolded
-// calls are generated from, in one walk — so the two cannot describe different
-// markup. They are still gated there by latte's own `tests/markup.b`, which
-// renders every case with `b.fold` on and off through the real
-// `latte.Serializer` and compares bytes. **That file is latte's, not this
-// repository's** — said plainly because a reader who greps for it here finds
-// nothing and cannot tell a missing gate from a borrowed sentence.
-//
-// **Refusals.** latte's refusals are about HTML as a document a browser will
-// execute — an `on*` attribute, a `javascript:` URL, a `<script>` body that
-// could close itself. None of that reaches here, because latte's output is
-// objects rather than bytes and there is nothing to inject into. What is
-// refused here instead is a name that is not a name: a tag becomes a type or a
-// table lookup in generated Beans, and a bad one produces a file that does not
-// parse, with the error landing on a line the author never wrote.
-//
-// The refusals that matter most are the ones for things latte *has* and
-// latte has not. `<!DOCTYPE>`, `$html`, `attrs=` and `preserve` are all
-// refused in `parse.b`, by name, with a message about the program — never left
-// to fall through to a generic "no such attribute", and never emitted as a
-// `Builder` call that does not exist. A markup compiler whose output only
-// fails at `beansc` time is a markup compiler that reports its own bugs as the
-// author's.
+// Sequence numbers, why nothing folds, and what is refused: docs/notes.md.
 
 package bx
 
@@ -66,19 +7,8 @@ import latte.visual
 
 // -------------------------------------------------------------- the counters
 
-/// The sequence-number stack: one counter per scope that restarts at 0.
-///
-/// A scope is pushed by a loop body (`$for`) and by a fragment body (a `$slot`
-/// define), because both are emitted once and run many times — so a number
-/// from the enclosing scope would name every turn or every placement. An
-/// element does **not** push one: the numbers keep climbing across `open`.
-///
-/// A restart on its own is not enough, and this is the half that is easy to
-/// miss: two scopes that both start at 0 hand out the same numbers. What tells
-/// them apart is something from outside, added by whoever runs the body —
-/// `emit_for` sets `row_name` so a key becomes `c{seq}.{row}`, and
-/// `Builder.fragment` qualifies by the placement site. A `push()` without one
-/// of those is a collision waiting for the second caller.
+/// One counter per scope that restarts at 0: a loop body and a fragment body.
+/// A restart needs a qualifier from outside it, or two scopes hand out one set.
 pub class CanvasCounters {
     values: List<int> = [0]
 
@@ -131,10 +61,8 @@ pub class CanvasEmitter {
     lines: List<string> = []
     /// The `.bx` file's name, as it should read in the line map.
     file: string = ""
-    /// The type parameters of a generic component. Markup inside one may not
-    /// spell them: `partial class Grid<T>` may carry `<T>` on exactly one part,
-    /// so the generated part is `partial class Grid` and `T` is not a name it
-    /// can write.
+    /// The type parameters of a generic component, which markup may not spell:
+    /// `<T>` rides on one part, so the generated part cannot name it.
     type_params: List<string> = []
     /// The last source line the line map printed, so a run of calls from one
     /// line does not repeat it.
@@ -146,19 +74,12 @@ pub class CanvasEmitter {
     /// so `_latte_inner` and `_latte_c` never shadow themselves.
     inner_depth: int = 0
     setup_depth: int = 0
-    /// How many keyless `$for` loops have been emitted, so the index variable
-    /// each one keys by has a name of its own.
-    ///
     /// The loop-row variable in scope, or `""` outside every loop. A child
     /// component inside a loop takes its key from it.
     row_name: string = ""
 
-    /// Not the loop's sequence number: a nested loop is numbered in the region
-    /// scope its parent opened, so an outer loop at 0 and the first loop in its
-    /// body are BOTH 0, and both would declare `_latte_row_0`. Beans allows the
-    /// shadowing and the result happens to be right, but a generated file whose
-    /// correctness rests on which of two same-named variables is in scope is
-    /// one nobody should have to read.
+    /// How many keyless `$for` loops have been emitted, so each index variable
+    /// gets a name of its own. Not the sequence number: nested loops share one.
     loops: int = 0
 
     pub fn init(file: string) {
@@ -182,11 +103,8 @@ pub class CanvasEmitter {
         return "  // {self.file}:{at.line}"
     }
 
-    /// The Builder every call in the current scope is written on.
-    ///
-    /// `b` at the top, because that is what `render(b: Builder)` is handed. A
-    /// fragment body gets its own, named with the reserved prefix and numbered
-    /// by depth so two nested bodies never shadow each other.
+    /// The Builder this scope writes on: `b` at the top, because that is what
+    /// `render(b: Builder)` is handed, and a numbered one inside a fragment.
     fn builder_name() -> string {
         if self.inner_depth == 0 { return "b" }
         if self.inner_depth == 1 { return "_latte_inner" }
@@ -200,17 +118,8 @@ pub class CanvasEmitter {
 
     // ------------------------------------------------------- code questions
 
-    /// Everything that makes a fragment of author code unusable where it lands.
-    ///
-    /// Two rules, and the second is the one that bites. **Generated code binds
-    /// names in the same scope the author's code lands in**, so a name the
-    /// author picks can capture one of them. `$for b in self.books` is the
-    /// case that matters: `b` is the Builder the generated render writes every
-    /// call on, and a loop that rebinds it turns `b.region(0, …)` into a call
-    /// on a book. Nothing about that reads as wrong, which is exactly why it
-    /// has to be refused rather than documented. Every other name latte-bx
-    /// binds carries the `_latte_` prefix and that prefix is refused too, so
-    /// `b` is the only word this costs anyone.
+    /// What makes author code unusable where it lands. Generated code binds
+    /// in the same scope, so `$for b in ...` would capture the Builder.
     fn check_code(code: string, at: Span, what: string) {
         for name: string in self.type_params {
             if !uses_identifier(code, name) { continue }
@@ -225,35 +134,32 @@ pub class CanvasEmitter {
         }
     }
 
-    /// Whether `code` can be written inside a generated `"{ ... }"`.
-    ///
-    /// Two things have to hold and the second is not obvious. **A Beans string
-    /// literal cannot span lines** — `"sum {a +\n b}"` is `error: string not
-    /// closed before end of line` — and every canvas_interpolated frame is emitted as
-    /// `b.text(n, "{code}")`, so a multi-line expression has no correct
-    /// emission at all. Collapsing the newline to a space is the tempting fix
-    /// and it is wrong: it swallows the rest of a `//` comment. And the whole
-    /// `"{code}"` has to *scan* as one string literal, which a nested string
-    /// holding an unmatched brace breaks (`"{f("{")}"` is
-    /// `error: string never closed`).
+    /// Whether `code` can be written inside a generated `"{ ... }"`: a Beans
+    /// literal cannot span lines, and the whole must scan as one string.
     fn check_interpolated(code: string, at: Span, what: string) -> bool {
         if code.find_byte(10, 0) >= 0 || code.find_byte(13, 0) >= 0 {
-            self.report(at, "{what} spans more than one line, and it is canvas_interpolated into a generated string — a Beans string literal cannot span lines, and joining the lines would swallow the rest of a // comment. Put the expression on one line, or compute it in a $\{ ... \} block and interpolate the result")
+            self.report(at, "{what} spans more than one line, and it is interpolated into a generated string — a Beans string literal cannot span lines, and joining the lines would swallow the rest of a // comment. Put the expression on one line, or compute it in a $\{ ... \} block and interpolate the result")
             return false
         }
-        // **Unreachable from markup the parser accepts, and kept anyway.**
-        // Every shape that breaks this probe — `$(self.f("{"))`, an attribute
-        // `class={self.f("{")}` — breaks the markup-level `$( )` and `{ }`
-        // scanners first, and the author gets *their* message ("a {...} value
-        // was never closed — a } inside a string or a comment does not close
-        // it"), which is the better one because it names what they typed.
-        // `tests/markup_refusals.b` records that, and deleting this branch
-        // leaves the golden unchanged. It stays because the two scanners are
-        // separate code and the day they disagree this is the difference
-        // between a refusal and a generated file beansc cannot lex.
+        // Unreachable from markup the parser accepts: the `{ }` scanner
+        // refuses first. Kept because the two scanners are separate code.
         let probe: string = "\"\{{code}\}\""
         if end_of_string(probe, 0) != probe.len() {
-            self.report(at, "{what} cannot be canvas_interpolated: with `\"\{\"` around it the result does not read as one Beans string. A nested string holding an unmatched brace does this — write \\\{ or \\\} inside it, exactly as you would in any Beans string")
+            self.report(at, "{what} cannot be interpolated: with `\"\{\"` around it the result does not read as one Beans string. A nested string holding an unmatched brace does this — write \\\{ or \\\} inside it, exactly as you would in any Beans string")
+            return false
+        }
+        return true
+    }
+
+    /// Whether `code`, which is already a string expression, is one Beans
+    /// literal. A literal that spans lines has no emission at all.
+    fn check_literal(code: string, at: Span, what: string) -> bool {
+        if code.find_byte(10, 0) >= 0 || code.find_byte(13, 0) >= 0 {
+            self.report(at, "{what} spans more than one line, and it is written into a generated file as it stands — a Beans string literal cannot span lines. Put it on one line, or build it in a $\{ ... \} block")
+            return false
+        }
+        if end_of_string(code, 0) != code.len() {
+            self.report(at, "{what} does not read as one Beans string — a nested string holding an unmatched brace does this. Write \\\{ or \\\} inside it, exactly as you would in any Beans string")
             return false
         }
         return true
@@ -274,16 +180,8 @@ pub class CanvasEmitter {
 
     // ------------------------------------------------------------- content
 
-    /// One run of siblings: merged text runs first, then folded constant runs,
-    /// then everything else one at a time.
-    ///
-    /// **Adjacent text and expressions are one frame, not several.**
-    /// `<h2>Count: $self.count</h2>` is `b.text(3, "Count: {self.count}")`, and
-    /// that is not a size optimisation — it is what the wire protocol names: a
-    /// text edit is `["ut",3,"Count: 4"]` (see `wire.b`), one edit carrying the
-    /// whole string. Emitting the literal and the value as two frames would
-    /// put a text node boundary in the DOM that the markup does not have, and
-    /// would send two edits where the protocol describes one.
+    /// One run of siblings. Adjacent text and expressions are **one** frame:
+    /// a control has one text, so two frames would be two controls' worth.
     fn nodes(list: List<Node>, indent: int) {
         var i: int = 0
         for i < list.len() {
@@ -295,19 +193,15 @@ pub class CanvasEmitter {
                     continue
                 }
             }
-            // latte folds a subtree with no expression in it into one string,
-            // because its output is HTML and a string is what the wire
-            // carries. latte's output is a tree of native controls: there is
-            // no string to fold into, and an unchanging subtree already costs
-            // nothing after its first render because the differ finds no
-            // difference in it. So every node is emitted, once, as itself.
+            // Nothing folds here. The html target folds a subtree into one
+            // string; a tree of controls has no string to fold into.
             self.node(list[i], indent)
             i = i + 1
         }
     }
 
     /// `list[from .. to)` — text and expressions, at least one of them an
-    /// expression — as one canvas_interpolated `text` frame.
+    /// expression — as one interpolated `text` frame.
     fn text_run(list: List<Node>, from: int, to: int, indent: int) {
         let seq: int = self.counters.next()
         let parts: List<string> = []
@@ -319,9 +213,9 @@ pub class CanvasEmitter {
             }
             match list[k] as? ExprNode {
                 some(expr) => {
-                    self.check_code(expr.code, expr.span, "an canvas_interpolated expression")
+                    self.check_code(expr.code, expr.span, "an interpolated expression")
                     let _: bool = self.check_interpolated(expr.code, expr.span,
-                                                          "an canvas_interpolated expression")
+                                                          "an interpolated expression")
                     parts.push("\{{expr.code}\}")
                 }
                 none => {}
@@ -347,9 +241,9 @@ pub class CanvasEmitter {
         }
         match node as? ExprNode {
             some(expr) => {
-                self.check_code(expr.code, expr.span, "an canvas_interpolated expression")
+                self.check_code(expr.code, expr.span, "an interpolated expression")
                 let seq: int = self.counters.next()
-                if !self.check_interpolated(expr.code, expr.span, "an canvas_interpolated expression") { return }
+                if !self.check_interpolated(expr.code, expr.span, "an interpolated expression") { return }
                 self.write(indent, "{b}.text(\"\{{expr.code}\}\"){self.trace(expr.span)}")
                 return
             }
@@ -390,12 +284,8 @@ pub class CanvasEmitter {
             }
             none => {}
         }
-        // Unreachable by construction: `Parser.parse_beans` never returns a
-        // node into the tree — it lifts the block into `Document.beans`, and
-        // refuses one written at any nesting depth above zero. Kept, with a
-        // message of its own, because it costs nothing and because the day
-        // that invariant changes this is the difference between a diagnostic
-        // about the program and one about the emitter.
+        // Unreachable: `parse_beans` lifts the block into `Document.beans`
+        // and refuses a nested one. Kept so a changed invariant says so.
         match node as? BeansNode {
             some(_) => {
                 self.report(node.span, "a <beans> block is only legal at the top level of a file, not inside markup")
@@ -408,20 +298,8 @@ pub class CanvasEmitter {
 
     // ------------------------------------------------------------- elements
 
-    /// Refuse anything the generated file could not express.
-    ///
-    /// latte's version of this method is mostly about HTML as a *document*: a
-    /// tag name that would serialize into something else, an inline `onclick=`
-    /// string a browser would evaluate, a `javascript:` URL. None of that
-    /// exists here. latte's output is a tree of native controls, so the only
-    /// thing that can go wrong at this level is a name that is not a name —
-    /// and that matters because a tag becomes a type or a table lookup in
-    /// generated Beans, and a bad one produces a file that does not parse with
-    /// the error landing on a line the author never wrote.
-    ///
-    /// The attribute *vocabulary* is checked in the parser, not here, so a
-    /// misspelled attribute is reported at its own position with a suggestion
-    /// rather than at the element's.
+    /// Refuse anything the generated file could not express — here, that is
+    /// only a name that is not a name. The vocabulary is the parser's.
     fn check_element(element: ElementNode) {
         if visual.is_tag(element.tag) && element.children.len() > 0 {
             self.report(element.span, "<{element.tag}> is a drawing leaf and cannot hold children")
@@ -475,7 +353,6 @@ pub class CanvasEmitter {
             }
             // A real attribute on a control that has not got it. Components
             // are exempt: their attributes are fields beansc checks.
-            // `attribute_call` first, so a misspelling stays a misspelling.
             if !element.component && canvas_attribute_call(name) != "" &&
                !canvas_tag_carries(element.tag, name) {
                 self.report(attr.span, "<{element.tag}> has no {name} — {name} is carried by {canvas_tags_carrying(name)}")
@@ -507,20 +384,8 @@ pub class CanvasEmitter {
         self.write(indent, "{b}.close()")
     }
 
-    /// One attribute in the attribute run. Answers the `bind:` place a control
-    /// still has to show as its text, or `""`.
-    ///
-    /// This is where the two markup languages differ most. latte writes every
-    /// attribute as a string, because HTML attributes *are* strings, and uses a
-    /// table only to tell a boolean one apart. latte's control properties are
-    /// typed — a flag, a number, a word out of a fixed set — so the emitted
-    /// call is typed too, and the type is decided here from
-    /// `widgets.attribute_call`.
-    ///
-    /// The payoff is that a wrong type is a beansc error at the author's own
-    /// expression rather than a string that parses to something unintended:
-    /// `spacing={self.name}` says `expected f64, got string`, which is the
-    /// sentence the author needs.
+    /// One attribute, and the `bind:` place a control shows as its text.
+    /// Typed, so a wrong type is a beansc error at the author's expression.
     fn emit_attribute(element: ElementNode, attr: Attr, indent: int, bound: string) -> string {
         let b: string = self.builder_name()
         match attr as? KeyAttr {
@@ -586,12 +451,7 @@ pub class CanvasEmitter {
     }
 
     /// `bind:value` and `bind:checked`: the value out, then the handler that
-    /// writes it back.
-    ///
-    /// Two calls from one attribute, and that is the whole of two-way binding.
-    /// The control shows the place, and a handler puts what the user did back
-    /// into it — so `bind:value={self.note}` is exactly `value={self.note}`
-    /// plus `on:change={fn(e) { self.note = ... }}` written once.
+    /// writes it back. Two calls from one attribute, and that is all of it.
     fn emit_bind(element: ElementNode, bind: BindAttr, indent: int, bound: string) -> string {
         let b: string = self.builder_name()
         self.check_code(bind.code, bind.span, "a bind: place")
@@ -605,20 +465,14 @@ pub class CanvasEmitter {
             return bound
         }
         if !self.check_interpolated(bind.code, bind.span, "a bind:value place") { return bound }
-        // The value is the control's text, so it is written as the element's
-        // content rather than as an attribute, and the caller emits it after
-        // the attribute run.
+        // The value is the control's text, so the caller writes it after the
+        // attribute run rather than as an attribute here.
         self.write(indent, "{b}.on(\"commit\", fn(_e: UiEvent) \{ {bind.code} = _e.text \})")
         return bind.code
     }
 
-    /// One typed attribute call.
-    ///
-    /// `code` is the Beans expression to pass. `literal` is the same value as
-    /// written in the markup when it came from a canvas_quoted string, `""` otherwise.
-    ///
-    /// `align` and `justify` need the literal: the set of words is closed, so a
-    /// misspelling is refused here rather than reaching the Builder at run time.
+    /// One typed attribute call. `literal` is the markup's own text when the
+    /// value was quoted: a closed set of words is checked against it here.
     fn emit_typed(tag: string, name: string, code: string, literal: string, at: Span, indent: int) {
         let b: string = self.builder_name()
         let call: string = canvas_attribute_call(name)
@@ -651,12 +505,8 @@ pub class CanvasEmitter {
             else { self.write(indent, "{b}.labels({code})") }
             return
         }
-        if call == "text" {
-            self.write(indent, "{b}.text({canvas_interpolated(code)})")
-            return
-        }
-        if call == "a11y_label" {
-            self.write(indent, "{b}.a11y_label({canvas_interpolated(code)})")
+        if call == "text" || call == "a11y_label" {
+            self.emit_interpolated_call(call, code, at, indent)
             return
         }
         if call == "flag" {
@@ -691,6 +541,18 @@ pub class CanvasEmitter {
         } else {
             self.report(at, "{name} is not an attribute latte knows — did you mean {near}?")
         }
+    }
+
+    /// A call whose argument is an expression inside a generated string.
+    /// Every site that embeds markup code in a Beans string literal is here.
+    fn emit_interpolated_call(call: string, code: string, at: Span, indent: int) {
+        let made: string = canvas_interpolated(code)
+        // Whatever goes in has to scan as one Beans string literal. A wrapped
+        // expression and a literal that is already one fail that differently.
+        if made != code {
+            if !self.check_interpolated(code, at, "an attribute expression") { return }
+        } else if !self.check_literal(made, at, "an attribute value") { return }
+        self.write(indent, "{self.builder_name()}.{call}({made})")
     }
 
     fn write_call(indent: int, head: string, code: string, tail: string) {
@@ -728,10 +590,8 @@ pub class CanvasEmitter {
         let seq: int = self.counters.next()
         self.setup_depth = self.setup_depth + 1
         let c: string = self.setup_name()
-        // The key is the markup site, plus the row when the site is inside a
-        // loop. That is what makes a child component keep its own state: the
-        // same site on the next render is the same child, and the third row is
-        // not handed the second row's.
+        // The markup site plus the row, which is what makes a child keep its
+        // own state: the same site next render is the same child.
         let key: string = "\"c{self.site_of(seq)}\""
         self.write(indent, "{b}.child<{element.tag}>({key}, fn({c}: {element.tag}) \{{self.trace(element.span)}")
         for attr: Attr in element.attrs {
@@ -739,9 +599,8 @@ pub class CanvasEmitter {
             if canvas_is_placement_attribute(attr.name()) { continue }
             self.emit_parameter(element, attr, c, indent + 1)
         }
-        // The children that are not `$slot:name { ... }` definitions are the
-        // component's default child content, which is the `body` field a
-        // `$slot` with no name places.
+        // The children that are not `$slot:name` defines are the default
+        // content, which is what a `$slot` with no name places.
         let content: List<Node> = []
         for child: Node in element.children {
             var is_define: bool = false
@@ -766,12 +625,8 @@ pub class CanvasEmitter {
                 none => {}
             }
         }
-        // `ref=` last, so the parent's field is published only once the child
-        // is completely configured. In source order it would mean two things:
-        // `<Grid ref={self.grid} rows={self.rows}/>` would publish before
-        // `rows` was set and `<Grid rows={self.rows} ref={self.grid}/>` after,
-        // and the same markup meaning two things by attribute order is not
-        // something machine-written code should have.
+        // `ref=` last, so the field is published only once the child is
+        // configured — in source order, attribute order would decide.
         for attr: Attr in element.attrs {
             match attr as? RefAttr {
                 some(handle) => { self.emit_component_ref(handle, c, indent + 1) }
@@ -829,46 +684,15 @@ pub class CanvasEmitter {
         return ".word(\"{canvas_escape_beans_string(name)}\", \"{canvas_escape_beans_string(literal)}\")"
     }
 
-    /// `ref=` on a component tag: an assignment inside the setup closure.
-    ///
-    /// **Not** `b.reference(...)`, and the difference is forced rather than
-    /// chosen. Every attribute-position call needs `in_attributes`, which only
-    /// `open()` sets, and a component tag opens no element — so a `Reference`
-    /// there has no spelling any emission can reach. The assignment is also
-    /// the better answer: it hands back the concrete type, so
-    /// `self.grid.reload()` needs no downcast, and it is filled at **mount**,
-    /// not after the applier has run, because a component instance exists as
-    /// soon as it is activated.
-    ///
-    /// The place is written as `Option<T>`, so a child that is never reached —
-    /// a branch arm that did not run — is `none` rather than a stale instance
-    /// the author cannot tell from a live one. A field declared as a bare `T`
-    /// is a beansc type error naming the author's own field, which is the
-    /// diagnostic they can act on.
-    ///
-    /// It takes **no sequence number**: it is not a Builder call at all, so a
-    /// `ref=` on a component tag never shifts the numbering of anything
-    /// around it.
+    /// `ref=` on a component tag: an assignment in the setup closure, not a
+    /// Builder call — so it takes no sequence number and hands back `Option<T>`.
     fn emit_component_ref(handle: RefAttr, c: string, indent: int) {
         self.check_code(handle.code, handle.span, "ref=\{ \}")
         self.write(indent, "{handle.code} = some({c})")
     }
 
-    /// The identity of one emission site, as the *contents* of a Beans string
-    /// literal.
-    ///
-    /// Two parts, and neither is enough on its own. The sequence number says
-    /// where in the file the site is, so two sites in one render differ. The
-    /// row says which turn of the enclosing `$for` is running, so two turns of
-    /// one site differ — a loop body is emitted once and run many times, and
-    /// the number in it is the same on every turn.
-    ///
-    /// One helper for a component tag and for a `$slot` placement because they
-    /// ask the same question — *which child is this?* — and they were not
-    /// answered the same way. `emit_component` had the row from the start;
-    /// `emit_slot` wrote the bare number, so a `$slot` inside a `$for` handed
-    /// every row one placement site, and a template with a component tag in it
-    /// collided with itself on the second row.
+    /// One emission site's identity: where in the file, and which turn of the
+    /// enclosing `$for`. Neither half alone tells two children apart.
     fn site_of(seq: int) -> string {
         if self.row_name == "" { return "{seq}" }
         return "{seq}.\{{self.row_name}\}"
@@ -915,31 +739,13 @@ pub class CanvasEmitter {
             some(_) => { return }
             none => {}
         }
-        // Unreachable by construction. `Parser.classify` refuses `attrs` and
-        // `preserve` by name before it splits on the tag kind, sends `on:` and
-        // `bind:` to `classify_event`/`classify_bind`, which refuse both on a
-        // component tag, and sends everything else on a component tag to
-        // `classify_parameter`, which takes only a Beans identifier. `key=` and
-        // `ref=` are handled above. So nothing reaches this line today; it
-        // stays for the reason the `BeansNode` branch in `node` does — it costs
-        // nothing, and the day that invariant changes it is the difference
-        // between a diagnostic about the program and one about the emitter.
+        // Unreachable: `Parser.classify` refuses every other shape on a
+        // component tag. Kept so a changed invariant says so.
         self.report(attr.span, "{attr.name()} is not something a component tag can take — a component takes its parameters by their Beans names")
     }
 
-    /// `c.row = fn(inner: Builder, order: Order) { ... }`.
-    ///
-    /// **A fragment body restarts numbering at 0**, the way a `$for` body
-    /// does, because the body is emitted here — at its definition site — and
-    /// run somewhere else entirely: against the builder of whichever component
-    /// places it, at whatever depth that component's own render had reached.
-    /// There is no number from this file that would mean anything over there.
-    ///
-    /// The restart is what makes the placement site load-bearing.
-    /// `Builder.fragment(seq, body)` qualifies every child key the body writes
-    /// with its own `seq`, exactly as `emit_for` qualifies with the row — a
-    /// counter that starts again needs something from outside it to tell its
-    /// numbers apart, and `seq` is the only thing the placing side has.
+    /// `c.row = fn(inner: Builder, order: Order) { ... }`. The body restarts
+    /// numbering at 0, so `Builder.fragment` qualifies it by the placing site.
     fn emit_fragment_field(c: string, field: string, param: string,
                            param_type: string, body: List<Node>, indent: int,
                            at: Span) {
@@ -963,11 +769,8 @@ pub class CanvasEmitter {
 
     // ---------------------------------------------------------------- blocks
 
-    /// `$if c { } else if d { } else { }`.
-    ///
-    /// Every arm draws from the **enclosing** counter, in order, so the arms
-    /// hold disjoint ranges and a number never means two things in one render.
-    /// That is what lets the differ compare a `constant` frame by number.
+    /// `$if c { } else if d { } else { }`. Every arm draws from the enclosing
+    /// counter, so the arms hold disjoint ranges and a number means one thing.
     fn emit_if(node: IfNode, indent: int) {
         if node.branches.is_empty() { return }
         var index: int = 0
@@ -990,17 +793,8 @@ pub class CanvasEmitter {
         self.write(indent, "\}")
     }
 
-    /// `$for row: Row in self.rows { ... }` — a Beans loop, emitted as one.
-    ///
-    /// latte wraps each turn in a `region`, because its wire protocol needs a
-    /// name for the run of frames one iteration produced. latte needs none:
-    /// the loop body's `key={...}` becomes `Builder.key` on the element
-    /// itself, and the differ matches keyed siblings wherever they moved to.
-    /// One fewer concept, and the key lands on the thing it identifies.
-    ///
-    /// A body with no `key=` is matched by position. That is a real cost on a
-    /// reordered list — every row after the change is rewritten — and it is
-    /// the cost the golden file in `tests/diff.b` records beside the keyed one.
+    /// `$for row: Row in self.rows { ... }`, emitted as a Beans loop. A body
+    /// with no `key=` is matched by position, which rewrites a reordered list.
     fn emit_for(node: ForNode, indent: int) {
         self.check_code(node.header, node.span, "a $for header")
         let row: string = "_latte_row_{self.loops}"
@@ -1038,20 +832,14 @@ pub class CanvasEmitter {
 
     fn emit_slot(slot: SlotNode, indent: int) {
         let b: string = self.builder_name()
-        // Unreachable by construction: `parse_slot_define` refuses a body
-        // outside a component tag, and `emit_component` takes the defines that
-        // *are* direct children out of the run before it walks it, so no define
-        // node ever reaches `node()`. Kept, with a message of its own, for the
-        // reason the `BeansNode` branch there is.
+        // Unreachable: `emit_component` takes the defines out of the run
+        // before it walks it. Kept so a changed invariant says so.
         if slot.mode == "define" {
             self.report(slot.span, "$slot:{slot.field()} \{ ... \} supplies a template to a component, so it only reads that way as a direct child of a component tag")
             return
         }
-        // The placement site, the same two-part identity a component tag gets:
-        // where in the file, and which turn of the enclosing loop. Both halves
-        // are needed — `Builder.fragment` keys everything the template writes
-        // by this string, and a `$slot` in a `$for` is one emitted call run
-        // once per row, so the number alone would hand every row one site.
+        // The placement site: where in the file, and which turn of the loop.
+        // The number alone would hand every row of a `$for` one site.
         if slot.mode == "place_expr" {
             self.check_code(slot.code, slot.span, "a $slot expression")
             let site: string = self.site_of(self.counters.next())
@@ -1074,14 +862,8 @@ pub class CanvasEmitter {
 
 // ------------------------------------------------------------------ indenting
 
-/// `code` split into lines, with the `.bx` file's own indentation taken off
-/// every line but the first.
-///
-/// The first line is already positioned by whatever writes it; the rest carry
-/// the markup file's indentation, which has nothing to do with the generated
-/// file's. The amount taken off is the **smallest** indentation any later
-/// non-blank line has, so the block's internal shape survives — a nested `if`
-/// inside a handler stays nested.
+/// `code` split into lines, less the markup file's own indentation on every
+/// line but the first. The smallest one is taken, so nesting survives.
 pub fn canvas_dedent_lines(code: string) -> List<string> {
     let pieces: List<string> = code.split("\n")
     if pieces.len() <= 1 { return move pieces }
@@ -1116,13 +898,8 @@ pub fn canvas_dedent_lines(code: string) -> List<string> {
     return move out
 }
 
-/// The first `_latte_…` identifier `code` uses, or `""`.
-///
-/// Every name latte-bx binds in generated code carries this prefix — the loop
-/// key counters, the fragment builders, the component setters, the ref sink —
-/// so one refusal covers all of them and the set can grow without taking
-/// another ordinary word out of the author's vocabulary. A name after a `.` is
-/// a member, not a binding, so `self._latte_row` is not a use.
+/// The first `_latte_…` identifier `code` uses, or `""`. Every name latte-bx
+/// binds carries the prefix, so one refusal covers all of them.
 pub fn canvas_uses_reserved_name(code: string) -> string {
     var i: int = 0
     for i < code.len() {
@@ -1152,7 +929,7 @@ pub fn canvas_uses_reserved_name(code: string) -> string {
     return ""
 }
 
-/// Whether a node is literal text or an canvas_interpolated expression — the two
+/// Whether a node is literal text or an interpolated expression — the two
 /// kinds that merge into one `text` frame.
 pub fn canvas_is_text_or_expression(node: Node) -> bool {
     match node as? TextNode {
@@ -1177,7 +954,7 @@ pub fn canvas_text_run_end(list: List<Node>, from: int) -> int {
 }
 
 /// Whether `list[from .. to)` holds an expression, and so has to become one
-/// canvas_interpolated frame rather than a constant.
+/// interpolated frame rather than a constant.
 pub fn canvas_run_has_expression(list: List<Node>, from: int, to: int) -> bool {
     var i: int = from
     for i < to {
@@ -1192,20 +969,14 @@ pub fn canvas_run_has_expression(list: List<Node>, from: int, to: int) -> bool {
 
 // ----------------------------------------------------- expressions as strings
 
-/// A markup literal, as a Beans string expression.
-///
-/// The value is escaped for embedding, not canvas_interpolated: `text="a {b}"` in
-/// markup means the seven characters, and a literal that happened to contain a
-/// brace must not become an interpolation in generated code.
+/// A markup literal, as a Beans string expression: escaped for embedding, not
+/// interpolated, so `text="a {b}"` stays the seven characters it names.
 pub fn canvas_quoted(value: string) -> string {
     return "\"{canvas_escape_beans_string(value)}\""
 }
 
-/// A Beans expression as a string expression.
-///
-/// A canvas_quoted literal is already one and passes through; anything else is
-/// wrapped in an interpolation, so `text={self.count}` works for an `int` and
-/// for anything else with a `show`.
+/// A Beans expression as a string expression. A quoted literal passes through;
+/// anything else is wrapped, so `text={self.count}` works for any `show`.
 pub fn canvas_interpolated(code: string) -> string {
     if code.len() >= 2 && code.byte_at(0) as int == 34 &&
        code.byte_at(code.len() - 1) as int == 34 {
