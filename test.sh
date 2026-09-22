@@ -1762,6 +1762,23 @@ run_generated_leg() {
 
 run_generated_leg
 
+# --- the version leg ----------------------------------------------------
+#
+# The version the binary prints and the changelog heading that describes it.
+# The release workflow gates a tag against the same script.
+run_version_leg() {
+    if (cd "$ROOT" && bash tools/check_version.sh) >"$tmp/version.log" 2>&1; then
+        sed 's/^/  /' "$tmp/version.log"
+        legs=$((legs + 1))
+    else
+        echo "--- version FAILED ---" >&2
+        cat "$tmp/version.log" >&2
+        failed=1
+    fi
+}
+
+run_version_leg
+
 # --- the command-line leg ----------------------------------------------
 #
 # `latte init` writes a project and `latte build` builds it, for both targets,

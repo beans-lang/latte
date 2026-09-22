@@ -1,0 +1,295 @@
+name: latte cli
+
+# Build the `latte` command line for every platform a Beans toolchain runs on,
+# prove each binary works on the machine it was built for, then publish.
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Create a GitHub Release (off = build and test a candidate)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-${{ github.ref }}
+  # A tag build is a release candidate; nothing may cancel it out from under us.
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  version:
+    name: resolve version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=""
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then tag="$GITHUB_REF_NAME"; fi
+          bash tools/check_version.sh $tag
+          echo "version=$(bash tools/check_version.sh --print)" >> "$GITHUB_OUTPUT"
+
+  # ------------------------------------------------------- native per platform
+  build:
+    name: ${{ matrix.label }}
+    needs: version
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: arm64-apple-darwin
+            gate: full
+          - os: ubuntu-24.04
+            label: x86_64-unknown-linux-gnu
+            gate: full
+          - os: ubuntu-24.04-arm
+            label: aarch64-unknown-linux-gnu
+            gate: full
+          # The Windows installer picks gnullvm for x64; `--expect` below is
+          # what turns a change of that choice into a red mark, not a surprise.
+          - os: windows-latest
+            label: x86_64-pc-windows-gnullvm
+            gate: light
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install a C toolchain
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang lld llvm
+
+      # The user's install path, verbatim, and no fallback to a checkout: if a
+      # compiler cannot be installed the job fails here rather than going quiet.
+      - name: Install the published Beans toolchain
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/beans-lang/beans/releases/latest/download/beans-install.sh | sh
+          echo "$HOME/.beans/bin" >> "$GITHUB_PATH"
+
+      - name: Install the published Beans toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = "$env:RUNNER_TEMP\beans-install.ps1"
+          Invoke-WebRequest -UseBasicParsing `
+            -Uri https://github.com/beans-lang/beans/releases/latest/download/beans-install.ps1 `
+            -OutFile $script
+          & $script -NoModifyPath
+          "$env:LOCALAPPDATA\Beans\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      # Git Bash resolves `.exe` on PATH but not `.cmd`, and the `.cmd` is the
+      # launcher that sets the compiler's source roots — beansc.exe alone fails.
+      - name: Point BEANSC at the Windows launcher
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          launcher="$(cygpath -u "$LOCALAPPDATA")/Beans/bin/beansc.cmd"
+          test -f "$launcher"
+          echo "BEANSC=$launcher" >> "$GITHUB_ENV"
+
+      - name: The compiler under test
+        shell: bash
+        env:
+          BEANS_ROOT: ""
+        run: |
+          set -euo pipefail
+          "${BEANSC:-beansc}" --version
+          "${BEANSC:-beansc}" doctor
+
+      # `dist` is relative on purpose: every path handed to the compiler stays
+      # relative, so Git Bash never has to rewrite one into a Windows path.
+      - name: Build and package the command line
+        shell: bash
+        env:
+          BEANS_ROOT: ""
+        run: bash tools/package_cli.sh dist --expect ${{ matrix.label }}
+
+      # Run from the staged tree, not from an unpacked archive: no runner has
+      # one extractor that reads both a .tar.gz and a .zip.
+      - name: Smoke — the binary scaffolds and generates
+        shell: bash
+        env:
+          BEANS_ROOT: ""
+          LABEL: ${{ matrix.label }}
+        run: |
+          set -euo pipefail
+          version=$(bash tools/check_version.sh --print)
+          exe=""
+          if [[ "$RUNNER_OS" == Windows ]]; then exe=".exe"; fi
+          root="$PWD"
+          latte="$root/dist/stage/latte-v$version-$LABEL/latte$exe"
+          "$latte" version
+          mkdir -p smoke
+          (cd smoke && "$latte" init demo --latte "$root")
+          # `generate` compiles the markup and links nothing, so this stays a
+          # check of the shipped binary rather than of the C toolchain.
+          (cd smoke/demo && "$latte" generate)
+          test -d smoke/demo/generated
+
+      # The other half: does a scaffolded project really compile? It needs a C
+      # toolchain and the dependency fetch, so only the fast native hosts run it.
+      - name: Gate — latte init writes a project latte build builds
+        if: matrix.gate == 'full'
+        shell: bash
+        env:
+          BEANS_ROOT: ""
+        run: bash tools/check_cli.sh
+
+      # The staged tree stays out: only what a person downloads is an artifact.
+      - uses: actions/upload-artifact@v5
+        with:
+          name: cli-${{ matrix.label }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  # -------------------------------------------------------- static Linux (musl)
+  musl:
+    name: ${{ matrix.label }}
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x86_64-unknown-linux-musl
+            platform: linux/amd64
+          - label: aarch64-unknown-linux-musl
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.platform != 'linux/amd64'
+        with:
+          platforms: arm64
+
+      # Built inside the musl host rather than cross-linked, so the binary is
+      # run by its own smoke test instead of shipping unexecuted.
+      - name: Build and package inside Alpine
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          docker run --rm --platform '${{ matrix.platform }}' \
+            -v "$PWD:/src:ro" -v "$PWD/artifacts:/artifacts" \
+            alpine:3.22 sh -lc '
+              set -eu
+              apk add --no-cache bash build-base clang lld llvm curl git tar
+              cp -a /src /work
+              cd /work
+              # Downloaded, then run: busybox sh has no pipefail, so a failed
+              # fetch piped into a shell would succeed at doing nothing.
+              curl -fsSL -o /tmp/beans-install.sh \
+                https://github.com/beans-lang/beans/releases/latest/download/beans-install.sh
+              sh /tmp/beans-install.sh
+              export PATH="$HOME/.beans/bin:$PATH"
+              export BEANS_ROOT=""
+              beansc doctor
+              bash tools/package_cli.sh dist --expect ${{ matrix.label }}
+              cp dist/*.tar.gz dist/*.sha256 /artifacts/
+            '
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: cli-${{ matrix.label }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ------------------------------------------------------------------ publishing
+  publish:
+    name: publish release
+    if: github.ref_type == 'tag' || inputs.publish
+    needs: [version, build, musl]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: cli-*
+          path: incoming
+          merge-multiple: true
+
+      # A release missing a platform is worse than a late one, so the set is
+      # named here and a gap stops the publish.
+      - name: Verify every expected platform is present
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          find incoming -type f \( -name '*.tar.gz' -o -name '*.zip' \) \
+            -exec cp {} assets/ \;
+          missing=0
+          for label in arm64-apple-darwin x86_64-unknown-linux-gnu \
+                       aarch64-unknown-linux-gnu x86_64-pc-windows-gnullvm \
+                       x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+              if ! ls assets/latte-v"$VERSION"-"$label".* >/dev/null 2>&1; then
+                  echo "no archive for $label" >&2
+                  missing=1
+              fi
+          done
+          if [[ $missing -ne 0 ]]; then
+              echo "--- refusing to publish a partial release ---" >&2
+              ls assets >&2
+              exit 1
+          fi
+          ls -la assets
+
+      - name: Write the checksum list
+        run: |
+          set -euo pipefail
+          (cd assets && find . -maxdepth 1 -type f ! -name 'SHA256SUMS' -printf '%P\n' |
+            LC_ALL=C sort | xargs sha256sum) > assets/SHA256SUMS
+          cat assets/SHA256SUMS
+
+      # The tag arrives as an environment value, never spliced into the script:
+      # a tag name is attacker-shaped text the moment anyone can push one.
+      - name: Create the GitHub Release
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if [[ "$REF_TYPE" == tag ]]; then tag="$REF_NAME"; fi
+          notes="The \`latte\` command line for six platforms. Unpack, then put \`latte\` on your PATH.
+
+          Verify a download against \`SHA256SUMS\` before running it."
+          # A re-run must land on its feet rather than fail on the release it
+          # created the first time.
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release upload "$tag" assets/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+              gh release create "$tag" assets/* \
+                --repo "$GITHUB_REPOSITORY" \
+                --title "latte $VERSION" \
+                --notes "$notes"
+          fi

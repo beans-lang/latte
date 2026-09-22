@@ -25,3 +25,7 @@ build/browser/
 .playwright-mcp/
 test-results/
 
+# What tools/package_cli.sh writes, and the throwaway project the release
+# workflow scaffolds to prove the packaged binary runs.
+dist/
+smoke/

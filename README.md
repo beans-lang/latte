@@ -146,6 +146,14 @@ build/latte init myapp --target canvas             # or one drawn on a canvas
 build/latte build
 ```
 
+**Or download it.** `.github/workflows/cli.yml` builds `latte` for six
+platforms — macOS arm64, Linux x86_64 and arm64 (glibc and static musl), and
+Windows x64 — and attaches them to a release with a `SHA256SUMS` file. Every
+archive is built on a machine of its own kind and the binary is run there
+before it is packaged, so a platform that cannot produce a working `latte`
+fails the build instead of shipping one. `tools/package_cli.sh` is the same
+step, runnable by hand.
+
 `init` writes a project that renders on the first build: the two manifests, an
 entry, a layout, a page, and nothing else. `generated/` is not among them — the
 first build writes it, because a scaffolder that wrote it too would be a second

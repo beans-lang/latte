@@ -59,6 +59,25 @@ rendered, so the only evidence was a fault list no suite read for a circuit.
 and it checked that before asking whether any page owned the path. Every path
 under `/_latte/` is latte's, and the page route now skips them.
 
+### Added — the `latte` command line is built and published for six platforms
+
+`.github/workflows/cli.yml` builds `latte` on macOS arm64, Linux x86_64 and
+arm64 (glibc, and static musl in an Alpine container), and Windows x64, then
+attaches the archives to a release with a `SHA256SUMS` file.
+
+* **Each binary is built on a machine of its kind and run there**, and the
+  packaged binary is what scaffolds a project and regenerates its markup in
+  the smoke step. A platform that cannot produce a working `latte` fails.
+* **The target label comes out of the compiler, not the matrix.**
+  `tools/package_cli.sh --expect` compares the two and refuses a mislabelled
+  archive, so a runner that installed a different toolchain is a red mark
+  rather than a wrongly named download.
+* **A partial release is refused.** The publish job names the six platforms
+  it expects and stops if one is missing.
+* **`tools/check_version.sh`** holds `cli/version.b`, the changelog heading
+  and the release tag to the same version. It is a `test.sh` leg as well, so
+  the drift is caught before a tag exists.
+
 ## [0.1.1] - 2026-09-16
 
 ### Changed — BREAKING: espresso and barista are required from git, not by path
