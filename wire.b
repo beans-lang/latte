@@ -41,11 +41,16 @@ pub const JSON_INT: int = 2
 pub const JSON_TEXT: int = 3
 pub const JSON_ARRAY: int = 4
 pub const JSON_OBJECT: int = 5
+/// A number with a fraction or an exponent. Read only where the limits say
+/// so — the circuit wire carries integers and refuses this; a props object
+/// carries a `float` prop and needs it.
+pub const JSON_FLOAT: int = 6
 
 pub class Json {
     pub kind: int = 0
     pub truth: bool = false
     pub number: int = 0
+    pub decimal: float = 0.0
     pub text: string = ""
     /// Array elements, or an object's values in `keys` order.
     pub items: List<Json> = []
@@ -54,6 +59,19 @@ pub class Json {
 
     pub fn is_null() -> bool { return self.kind == JSON_NULL }
     pub fn is_int() -> bool { return self.kind == JSON_INT }
+    pub fn is_bool() -> bool { return self.kind == JSON_BOOL }
+    pub fn is_float() -> bool { return self.kind == JSON_FLOAT }
+    /// An int is a number too: JSON has one number type, and `3` is how a
+    /// whole 3.0 is written.
+    pub fn is_number() -> bool {
+        return self.kind == JSON_INT || self.kind == JSON_FLOAT
+    }
+    /// The value as a float, whichever of the two number kinds it is.
+    pub fn as_float() -> float {
+        if self.kind == JSON_FLOAT { return self.decimal }
+        if self.kind == JSON_INT { return self.number as float }
+        return 0.0
+    }
     pub fn is_text() -> bool { return self.kind == JSON_TEXT }
     pub fn is_array() -> bool { return self.kind == JSON_ARRAY }
     pub fn is_object() -> bool { return self.kind == JSON_OBJECT }
@@ -99,6 +117,16 @@ pub class Json {
         match self.field(name) {
             some(value) => {
                 if value.kind == JSON_TEXT { return value.text }
+                return fallback
+            }
+            none => { return fallback }
+        }
+    }
+
+    pub fn float_field(name: string, fallback: float) -> float {
+        match self.field(name) {
+            some(value) => {
+                if value.is_number() { return value.as_float() }
                 return fallback
             }
             none => { return fallback }
@@ -229,7 +257,29 @@ pub class WireLimits {
     /// The longest string the reader will accept, so a 64 KB message cannot
     /// become one 64 KB field name.
     pub max_text: int = 32768
+    /// Whether a number may carry a fraction or an exponent.
+    ///
+    /// Off for the circuit wire, which carries indexes, sequence numbers,
+    /// slot ids and batch numbers — `{"b":1e999}` must stay a refusal there
+    /// rather than an ack for batch 1. On for a props object, where a `float`
+    /// prop is an ordinary value.
+    pub allow_floats: bool = false
     pub fn init() {}
+}
+
+/// The limits a props object is read under: floats allowed, and the same
+/// caps on size, depth and count as everything else off a wire.
+pub fn props_limits() -> WireLimits {
+    var limits: WireLimits = new WireLimits()
+    limits.allow_floats = true
+    return move limits
+}
+
+pub fn json_float(value: float) -> Json {
+    let out: Json = new Json()
+    out.kind = JSON_FLOAT
+    out.decimal = value
+    return out
 }
 
 // ---------------------------------------------------------------- reading
@@ -340,8 +390,11 @@ class Reader {
         }
         let next: int = self.peek()
         if next == 46 || next == 101 || next == 69 {
-            self.fail("this protocol carries integers only")
-            return json_null()
+            if !self.limits.allow_floats {
+                self.fail("this protocol carries integers only")
+                return json_null()
+            }
+            return self.fraction(start)
         }
         if overflow {
             self.fail("a number too large for this protocol")
@@ -445,6 +498,38 @@ class Reader {
         }
         self.at += 4
         return value
+    }
+
+    /// The rest of a number that turned out not to be an integer.
+    ///
+    /// Re-read as text and handed to `to_float`, rather than accumulated
+    /// digit by digit: a hand-rolled decimal is a second float parser, and
+    /// two float parsers in one program disagree in the last place.
+    fn fraction(start: int) -> Json {
+        var seen_point: bool = false
+        var seen_exponent: bool = false
+        for !self.done() {
+            let byte: int = self.text.byte_at(self.at)
+            if byte >= 48 && byte <= 57 { self.at += 1; continue }
+            if byte == 46 && !seen_point && !seen_exponent {
+                seen_point = true; self.at += 1; continue
+            }
+            if (byte == 101 || byte == 69) && !seen_exponent {
+                seen_exponent = true
+                self.at += 1
+                if self.peek() == 43 || self.peek() == 45 { self.at += 1 }
+                continue
+            }
+            break
+        }
+        let token: string = self.text.slice(start, self.at)
+        match token.to_float() {
+            ok(value) => { return json_float(value) }
+            err(_) => {
+                self.fail("\"{token}\" is not a number")
+                return json_null()
+            }
+        }
     }
 
     fn array() -> Json {
@@ -618,6 +703,7 @@ fn write_frame(out: fmt.StringBuilder, frame: Frame) {
         boundary_close => { out.push("[\"B\"]") }
         reference(seq) => { out.push("[\"e\",{seq}]") }
         preserve(seq) => { out.push("[\"v\",{seq}]") }
+        opaque(seq) => { out.push("[\"q\",{seq}]") }
         close => { out.push("[\"z\"]") }
     }
 }

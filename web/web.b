@@ -273,6 +273,9 @@ pub class CircuitEndpoint implements espresso.UpgradeHandler {
         facts["session"] = session
         facts["origin"] = offered
         facts["path"] = context.request.path
+        // The same cookie the page half reads, so a circuit's first render
+        // resolves `auto` the way the prerender it is adopting did.
+        facts["bundle"] = context.request.cookie(BUNDLE_COOKIE).or("")
         let socket: websocket.Connection = websocket.Connection.accept(
             move stream, request, self.options.max_message,
             self.options.compress)?

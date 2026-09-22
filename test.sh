@@ -520,6 +520,13 @@ module_package_dirs() {
         [[ "$dir" == "$module" ]] && continue
         local rel=${dir#"$module"/}
         case "$rel" in tests|tests/*|examples|examples/*) continue ;; esac
+        # A directory with a manifest of its own is a MODULE, not a package
+        # of this one. `examples/modes/browser` is one: the browser half of
+        # an application is a module because a module root holds one entry,
+        # and importing it as `modes.browser` is a package that does not
+        # exist. It is checked by the client legs, which build it for
+        # WebAssembly — which is the only build it has.
+        [[ -f "$dir/beans.pot" ]] && continue
         printf '%s\n' "$rel"
     done
 }
@@ -738,8 +745,10 @@ run_examples_leg() {
         local want_err="$base.err"
 
         # A browser module cannot link natively: the imports behind its
-        # extern entries exist only in WebAssembly. The ui leg builds it.
-        if grep -qE '^import latte\.(browser|canvaskit)' "$entry"; then
+        # extern entries exist only in WebAssembly. The ui leg builds the
+        # canvas kind; the client legs build the region-runtime kind.
+        if grep -qE '^import latte\.(browser|canvaskit)' "$entry" ||
+           grep -qE 'from latte_client$' "$entry"; then
             if (cd "$ROOT" && "$BEANSC" check "$rel") >"$tmp/ex_$slug.check" 2>&1; then
                 echo "ok examples/$name — a browser module: it checks here, and the ui leg builds it for WebAssembly"
                 ran=$((ran + 1))
@@ -1122,6 +1131,9 @@ run_refusal_coverage_leg() {
     refusal_coverage_for upload.b    tests/w6_upload.out  "tests/w6_upload.b § 6"
     refusal_coverage_for forms.b     tests/w4_forms.out   "tests/w4_forms.b § 6"
     refusal_coverage_for persist.b   tests/l8_persist.out "tests/l8_persist.b § 8"
+    refusal_coverage_for modes.b     tests/modes.out      "tests/modes.b § 10"
+    refusal_coverage_for region.b    tests/modes.out      "tests/modes.b § 10"
+    refusal_coverage_for actions.b   tests/actions.out    "tests/actions.b § 4"
     refusal_coverage_none frames.b
     refusal_coverage_none diff.b
     refusal_coverage_pending render.b 3
@@ -1767,6 +1779,194 @@ run_cli_leg() {
 }
 
 [[ $canvas_only -eq 1 ]] || run_cli_leg
+
+# --- the client-region legs ---------------------------------------------
+#
+# A `client` region is a component compiled to WebAssembly and run in the
+# browser. Two legs, because there are two ways to get it wrong and only one
+# of them needs a browser:
+#
+#   client-wire     the module's own answers — mount, event, props, refusal —
+#                   read under node, with no DOM at all. A failure here is in
+#                   Beans.
+#   client-browser  the same module in Chromium, Firefox and WebKit, driving
+#                   a real DOM through `js/latte.js`, and counting the
+#                   network requests a click makes. A failure here and not
+#                   there is in `js/latte-client.js`.
+#
+# The second is what holds the headline claim: a click on a client counter
+# makes NO request. Nothing else in this file can see that.
+CLIENT_MODULE=build/browser/clienttest.wasm
+MODES_MODULE=build/browser/modes.wasm
+
+run_client_legs() {
+    local entry="$ROOT/tests/client/browser.b"
+    local wire_want="$ROOT/tests/client_wire.out"
+    local browser_want="$ROOT/tests/client_browser.out"
+    # Missing inputs are a FAILURE, never a skip: they are files in this
+    # repository and their absence means the layout moved.
+    local f
+    for f in "$entry" "$wire_want" "$browser_want" \
+             "$ROOT/tools/client_wire.mjs" "$ROOT/tools/client_check.mjs"; do
+        if [[ ! -f "$f" ]]; then
+            echo "--- client FAILED: ${f#$ROOT/} is missing ---" >&2
+            failed=1
+            return 0
+        fi
+    done
+    # The region runtime itself, type-checked, BEFORE anything that can skip.
+    # Everything below needs node, a wasm Clang and a wasm-ld, and each is a
+    # SKIP on a machine without it — so without this, `client/*.b` would be
+    # compiled by nothing at all on such a machine and could rot for a
+    # release. A native check needs none of those three.
+    if (cd "$ROOT" && "$BEANSC" check tests/client/browser.b) \
+            >"$tmp/client_check.log" 2>&1; then
+        echo "ok client-check — latte_client and its test entry type-check"
+        legs=$((legs + 1))
+    else
+        echo "--- client-check FAILED: the region runtime does not check ---" >&2
+        cat "$tmp/client_check.log" >&2
+        failed=1
+        return 0
+    fi
+    if (cd "$ROOT" && "$BEANSC" check examples/modes/browser/main.b) \
+            >"$tmp/modes_check.log" 2>&1; then
+        echo "ok client-check — the example's browser entry type-checks"
+        legs=$((legs + 1))
+    else
+        echo "--- client-check FAILED: examples/modes/browser/main.b does not check ---" >&2
+        cat "$tmp/modes_check.log" >&2
+        failed=1
+        return 0
+    fi
+
+    if ! command -v node >/dev/null 2>&1; then
+        echo "SKIP client: node is not installed — the browser bundle was NOT run"
+        skipped=$((skipped + 1))
+        return 0
+    fi
+
+    # The same three tools the wasm leg needs, reported by name.
+    local wasm_cc=${BEANS_WASM_CC:-}
+    if [[ -z "$wasm_cc" ]]; then
+        local candidate
+        for candidate in /opt/homebrew/opt/llvm/bin/clang /usr/local/opt/llvm/bin/clang clang; do
+            if command -v "$candidate" >/dev/null 2>&1 &&
+               "$candidate" --print-targets 2>/dev/null | grep -q 'wasm32'; then
+                wasm_cc="$candidate"
+                break
+            fi
+        done
+    fi
+    if [[ -z "$wasm_cc" ]]; then
+        echo "SKIP client: no Clang with a wasm32 backend (set BEANS_WASM_CC) — the browser bundle was NOT built"
+        skipped=$((skipped + 1))
+        return 0
+    fi
+    if ! command -v "$(dirname "$wasm_cc")/wasm-ld" >/dev/null 2>&1 && \
+       ! command -v wasm-ld >/dev/null 2>&1; then
+        echo "SKIP client: no wasm-ld beside $wasm_cc (brew install lld) — the browser bundle was NOT built"
+        skipped=$((skipped + 1))
+        return 0
+    fi
+
+    if ! (cd "$ROOT" && bash tools/wasm_build.sh tests/client/browser.b \
+            "$CLIENT_MODULE") >"$tmp/client_build.log" 2>&1; then
+        echo "--- client FAILED: the browser bundle did not build ---" >&2
+        cat "$tmp/client_build.log" >&2
+        failed=1
+        return 0
+    fi
+
+    if (cd "$ROOT" && node tools/client_wire.mjs "$CLIENT_MODULE") \
+            >"$tmp/client_wire.out" 2>&1; then
+        if diff -u "$wire_want" "$tmp/client_wire.out" >"$tmp/client_wire.diff"; then
+            echo "ok client-wire — the browser bundle mounts, dispatches and refuses as recorded"
+            legs=$((legs + 1))
+        else
+            echo "--- client-wire FAILED: the module's answers changed ---" >&2
+            head -60 "$tmp/client_wire.diff" >&2
+            failed=1
+        fi
+    else
+        echo "--- client-wire FAILED: the module would not run ---" >&2
+        cat "$tmp/client_wire.out" >&2
+        failed=1
+    fi
+
+    if [[ ! -d "$ROOT/node_modules/playwright" ]]; then
+        echo "SKIP client-browser: playwright is not installed — no browser ran a client region"
+        skipped=$((skipped + 1))
+        return 0
+    fi
+    if (cd "$ROOT" && node tools/client_check.mjs) >"$tmp/client_browser.out" 2>&1; then
+        if diff -u "$browser_want" "$tmp/client_browser.out" >"$tmp/client_browser.diff"; then
+            echo "ok client-browser — a client counter increments in three engines with no network request"
+            legs=$((legs + 1))
+        else
+            echo "--- client-browser FAILED: a browser disagrees with the recorded run ---" >&2
+            head -60 "$tmp/client_browser.diff" >&2
+            failed=1
+        fi
+    else
+        echo "--- client-browser FAILED ---" >&2
+        cat "$tmp/client_browser.out" >&2
+        failed=1
+    fi
+
+    # --- the WebAssembly boundary, both halves -------------------------
+    if (cd "$ROOT" && bash tools/client_abi.sh "$CLIENT_MODULE" \
+            tests/client/browser.b) >"$tmp/client_abi.out" 2>&1; then
+        cat "$tmp/client_abi.out"
+        legs=$((legs + 1))
+    else
+        echo "--- client-abi FAILED ---" >&2
+        cat "$tmp/client_abi.out" >&2
+        failed=1
+    fi
+
+    # --- the whole application, in a real browser ----------------------
+    #
+    # The only leg that starts the server, opens a circuit and calls a server
+    # action. Everything above it is one piece at a time.
+    local modes_want="$ROOT/tests/modes_browser.out"
+    if [[ ! -f "$modes_want" ]]; then
+        echo "--- modes FAILED: tests/modes_browser.out is missing ---" >&2
+        failed=1
+        return 0
+    fi
+    if ! (cd "$ROOT" && bash tools/wasm_build.sh examples/modes/browser/main.b \
+            "$MODES_MODULE") >"$tmp/modes_build.log" 2>&1; then
+        echo "--- modes FAILED: the example's browser bundle did not build ---" >&2
+        cat "$tmp/modes_build.log" >&2
+        failed=1
+        return 0
+    fi
+    if ! (cd "$ROOT" && bash tools/client_abi.sh "$MODES_MODULE" \
+            examples/modes/browser/main.b) >"$tmp/modes_abi.out" 2>&1; then
+        echo "--- client-abi FAILED for the example's bundle ---" >&2
+        cat "$tmp/modes_abi.out" >&2
+        failed=1
+        return 0
+    fi
+    if (cd "$ROOT" && BEANSC="$BEANSC" node tools/modes_check.mjs) \
+            >"$tmp/modes_browser.out" 2>&1; then
+        if diff -u "$modes_want" "$tmp/modes_browser.out" >"$tmp/modes.diff"; then
+            echo "ok modes-browser — examples/modes behaves in a real browser: two runtimes on one page, a typed action, and the refusals"
+            legs=$((legs + 1))
+        else
+            echo "--- modes-browser FAILED: the application behaves differently ---" >&2
+            head -60 "$tmp/modes.diff" >&2
+            failed=1
+        fi
+    else
+        echo "--- modes-browser FAILED ---" >&2
+        cat "$tmp/modes_browser.out" >&2
+        failed=1
+    fi
+}
+
+[[ $canvas_only -eq 1 ]] || run_client_legs
 
 if [[ -z "$only" || $canvas_only -eq 1 ]]; then
     run_canvas_leg

@@ -81,6 +81,8 @@ pub fn namespaces() -> List<VocabRow> {
                      "A DOM event handler. The event must be one latte's table has; see events."),
         new VocabRow("bind:", r#"bind:value={<place>} | bind:checked={<place>}"#,
                      "A two-way binding. It emits an attribute and a handler, so it takes two sequence numbers."),
+        new VocabRow("render:", r#"render:mode="static|server|client|auto""#,
+                     "Where this component instance runs. A literal and never an expression: what runs in the browser has to be known when the browser bundle is built. It belongs on a component tag; on an element it is refused."),
         new VocabRow("xlink:", r#"xlink:href="...""#,
                      r#"An ordinary XML attribute. xlink:href carries a URL and passes the scheme allowlist, because an SVG <a xlink:href="javascript:"> runs script."#),
         new VocabRow("xml:", r#"xml:lang="...""#,
@@ -121,6 +123,19 @@ pub fn reserved_attributes() -> List<VocabRow> {
                      "The subtree is left alone by the differ."),
         new VocabRow("live", "live",
                      "Every interpolated text run in this subtree is signal-bound: it compiles to live_text, the signals it reads subscribe to it, and a write patches that one text node with no render and no diff. An expression under it that reads no signal is a fault, not a value that renders once and never moves again."),
+    ]
+}
+
+/// The tags the compiler recognises rather than looks up.
+///
+/// `<RenderBlock>` is a declaration, not a thing that renders: its body
+/// becomes a component of its own, with its own instance, its own lifecycle
+/// and its own sequence numbering. An editor should offer it the way it
+/// offers `$if`, not the way it offers `<div>`.
+pub fn compiler_tags() -> List<VocabRow> {
+    return [
+        new VocabRow("RenderBlock", r#"<RenderBlock mode="client" <name>:<type>={<expr>}> ... </RenderBlock>"#,
+                     "An execution boundary around a block of markup. `mode` is required and is a literal. Each prop is written with its type — a string, an int, a bool or a float — and is read inside the body as props.<name>. `self` inside the body is refused: it would be the parent's, which does not exist in the runtime the block may be running in."),
     ]
 }
 
@@ -253,6 +268,7 @@ pub fn vocabulary_json() -> string {
     lines.push(block_of("bindings", json_rows(bindings())))
     lines.push(line_of("conversions", json_strings(conversions())))
     lines.push(block_of("reservedAttributes", json_rows(reserved_attributes())))
+    lines.push(block_of("compilerTags", json_rows(compiler_tags())))
     lines.push(line_of("voidElements", json_strings(void_elements())))
     lines.push(line_of("rawTextElements", json_strings(raw_text_elements())))
     lines.push(line_of("rcdataElements", json_strings(rcdata_elements())))

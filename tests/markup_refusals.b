@@ -835,6 +835,66 @@ pub class Suite {
     // select's value is not an attribute, it is which `<option>` carries
     // `selected`, so a binding there would set nothing and look right.
 
+    /// `render:mode=` and `<RenderBlock>`: where a component runs.
+    ///
+    /// Every refusal here is about a decision that has to be taken at BUILD
+    /// time. What runs in the browser is what the browser bundle was built
+    /// with, so a mode that is an expression, or a prop whose type nobody
+    /// wrote, is a question the compiler cannot answer and must not defer to
+    /// a runtime that has already shipped.
+    fn render_modes() {
+        self.heading("render:mode and RenderBlock")
+
+        self.accepted_showing("render:mode on a component tag", "",
+                      r#"<Badge render:mode="client" />"#)
+        self.refused("render:mode on an element", "",
+                     r#"<div render:mode="client">x</div>"#)
+        self.refused("render:mode as an expression", r#"pub where: string = """#,
+                     r#"<Badge render:mode={self.where} />"#)
+        self.refused("render:mode with no value", "", r#"<Badge render:mode />"#)
+        self.refused("a mode nobody has", "", r#"<Badge render:mode="sideways" />"#)
+        self.refused("render:mode=inherit", "", r#"<Badge render:mode="inherit" />"#)
+        self.refused("a render: name latte does not have", "",
+                     r#"<Badge render:where="client" />"#)
+
+        self.accepted_showing("a RenderBlock with one typed prop",
+                      r#"pub name: string = """#,
+                      lines([r#"<RenderBlock mode="client" who:string={self.name}>"#,
+                             r#"  <p>$props.who</p>"#,
+                             r#"</RenderBlock>"#]))
+        self.refused("a RenderBlock with no mode", "",
+                     lines([r#"<RenderBlock>"#, r#"  <p>x</p>"#, r#"</RenderBlock>"#]))
+        self.refused("a RenderBlock whose mode is an expression",
+                     r#"pub where: string = """#,
+                     lines([r#"<RenderBlock mode={self.where}>"#, r#"  <p>x</p>"#,
+                            r#"</RenderBlock>"#]))
+        self.refused("a prop with no type", r#"pub name: string = """#,
+                     lines([r#"<RenderBlock mode="client" who={self.name}>"#,
+                            r#"  <p>x</p>"#, r#"</RenderBlock>"#]))
+        self.refused("a prop of a type that cannot cross",
+                     r#"pub rows: List<string> = []"#,
+                     lines([r#"<RenderBlock mode="client" rows:List={self.rows}>"#,
+                            r#"  <p>x</p>"#, r#"</RenderBlock>"#]))
+        self.refused("a prop whose name is not a field name",
+                     r#"pub name: string = """#,
+                     lines([r#"<RenderBlock mode="client" 9x:string={self.name}>"#,
+                            r#"  <p>x</p>"#, r#"</RenderBlock>"#]))
+        self.refused("a prop with no expression", "",
+                     lines([r#"<RenderBlock mode="client" who:string="a">"#,
+                            r#"  <p>x</p>"#, r#"</RenderBlock>"#]))
+        // The illegal capture, which is the one a reader will hit: `self`
+        // inside a block is the PARENT's, and the parent does not exist in
+        // the runtime the block may be running in.
+        self.refused("self inside a RenderBlock body", r#"pub name: string = """#,
+                     lines([r#"<RenderBlock mode="client" who:string={self.name}>"#,
+                            r#"  <p>$self.name</p>"#, r#"</RenderBlock>"#]))
+        self.refused("self inside a handler in a RenderBlock body",
+                     r#"pub name: string = """#,
+                     lines([r#"<RenderBlock mode="client" who:string={self.name}>"#,
+                            r#"  <button on:click={fn(e: MouseEvent) { self.name = "x" }}>go</button>"#,
+                            r#"</RenderBlock>"#]))
+    }
+
     fn bindings_and_live() {
         self.heading("live, and the bind: shapes")
         // The control for the two refusals under it: the ordinary shape must
@@ -1011,6 +1071,7 @@ fn main() {
     suite.import_collisions()
     suite.beans_block()
     suite.bindings_and_live()
+    suite.render_modes()
     suite.component_assertions()
     suite.canvas_refusals()
 

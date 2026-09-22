@@ -173,6 +173,125 @@
         host.parentNode.removeChild(host);
     }
 
+    // =================================================== § 1b adoption
+    //
+    // Hydration, over every fixture: put the SERVER's html in the host, let
+    // the applier adopt it instead of replacing it, and require three things
+    // at once —
+    //
+    //   * the document is the one the serializer wrote, still;
+    //   * every element in it is the SAME object it was before the applier
+    //     ran, which is what makes the caret, the scroll position and the
+    //     focus ring survive an attach;
+    //   * the logical tree is the same one a fresh build produces, so every
+    //     edit that follows lands where it would have.
+    //
+    // The third is the one a hand-written hydration usually gets wrong: a
+    // tree that looks right and is indexed differently applies the next
+    // batch to the wrong node.
+
+    function elementsIn(host) {
+        var out = [];
+        var walk = host.querySelectorAll('*');
+        for (var i = 0; i < walk.length; i++) { out.push(walk[i]); }
+        return out;
+    }
+
+    function sameObjects(before, after) {
+        if (before.length !== after.length) {
+            return before.length + ' elements became ' + after.length;
+        }
+        for (var i = 0; i < before.length; i++) {
+            if (before[i] !== after[i]) {
+                return 'element ' + i + ' (' + before[i].tagName + ') was replaced';
+            }
+        }
+        return 'kept';
+    }
+
+    say('');
+    say('=== 1b. the same batches, adopting what the server rendered');
+    for (var a = 0; a < LATTE_CASES.length; a++) {
+        var acase = LATTE_CASES[a];
+        var afirst = acase.steps[0];
+        var ahost = freshHost();
+        ahost.innerHTML = afirst.h;
+        var before = elementsIn(ahost);
+        var adopter = new latte.Applier({ document: document, host: ahost });
+        adopter.apply(afirst.b);
+        eq(acase.name + ' adopt html', normalize(ahost.innerHTML), normalize(afirst.h));
+        eq(acase.name + ' adopt kept the nodes',
+           sameObjects(before, elementsIn(ahost)), 'kept');
+        eq(acase.name + ' adopt dump', adopter.dump(), afirst.d);
+        eq(acase.name + ' adopt faults', adopter.faults.join('\n'),
+           afirst.f.join('\n'));
+        // And the batches that follow still apply to the adopted tree.
+        for (var as = 1; as < acase.steps.length; as++) {
+            adopter.apply(acase.steps[as].b);
+            eq(acase.name + ' adopt then ' + (as + 1),
+               normalize(ahost.innerHTML), normalize(acase.steps[as].h));
+        }
+        ahost.parentNode.removeChild(ahost);
+    }
+
+    // An empty host has nothing to adopt, so the applier falls back to
+    // building — and must do it without reporting a mismatch for every node.
+    var emptyHost = freshHost();
+    var emptyApplier = new latte.Applier({ document: document, host: emptyHost });
+    emptyApplier.apply(LATTE_CASES[0].steps[0].b);
+    eq('an empty host builds, and reports nothing',
+       emptyApplier.faults.join('\n'), LATTE_CASES[0].steps[0].f.join('\n'));
+    eq('and lands on the same document',
+       normalize(emptyHost.innerHTML), normalize(LATTE_CASES[0].steps[0].h));
+    emptyHost.parentNode.removeChild(emptyHost);
+
+    // What hydration is FOR: text the reader typed before the script ran.
+    (function typedBeforeAttach() {
+        var host = freshHost();
+        host.innerHTML = '<input id="q" value="">';
+        var field = host.querySelector('#q');
+        field.value = 'half a word';
+        field.focus();
+        var batch = { t: 'batch', b: 1,
+                      r: [['o', 0, 'input'], ['a', 1, 'id', 'q'],
+                          ['a', 2, 'value', ''], ['z']],
+                      u: [{ c: 0, e: [['in', 0, 0]] }], d: [] };
+        var applier = new latte.Applier({ document: document, host: host });
+        applier.apply(batch);
+        eq('the field survived the attach', host.querySelector('#q'), field);
+        eq('and so did what was typed into it', field.value, 'half a word');
+        eq('with nothing reported', applier.faults.join('\n'), '');
+        // And an edit that really changes the value still lands, so the skip
+        // above is a skip and not a disconnection.
+        applier.apply({ t: 'batch', b: 2, r: [],
+                        u: [{ c: 0, e: [['si', 0], ['sa', 2, 'value', 'server'], ['so']] }],
+                        d: [] });
+        eq('a later edit still writes the field', field.value, 'server');
+        host.parentNode.removeChild(host);
+    })();
+
+    // A markup mismatch: the browser parsed something the frames do not
+    // describe. It is reported once, the subtree is rebuilt, and the
+    // document still ends up right.
+    (function mismatchRecovers() {
+        var host = freshHost();
+        host.innerHTML = '<section><b>wrong</b></section>';
+        var batch = { t: 'batch', b: 1,
+                      r: [['o', 0, 'section'], ['o', 1, 'i'], ['t', 2, 'right'],
+                          ['z'], ['z']],
+                      u: [{ c: 0, e: [['in', 0, 0]] }], d: [] };
+        var applier = new latte.Applier({ document: document, host: host });
+        applier.apply(batch);
+        eq('the document is what the frames say',
+           normalize(host.innerHTML), normalize('<section><i>right</i></section>'));
+        eq('and the mismatch is reported once, naming the component',
+           applier.faults.length, 1);
+        eq('with the sentence a reader can act on',
+           applier.faults[0].indexOf('component 0 could not adopt 1 node(s)') >= 0,
+           true);
+        host.parentNode.removeChild(host);
+    })();
+
     // =================================================== § 2 the contract
     //
     // The base tree holds one child of every kind — 0 element, 1 text,

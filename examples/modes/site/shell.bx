@@ -1,0 +1,17 @@
+<beans>
+// The layout. It is server-rendered and stays that way: a layout wraps the
+// page, so a layout in another mode would put the page inside another
+// runtime's region — which latte refuses by name.
+package site
+
+import {Layout, layout} from latte
+
+pub partial class Shell extends Layout {
+    pub fn init() { super.init() }
+}
+</beans>
+
+<main id="page">
+  <h1>Render modes</h1>
+  $slot
+</main>

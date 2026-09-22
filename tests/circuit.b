@@ -26,10 +26,11 @@
 package main
 
 import std.io
+import std.reflect
 import std.thread
 import {Builder, Circuit, CircuitOptions, CircuitSet, Component, ErrorBoundary,
-        MouseEvent, Push, WireLimits, NO_POLLER_MESSAGE,
-        nav_target_is_local} from latte
+        MouseEvent, Push, ServiceSource, WireLimits, NO_POLLER_MESSAGE,
+        inject, nav_target_is_local} from latte
 import {run} from latte.boundary
 
 pub class Report {
@@ -134,6 +135,48 @@ pub class Page extends Component {
     pub override fn render(b: Builder) {
         b.open(0, "h1")
         b.text(1, self.title)
+        b.close()
+    }
+}
+
+// ---- § 16's fixtures: a service, a child that asks for one, a page --------
+
+pub class Clock {
+    pub fn init() {}
+    pub fn reading() -> string { return "tick" }
+}
+
+/// A source that answers for exactly one type, and counts what it was asked.
+pub class OneService implements ServiceSource {
+    pub asked: int = 0
+    pub fn init() {}
+    pub fn provide(described: reflect.Type) -> Result<reflect.Value, string> {
+        self.asked += 1
+        if self.knows(described) { return ok(reflect.value(new Clock())) }
+        return err("nothing provides {described.qualified_name()}")
+    }
+    pub fn knows(described: reflect.Type) -> bool {
+        return described.qualified_name() == type_of(Clock).qualified_name()
+    }
+}
+
+/// A child with an `@inject` field, which is the shape that only a container
+/// can fill and only at mount.
+pub class Stamped extends Component {
+    @inject pub clock: Clock = new Clock()
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "i")
+        b.text(1, self.clock.reading())
+        b.close()
+    }
+}
+
+pub class Injected extends Component {
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "p")
+        b.component<Stamped>(1, fn(s: Stamped) {})
         b.close()
     }
 }
@@ -1117,6 +1160,36 @@ fn main() {
     c15h.accept(click_seq(999, 32), 3)
     r.eq("15.20 two inert messages, two fences, in order", drained(c15h),
          "\{\"t\":\"seen\",\"n\":31\}\n\{\"t\":\"seen\",\"n\":32\}")
+
+    // ========================================================== § 16
+    //
+    // `@inject` on the FIRST mount of a circuit, which is the attach.
+    //
+    // A regression, and one nothing could see: the service source was handed
+    // to the renderer on the navigation path and not on the attach path, so
+    // a component's injected field was filled after a navigation and empty
+    // before one. The page still rendered, so the only evidence was the
+    // fault list — and no suite read it for a circuit.
+    io.println("")
+    io.println("-- 16. a circuit fills @inject at attach, not only after a nav")
+
+    let source: OneService = new OneService()
+    let page16: Injected = new Injected()
+    let c16: Circuit = circuit_over(page16, options_of())
+    c16.services = some(source)
+    c16.open(0)
+    let _: List<string> = c16.take_outbox()
+    c16.accept(attach_message(CID, "/"), 1)
+    r.eq("16.1 the attach mounted the child with its service", c16.html(),
+         "<p><i>tick</i></p>")
+    r.eqi("16.2 and the container was asked exactly once", source.asked, 1)
+    r.eq("16.3 with nothing refused", c16.renderer.all_faults().join(" | "), "")
+
+    // The control: the navigation path, which always worked. Both must be
+    // green, or "attach is fixed" could mean "nav broke".
+    c16.accept("\{\"t\":\"nav\",\"u\":\"/elsewhere\"\}", 2)
+    r.eq("16.4 and a navigation still does", c16.html(), "<p><i>tick</i></p>")
+    r.eqi("16.5 asking the container once more", source.asked, 2)
 
     io.println("")
     io.println("{r.checks} checks, {r.bad} bad")

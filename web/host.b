@@ -69,6 +69,10 @@ pub class WebRequest {
     /// let a `%2F` grow a segment before the matcher ever saw it.
     pub path: string = "/"
     pub body: string = ""
+    /// Whether this browser already has a working browser bundle. What an
+    /// `auto` region resolves to, and nothing else.
+    pub bundle_ready: bool = false
+
     /// The session this client has. Never empty: `map_pages` mints one when the
     /// request carried no cookie.
     pub session: string = ""
@@ -86,7 +90,17 @@ pub class WebReply {
 }
 
 /// The name of the session cookie latte reads and sets.
+/// The path prefix latte owns: the client script, the region loader, the
+/// bundle, the socket and every action. No `@page` route may start with it,
+/// and `map_pages` never looks at one.
+pub const LATTE_PREFIX: string = "/_latte/";
+
 pub const SESSION_COOKIE: string = "latte_session";
+
+/// The cookie a browser sets once its bundle boots. `latte.BUNDLE_COOKIE` is
+/// the same string, spelled twice for the reason `CLIENT_PATH` is;
+/// `tests/w9_shell.b` § 1 asserts the pair.
+pub const BUNDLE_COOKIE: string = "latte_bundle";
 
 /// Serve latte pages from an espresso application.
 ///
@@ -109,7 +123,15 @@ pub fn map_pages(app: espresso.WebApplication,
         var request: WebRequest = new WebRequest()
         request.method = context.request.method
         request.path = path_of(context.request.target)
+        // Everything under `/_latte/` belongs to latte, and no `@page` may
+        // claim it. It is skipped BEFORE the body is looked at, because the
+        // check below refuses a body that is not urlencoded and an action's
+        // is JSON — which turned every action call into a 415 from a route
+        // that does not own the path.
+        if request.path.starts_with(LATTE_PREFIX) { return next(context) }
         request.body = context.request.body.to_string()
+
+        request.bundle_ready = context.request.cookie(BUNDLE_COOKIE).or("") == "1"
 
         var minted: bool = false
         match context.request.cookie(SESSION_COOKIE) {
@@ -270,6 +292,7 @@ fn reason_for(status: int) -> string {
     if status == 403 { return "Forbidden" }
     if status == 404 { return "Not Found" }
     if status == 405 { return "Method Not Allowed" }
+    if status == 413 { return "Payload Too Large" }
     if status == 415 { return "Unsupported Media Type" }
     if status == 500 { return "Internal Server Error" }
     return "Status {status}"

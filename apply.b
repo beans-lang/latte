@@ -37,6 +37,9 @@ pub class Node {
     pub refs: List<int> = []
     pub preserved: bool = false
     pub preserve_seq: int = -1
+    /// Another runtime owns this element's children.
+    pub opaque: bool = false
+    pub opaque_seq: int = -1
     pub kids: List<Node> = []
     pub fn init() {}
 }
@@ -471,6 +474,8 @@ pub class Applier {
             for seq: int in head.refs { node.refs.push(seq) }
             node.preserved = head.preserved
             node.preserve_seq = head.preserve_seq
+            node.opaque = head.opaque
+            node.opaque_seq = head.opaque_seq
         }
 
         if span.kind == SPAN_MOUNT {
@@ -544,6 +549,7 @@ pub class Applier {
             }
             for seq: int in node.refs { into.frames.push(Frame.reference(seq)) }
             if node.preserved { into.frames.push(Frame.preserve(node.preserve_seq)) }
+            if node.opaque { into.frames.push(Frame.opaque(node.opaque_seq)) }
             for kid: Node in node.kids { self.emit(kid, into) }
             into.frames.push(Frame.close)
         } else if node.kind == SPAN_TEXT {

@@ -9,6 +9,12 @@ tests/_w2_component_bad.b
 # test.sh stages one of these inside each nested example module while it
 # runs the examples leg, and removes it again.
 examples/*/tests/_examples_cover.b
+examples/*/_examples_cover.b
+
+# A copy of test.sh, taken so the script can be edited while a run is in
+# flight: bash reads a script as it goes, and editing the running file is a
+# syntax error somewhere in the middle of it.
+.test-run.sh
 
 # The browser tooling: playwright and a pinned CanvasKit build.
 node_modules/
@@ -18,3 +24,4 @@ package-lock.json
 build/browser/
 .playwright-mcp/
 test-results/
+

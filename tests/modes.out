@@ -1,0 +1,176 @@
+== 1. the scan reads every @render_mode, and refuses four shapes ==
+ok   default: server
+ok   Counter: client
+ok   Banner: static
+ok   Plain declares nothing: inherit
+ok   Late prerender: false
+ok   Counter prerender: true
+ok   a type that declared nothing prerenders: true
+ok   a misspelled mode is not applied: inherit
+ok   a non-component is not applied: inherit
+ok   the misspelling is refused once: 1
+ok   the non-component is refused once: 1
+ok   browser types: latte$entry.AutoGood,latte$entry.Counter,latte$entry.Late,latte$entry.Unserializable
+
+== 2. precedence: block, then instance, then the type, then around it ==
+ok   nothing declared inherits: server
+ok   the type wins over what is around it: client
+ok   the instance wins over the type: server
+ok   a block wins over the instance: static
+ok   and says where it came from: @render_mode
+ok   an inherited answer says so: application default
+ok   equal modes are not a boundary: false
+ok   different modes are: true
+ok   static inside server is a boundary too: true
+
+== 3. a client component in a server page is one opaque element ==
+<main id="page"><latte-boundary data-latte-boundary="1" data-latte-mode="client" data-latte-component="latte$entry.Counter" data-latte-props="{&quot;start&quot;:1,&quot;label&quot;:&quot;board&quot;}" data-latte-prerendered=""><div class="counter"><span>board=1</span><button>+1</button></div></latte-boundary></main>
+ok   faults: (none)
+0 open latte-boundary
+  1 attr data-latte-boundary=1
+  2 attr data-latte-mode=client
+  3 attr data-latte-component=latte$entry.Counter
+  4 attr data-latte-props={"start":1,"label":"board"}
+  5 flag data-latte-prerendered=true
+  6 opaque
+  7 raw <div class="counter"><span>board=1</span><button>+1</button></div>
+/close
+
+== 4. a prop change is one attribute edit, and nothing inside ==
+ok   one prop changed: #1 in 0 | #1 attr 4:data-latte-props = {"start":42,"label":"board"} | #1 out
+ok   the prerendered body is untouched: true
+ok   an unchanged render: (nothing)
+
+== 5. a static region has no instance, and its HTML is its props ==
+<main id="page"><latte-boundary data-latte-boundary="1" data-latte-mode="static" data-latte-component="latte$entry.Banner" data-latte-props="{&quot;title&quot;:&quot;board&quot;}" data-latte-prerendered=""><h2>board</h2></latte-boundary></main>
+ok   a static region re-renders from its props: #1 in 0 | #1 attr 4:data-latte-props = {"title":"counter"} | #1 markup 0 = <h2>counter</h2> | #1 out
+
+== 6. prerender: false leaves the element empty ==
+<main id="page"><latte-boundary data-latte-boundary="1" data-latte-mode="client" data-latte-component="latte$entry.Late" data-latte-props="{&quot;note&quot;:&quot;board&quot;}"></latte-boundary></main>
+ok   faults: (none)
+
+== 7. what a boundary refuses, at the boundary, by name ==
+ok   a List parameter cannot cross: latte$entry.Unserializable.rows is a @param of type List<string>, which cannot cross an execution boundary; a prop is a string, an int, a bool or a float. A callback across a boundary is a server action, not a closure
+  1: latte$entry.DeadButton is rendered static and binds on:click; a static region has no instance, so the handler can never run
+ok   a misspelled render:mode is refused with the word in it: true
+
+== 8. an application that declares no mode renders the same bytes ==
+ok   no scan: <main id="page"><em>board</em></main>
+ok   a scan that knows about other types changes nothing: <main id="page"><em>board</em></main>
+ok   and mounts the same number of components: 2=2
+ok   render:mode on an undeclared component makes a boundary: true
+
+== 9. opaque stops the differ at the element, attributes and all ==
+ok   an opaque element sends its attributes and nothing inside: #0 in 0 | #0 attr 1:data-x = b | #0 out
+ok   and without the mark the same change reaches the child: #0 in 0 | #0 attr 1:data-x = b | #0 text 0 = b | #0 out
+
+== 10. every fault site in modes.b and region.b ==
+-- a-default-of-inherit
+   site:    scan_render_modes / the application default is inherit
+   fault:   the application's default render mode is "inherit", which names nothing to inherit from; it must be one of static, server, client or auto
+   control: 0 faults mention "default render mode"
+ok   a-default-of-inherit: the exact fault: the application's default render mode is "inherit", which names nothing to inherit from; it must be one of static, server, client or auto
+ok   a-default-of-inherit: the control is quiet: true
+ok   a-default-of-inherit: and it falls back to server: server
+-- a-mode-nobody-has
+   site:    scan_render_modes / a value that is not a mode
+   fault:   latte$entry.Misspelled is annotated @render_mode(value: "edge"), which is not a mode; it must be one of static, server, client or auto
+   control: 0 faults mention "Banner"
+ok   a-mode-nobody-has: the exact fault: latte$entry.Misspelled is annotated @render_mode(value: "edge"), which is not a mode; it must be one of static, server, client or auto
+ok   a-mode-nobody-has: the control is quiet: true
+-- a-mode-of-inherit
+   site:    scan_render_modes / a value of inherit
+   fault:   latte$entry.Inherits is annotated @render_mode(value: "inherit"), which is the absence of a declaration; delete the annotation to inherit
+   control: 0 faults mention "Plain"
+ok   a-mode-of-inherit: the exact fault: latte$entry.Inherits is annotated @render_mode(value: "inherit"), which is the absence of a declaration; delete the annotation to inherit
+ok   a-mode-of-inherit: the control is quiet: true
+-- no-prerender-to-switch-off
+   site:    scan_render_modes / prerender: false where there is nothing to switch off
+   fault:   latte$entry.EagerStatic is annotated @render_mode(value: "static", prerender: false); a static region IS server-rendered HTML, so there is nothing to switch off
+   control: 0 faults mention "Late"
+ok   no-prerender-to-switch-off: the exact fault: latte$entry.EagerStatic is annotated @render_mode(value: "static", prerender: false); a static region IS server-rendered HTML, so there is nothing to switch off
+ok   no-prerender-to-switch-off: the control is quiet: true
+-- an-auto-component-that-cannot-cross
+   site:    scan_render_modes / an auto component that cannot cross
+   fault:   latte$entry.AutoBad is annotated @render_mode(value: "auto"), so it must be able to run in the browser: latte$entry.AutoBad.rows is a @param of type List<string>, which cannot cross an execution boundary; a prop is a string, an int, a bool or a float. A callback across a boundary is a server action, not a closure
+   control: 0 faults mention "AutoGood"
+ok   an-auto-component-that-cannot-cross: the exact fault: latte$entry.AutoBad is annotated @render_mode(value: "auto"), so it must be able to run in the browser: latte$entry.AutoBad.rows is a @param of type List<string>, which cannot cross an execution boundary; a prop is a string, an int, a bool or a float. A callback across a boundary is a server action, not a closure
+ok   an-auto-component-that-cannot-cross: the control is quiet: true
+-- a-mode-on-a-non-component
+   site:    scan_render_modes / @render_mode on something that is not a Component
+   fault:   latte$entry.NotAComponent is annotated @render_mode but does not extend latte.Component, so it renders nothing that could run anywhere
+   control: 0 faults mention "Counter"
+ok   a-mode-on-a-non-component: the exact fault: latte$entry.NotAComponent is annotated @render_mode but does not extend latte.Component, so it renders nothing that could run anywhere
+ok   a-mode-on-a-non-component: the control is quiet: true
+-- a-layout-in-the-browser
+   site:    scan_render_modes / a layout in a mode that is not server
+   fault:   latte$entry.ClientShell is a latte.Layout annotated @render_mode(value: "client"); a layout wraps a page, so this would put the page inside another runtime's region — a nesting latte does not have. Put the mode on the components inside the page
+   control: 0 faults mention "ServerShell"
+ok   a-layout-in-the-browser: the exact fault: latte$entry.ClientShell is a latte.Layout annotated @render_mode(value: "client"); a layout wraps a page, so this would put the page inside another runtime's region — a nesting latte does not have. Put the mode on the components inside the page
+ok   a-layout-in-the-browser: the control is quiet: true
+-- a-plans-faults-reach-the-scan
+   site:    scan_render_modes / a plan's faults reach the scan's
+   fault:   6 of a plan's faults reached the scan
+   control: 0 faults mention "GoodProps"
+ok   a-plans-faults-reach-the-scan: the exact fault: 6 of a plan's faults reached the scan
+ok   a-plans-faults-reach-the-scan: the control is quiet: true
+-- two-params-under-one-name
+   site:    props_plan_for / two @param fields cross as one name
+   fault:   latte$entry.TwoNames.second: two @param fields both cross as "x"
+   control: true with first,second
+ok   two-params-under-one-name: the exact fault: latte$entry.TwoNames.second: two @param fields both cross as "x"
+ok   two-params-under-one-name: the control is quiet: true
+-- a-param-that-is-not-public
+   site:    props_plan_for / a @param that is not public
+   fault:   latte$entry.HiddenProp.hidden is a @param but is not public, and reflection does not bypass visibility, so nothing would cross
+   control: true with first,second
+ok   a-param-that-is-not-public: the exact fault: latte$entry.HiddenProp.hidden is a @param but is not public, and reflection does not bypass visibility, so nothing would cross
+ok   a-param-that-is-not-public: the control is quiet: true
+-- a-param-that-cannot-cross
+   site:    props_plan_for / a @param that cannot cross
+   fault:   latte$entry.Unserializable.rows is a @param of type List<string>, which cannot cross an execution boundary; a prop is a string, an int, a bool or a float. A callback across a boundary is a server action, not a closure
+   control: true with first,second
+ok   a-param-that-cannot-cross: the exact fault: latte$entry.Unserializable.rows is a @param of type List<string>, which cannot cross an execution boundary; a prop is a string, an int, a bool or a float. A callback across a boundary is a server action, not a closure
+ok   a-param-that-cannot-cross: the control is quiet: true
+-- a-regions-problems-reach-the-builder
+   site:    RenderRegion.render / a region's problems reach the Builder
+   fault:   1: latte$entry.DeadButton is rendered static and binds on:click; a static region has no instance, so the handler can never run
+   control: (none)
+ok   a-regions-problems-reach-the-builder: the exact fault: 1: latte$entry.DeadButton is rendered static and binds on:click; a static region has no instance, so the handler can never run
+ok   a-regions-problems-reach-the-builder: the control is quiet: true
+-- the sites in modes.b, and how many shapes reach each
+   1x scan_render_modes / @render_mode on something that is not a Component
+   1x scan_render_modes / a layout in a mode that is not server
+   1x scan_render_modes / a plan's faults reach the scan's
+   1x scan_render_modes / a value of inherit
+   1x scan_render_modes / a value that is not a mode
+   1x scan_render_modes / an auto component that cannot cross
+   1x scan_render_modes / prerender: false where there is nothing to switch off
+   1x scan_render_modes / the application default is inherit
+-- the sites in region.b, and how many shapes reach each
+   1x RenderRegion.render / a region's problems reach the Builder
+   1x props_plan_for / a @param that cannot cross
+   1x props_plan_for / a @param that is not public
+   1x props_plan_for / two @param fields cross as one name
+
+== 11. auto is a decision between the two runtimes, taken once ==
+ok   with no bundle, an auto component is not a boundary: <main id="page"><b>3</b></main>
+ok   and nothing in the page says client: false
+ok   with a bundle, the same component is a client region: true
+ok   carrying its props: true
+ok   and its server render inside it, to paint before the bundle runs: true
+ok   a re-render does not move a mounted region: true
+
+== 12. the four nestings, and the one that is refused ==
+ok   a static region inside a client one renders: <div class="inner">a<latte-boundary data-latte-boundary="1" data-latte-mode="static" data-latte-component="latte$entry.Banner" data-latte-props="{&quot;title&quot;:&quot;a&quot;}" data-latte-prerendered=""><h2>a</h2></latte-boundary></div>
+ok   and nothing about it is foreign: (none)
+ok   a static region inside a client one follows its props: #0 in 0 | #0 text 0 = b | #0 out | #1 in 0 | #1 attr 4:data-latte-props = {"title":"b"} | #1 markup 0 = <h2>b</h2> | #1 out
+ok   a client region inside a client one is no boundary at all: false
+ok   it is just a child: <div class="inner">c<div class="counter"><span>c=0</span><button>+1</button></div></div>
+ok   a component can ask where it is running: client
+ok   and so can everything the same renderer holds: client/client
+ok   a static render says so: static
+ok   a server region inside a client one is refused: 0: <Plain> at 4 resolves to server inside a client region; a server region inside a browser one needs a server mount protocol latte does not have yet. Move it out of the client region, or make it client
+ok   and the component renders where it is, rather than vanishing: <main id="page"><em>board</em></main>
+
+78 checks, 0 bad

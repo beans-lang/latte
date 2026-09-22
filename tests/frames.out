@@ -1020,6 +1020,36 @@ ok boundary-left-open-at-pass-end: what the refusal left
 ok boundary-left-open-at-pass-end: the pass is still balanced
 ok boundary-left-open-at-pass-end: the control raises nothing
 ok boundary-left-open-at-pass-end: and the control renders
+-- an-instance-mode-nobody-has
+   site:    region_for / render:mode names no mode
+   faults:  0: render:mode="sideways" on <Plain> at 0 is not a mode; it must be one of static, server, client or auto
+   left:    <p>x/1</p>
+   control: <p>x/1</p>
+ok an-instance-mode-nobody-has: the exact faults
+ok an-instance-mode-nobody-has: what the refusal left
+ok an-instance-mode-nobody-has: the pass is still balanced
+ok an-instance-mode-nobody-has: the control raises nothing
+ok an-instance-mode-nobody-has: and the control renders
+-- an-instance-mode-of-inherit
+   site:    region_for / render:mode is inherit
+   faults:  0: render:mode="inherit" on <Plain> at 0 is the absence of a mode; write no render:mode to inherit
+   left:    <p>x/1</p>
+   control: <p>x/1</p>
+ok an-instance-mode-of-inherit: the exact faults
+ok an-instance-mode-of-inherit: what the refusal left
+ok an-instance-mode-of-inherit: the pass is still balanced
+ok an-instance-mode-of-inherit: the control raises nothing
+ok an-instance-mode-of-inherit: and the control renders
+-- a-server-region-inside-a-client-one
+   site:    region_for / a server region inside a client one
+   faults:  0: <Plain> at 0 resolves to server inside a client region; a server region inside a browser one needs a server mount protocol latte does not have yet. Move it out of the client region, or make it client
+   left:    <p>x/1</p>
+   control: <p>x/1</p>
+ok a-server-region-inside-a-client-one: the exact faults
+ok a-server-region-inside-a-client-one: what the refusal left
+ok a-server-region-inside-a-client-one: the pass is still balanced
+ok a-server-region-inside-a-client-one: the control raises nothing
+ok a-server-region-inside-a-client-one: and the control renders
 -- two-boundaries-left-open
    site:    unwind_to / a boundary was left open
    faults:  0: a boundary was left open | 0: a boundary was left open
@@ -1088,6 +1118,9 @@ ok a-slot-that-holds-another-class: and the instance survived all three passes
    3x note_sibling / sequence N does not follow M in this scope
    3x open / refused tag name
    2x region / duplicate key
+   1x region_for / a server region inside a client one
+   1x region_for / render:mode is inherit
+   1x region_for / render:mode names no mode
    6x take_attribute_slot / X does not follow Y in this element's attribute run
    3x take_attribute_slot / X is outside an element's attribute run
    2x unwind_to / a boundary was left open
@@ -1096,4 +1129,4 @@ ok a-slot-that-holds-another-class: and the instance survived all three passes
    3x unwind_to / an element was left open
 ok every fault site in builder.b has a case
 == summary
-checks: 479, failed: 0
+checks: 494, failed: 0

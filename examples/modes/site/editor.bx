@@ -1,0 +1,49 @@
+<beans>
+// A browser component that calls a typed server action.
+//
+// The action's implementation is in `modes.server`, which nothing here
+// imports and nothing in the browser bundle contains. What crosses is the
+// NAME and the arguments; `call_action` encodes them, the page performs the
+// request with the antiforgery token the document carries, and the reply is
+// decoded into a `string` before this file sees it.
+package site
+
+import {ActionError, param, render_mode} from latte
+import {ActionArgs, call_action} from latte_client
+
+@render_mode(value: "client")
+pub partial class Editor extends Component {
+    @param pub title: string = "a note"
+    pub draft: string = ""
+    pub answer: string = ""
+    pub sending: bool = false
+    call: int = 0
+
+    fn save() {
+        if self.sending { return }
+        self.sending = true
+        self.answer = ""
+        var args: ActionArgs = new ActionArgs()
+        args.text("body", self.draft)
+        self.call = call_action<string>("notes.save", args,
+            fn(reply: Result<string, ActionError>) {
+                self.sending = false
+                match reply {
+                    ok(stamp) => { self.answer = "saved as {stamp}" }
+                    err(problem) => { self.answer = "{problem.kind}: {problem.message}" }
+                }
+                self.notify()
+            })
+    }
+}
+</beans>
+
+<section class="editor">
+  <h3>$self.title</h3>
+  <input id="draft" bind:value={self.draft} placeholder="a note" />
+  <button id="save" on:click={fn(e: MouseEvent) { self.save() }}>save</button>
+  <p id="answer">$self.answer</p>
+  $if self.sending {
+    <p id="sending">sending…</p>
+  }
+</section>

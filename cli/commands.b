@@ -9,6 +9,7 @@
 //     latte init myapp --target canvas   the same, drawn on a canvas
 //     latte build                     Debug, into build/debug/
 //     latte build -c Release          -O3, NDEBUG, into build/release/
+//     latte build --client            and the browser half, from browser/main.b
 //     latte check                     build nothing; --drift for a gate
 //     latte generate                  the markup only
 //     latte clean                     remove build/
@@ -56,6 +57,10 @@ pub fn usage() {
     io.eprintln("      --here                            (init) write into this directory")
     io.eprintln("      --drift                           (check) fail on a stale generated file")
     io.eprintln("      --generated                       (clean) remove generated/ as well")
+    io.eprintln("      --client                          (init) scaffold browser/ too;")
+    io.eprintln("                                        (build) compile it into a")
+    io.eprintln("                                        WebAssembly bundle, for an")
+    io.eprintln("                                        application with a client region")
     io.eprintln("")
     io.eprintln("An application does not need latte to build: generated/ is checked in, so a")
     io.eprintln("clone compiles with plain beansc and no latte binary present at all. This is")
@@ -72,6 +77,8 @@ class Args {
     pub here: bool = false
     pub drift: bool = false
     pub generated: bool = false
+    /// `--client`: build the browser half too, or (on init) scaffold it.
+    pub client: bool = false
 
     pub fn init() {}
 }
@@ -114,6 +121,7 @@ fn parse_args(words: List<string>) -> Result<Args> {
         if word == "--here" { parsed.here = true; index += 1; continue }
         if word == "--drift" { parsed.drift = true; index += 1; continue }
         if word == "--generated" { parsed.generated = true; index += 1; continue }
+        if word == "--client" { parsed.client = true; index += 1; continue }
         if word.starts_with("-") {
             return err("{word} is not an option latte has", "usage")
         }
@@ -146,7 +154,17 @@ fn do_init(parsed: Args) -> Result<bool> {
         }
     }
     let name: string = parsed.rest[0]
-    let root: string = init_project(name, target, parsed.latte_path, parsed.here)?
+    if parsed.client {
+        match target {
+            canvas => {
+                return err("--client scaffolds the browser half of an HTML application; a canvas project IS the browser half",
+                           "usage")
+            }
+            html => {}
+        }
+    }
+    let root: string = init_project(name, target, parsed.latte_path,
+                                    parsed.here, parsed.client)?
     var article: string = "a"
     match target { html => { article = "an" } canvas => {} }
     io.eprintln("wrote {article} {target.name()} project in {root}/")
@@ -163,6 +181,9 @@ fn do_init(parsed: Args) -> Result<bool> {
             io.eprintln("static file server will do.")
         }
         html => {
+            if parsed.client {
+                io.eprintln("  latte build --client")
+            }
             io.eprintln("  ./build/debug/{name} serve 8080")
         }
     }
@@ -176,6 +197,19 @@ fn do_build(parsed: Args) -> Result<bool> {
     io.eprintln("{built.profile}: {built.output}")
     if built.is_page {
         io.eprintln("the page is {path.join(built.folder, "index.html")} — serve {built.folder}/")
+    }
+    if parsed.client {
+        if project.manifest.is_canvas() {
+            return err("--client builds the browser half of an HTML application; a canvas project IS the browser half and `latte build` already made it",
+                       "usage")
+        }
+        let bundle: string = build_client(project, profile)?
+        if bundle == "" {
+            return err("--client needs a browser entry at {CLIENT_ENTRY}; an application with a `client` region has one, and a project written before render modes existed does not yet",
+                       "usage")
+        }
+        io.eprintln("{built.profile}: {bundle}")
+        io.eprintln("point LatteOptions.client_module at it")
     }
     return ok(true)
 }

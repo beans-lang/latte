@@ -1,0 +1,12 @@
+module modes
+kind application
+
+# The render-mode demo. Five rows, and each one is named by this module's own
+# source: latte for the component model, latte_app for the composition root,
+# latte_client for the browser entry beside it, and espresso because `check`
+# drives the application through a TestHost.
+require path "../.."
+require path "../../app"
+require path "../../client"
+require github.com/beans-lang/barista v0.1.1
+require github.com/beans-lang/espresso v0.3.0

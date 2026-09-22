@@ -17,6 +17,10 @@ options:
       --here                            (init) write into this directory
       --drift                           (check) fail on a stale generated file
       --generated                       (clean) remove generated/ as well
+      --client                          (init) scaffold browser/ too;
+                                        (build) compile it into a
+                                        WebAssembly bundle, for an
+                                        application with a client region
 
 An application does not need latte to build: generated/ is checked in, so a
 clone compiles with plain beansc and no latte binary present at all. This is

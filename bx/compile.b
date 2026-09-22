@@ -540,13 +540,16 @@ pub fn compile_source(source: string, path: string, options: Options) -> Compile
     // DOM component and a drawn one.
     var lines: List<string> = []
     var components: List<string> = []
+    var blocks: List<string> = []
     match options.target {
         html => {
             let emitter: Emitter = new Emitter(file)
+            emitter.owner = wanted
             let emitted: Emitted = emitter.emit(doc, header.type_params)
             for d: Diag in emitted.diags { out.diags.push(d) }
             for line: string in emitted.lines { lines.push(line) }
             for tag: string in emitted.components { components.push(tag) }
+            for block: string in emitted.blocks { blocks.push(block) }
         }
         canvas => {
             let emitter: CanvasEmitter = new CanvasEmitter(file)
@@ -580,6 +583,12 @@ pub fn compile_source(source: string, path: string, options: Options) -> Compile
     body.push("package {package_name}")
     body.push("")
     for line: string in import_lines(options) { body.push(line) }
+    // Only a file with a <RenderBlock> in it declares a class of its own, and
+    // only such a class spells @param. Adding the name unconditionally would
+    // rewrite every generated file in every repository that has one.
+    if !blocks.is_empty() && !header_binds(header, options.latte_module, "param") {
+        body.push("import \{param\} from {options.latte_module}")
+    }
     body.push("")
     body.push(blank_package_statement(block, header))
     if !components.is_empty() {
@@ -592,6 +601,13 @@ pub fn compile_source(source: string, path: string, options: Options) -> Compile
             body.push("fn _latte_component_{stem}_{mangle_tag(tag)}(value: {tag}) -> Component \{ return value \}")
         }
     }
+    if !blocks.is_empty() {
+        body.push("")
+        body.push("// One class per <{RENDER_BLOCK_TAG}> in {file}: a block's body is a")
+        body.push("// component of its own, because an execution boundary needs its own")
+        body.push("// instance and its own lifecycle rather than a flag on this one.")
+        for block: string in blocks { body.push(block) }
+    }
     body.push("")
     body.push("partial class {wanted} \{")
     body.push("    pub override fn render(b: Builder) \{")
@@ -600,6 +616,23 @@ pub fn compile_source(source: string, path: string, options: Options) -> Compile
     body.push("\}")
     out.source = "{body.join("\n")}\n"
     return out
+}
+
+/// Whether the `<beans>` block already imports `name` from `module`.
+///
+/// The generated `@param` import is written only when it is not there: a
+/// block that declares its own `@param` field imports the name itself, and
+/// two imports of one name is an error in a file the author did not write.
+fn header_binds(header: Header, module: string, name: string) -> bool {
+    var index: int = 0
+    for index < header.import_names.len() {
+        if header.import_paths[index] == module &&
+           header.import_names[index] == name {
+            return true
+        }
+        index = index + 1
+    }
+    return false
 }
 
 /// The `<beans>` block with its `package` statement replaced by a comment of

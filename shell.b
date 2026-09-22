@@ -49,6 +49,38 @@ pub const CLIENT_PATH: string = "/_latte/latte.js"
 /// Where `map_circuit` is registered, and what the client dials.
 pub const SOCKET_PATH: string = "/_latte/ws"
 
+/// Where `map_client` serves the ES module that loads a browser bundle.
+///
+/// A second script and not a part of `latte.js`, for two reasons that both
+/// matter: `latte.js` is a classic script a page with no client region must
+/// still get, and loading WebAssembly wants `import`, which a classic script
+/// does not have. A page with no client region never asks for this one.
+pub const CLIENT_MODULE_SCRIPT: string = "/_latte/latte-client.js"
+
+/// Where a browser bundle is served, when the application ships one.
+pub const CLIENT_BUNDLE_PATH: string = "/_latte/app.wasm"
+
+/// The cookie a browser sets once it has a working browser bundle.
+///
+/// It is how `auto` is decided, and it is decided on the SERVER because the
+/// server is what renders the first byte: a page cannot be server-rendered
+/// one way and then re-decided by a script that has not loaded yet. The
+/// cookie is written by `js/latte-client.js` after the bundle boots and
+/// cleared when it fails, so the answer is "did this browser manage it last
+/// time", which is the only honest thing to ask before the download starts.
+///
+/// It is not a security control and does not need to be: a browser that
+/// lies gets client mode and downloads the bundle.
+pub const BUNDLE_COOKIE: string = "latte_bundle"
+
+/// The form id every server action's antiforgery token is bound to.
+///
+/// ONE id for every action rather than one per action name: a page carries a
+/// single token, and binding it per action would mean a token per action in
+/// every document — bytes on every page for a distinction that buys nothing,
+/// since a caller who can reach one action on a page can reach them all.
+pub const ACTION_FORM_ID: string = "__latte_action"
+
 /// The element the client mounts into. `latte.js` reads it by id, so it is an
 /// id and not a class or a tag.
 pub const ROOT_ID: string = "latte-root"
@@ -108,6 +140,25 @@ pub class ShellOptions {
     /// shipped `style-src 'self'`.
     pub stylesheets: List<string> = []
 
+    /// The ES module that loads this application's browser bundle, and the
+    /// bundle itself. Both empty for a page with no `client` region, and
+    /// then the document carries no second script at all.
+    ///
+    /// They are a pair: a loader with nothing to load and a bundle nothing
+    /// loads are each a deployment half-done, so `faults()` refuses one
+    /// without the other rather than serving a page that quietly never
+    /// becomes interactive.
+    pub client_script: string = ""
+    pub client_module: string = ""
+
+    /// The antiforgery token this page's server actions must present, or
+    /// `""` for an application that declares none.
+    ///
+    /// It rides on the script tag, beside the circuit id, rather than in a
+    /// `<meta>`: it is the client script that reads it, and a page that
+    /// wanted it anywhere else would be a page latte does not serve.
+    pub action_token: string = ""
+
     /// The sealed `@persist` island this document carries, or `""`.
     ///
     /// **An HTML comment, not a `<script type="application/json">`.** latte's
@@ -148,6 +199,20 @@ pub class ShellOptions {
         }
         for problem: string in url_faults("script", self.script) { out.push(problem) }
         for problem: string in url_faults("socket", self.socket) { out.push(problem) }
+        if self.client_script != "" || self.client_module != "" {
+            if self.client_script == "" {
+                out.push("shell: client_module is \"{self.client_module}\" and client_script is empty; nothing in the page would load the bundle, and every client region would stay a blank element")
+            }
+            if self.client_module == "" {
+                out.push("shell: client_script is \"{self.client_script}\" and client_module is empty; the loader would run and find no bundle to load")
+            }
+            for problem: string in url_faults("client_script", self.client_script) {
+                out.push(problem)
+            }
+            for problem: string in url_faults("client_module", self.client_module) {
+                out.push(problem)
+            }
+        }
         if !self.socket.starts_with("/") || self.socket.starts_with("//") {
             out.push("shell: socket \"{self.socket}\" must be an absolute path on this origin; latte.js builds the socket URL as scheme + \"//\" + location.host + this, so a URL here dials an address that does not exist")
         }
@@ -158,6 +223,9 @@ pub class ShellOptions {
                 out.push(problem)
             }
             index += 1
+        }
+        if self.action_token != "" && !is_token_value(self.action_token) {
+            out.push("shell: the action token holds a character that is not a letter, a digit, '.', '-' or '_'; it reaches an HTML attribute and it did not come from Antiforgery.issue")
         }
         if self.circuit_id != "" {
             if !self.circuit {
@@ -213,7 +281,17 @@ pub fn render_shell(options: ShellOptions, body: string) -> Result<string, strin
     if options.circuit_id != "" {
         out.push(" data-latte-circuit=\"{escape_attribute(options.circuit_id)}\"")
     }
+    if options.action_token != "" {
+        out.push(" data-latte-action=\"{escape_attribute(options.action_token)}\"")
+    }
     out.push(" data-latte-root=\"{escape_attribute(options.root_id)}\"></script>\n")
+    // The browser bundle's loader, when there is one. A module script is
+    // deferred by construction, so it runs after the document is parsed and
+    // every `<latte-boundary>` the server wrote is already there.
+    if options.client_script != "" && options.client_module != "" {
+        out.push("<script type=\"module\" src=\"{escape_attribute(options.client_script)}\"")
+        out.push(" data-latte-wasm=\"{escape_attribute(options.client_module)}\"></script>\n")
+    }
     out.push("</head>\n")
     out.push("<body>\n")
     if options.state != "" {
@@ -257,6 +335,21 @@ fn is_element_id(text: string) -> bool {
     let letter: bool = (first >= 65 && first <= 90) || (first >= 97 && first <= 122)
     if !letter { return false }
     return is_token(text)
+}
+
+/// An antiforgery token: letters, digits, `.`, `-`, `_`. The `.` is the one
+/// `Antiforgery.issue` puts between the expiry and the MAC.
+fn is_token_value(text: string) -> bool {
+    if text.len() == 0 { return false }
+    for index: int in 0..text.len() {
+        let byte: int = text.byte_at(index)
+        let letter: bool = (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122)
+        let digit: bool = byte >= 48 && byte <= 57
+        if !letter && !digit && byte != 45 && byte != 95 && byte != 46 {
+            return false
+        }
+    }
+    return true
 }
 
 /// Letters, digits, `-`, `_`.

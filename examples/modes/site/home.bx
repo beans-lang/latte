@@ -1,0 +1,73 @@
+<beans>
+// The page every mode appears on, once each.
+//
+// Read it top to bottom and the whole feature is there:
+//
+//   * static markup and a normal form, which work with no script at all;
+//   * a SERVER counter — the page's own mode, so no boundary and no element;
+//   * a CLIENT counter — the same class, one attribute different;
+//   * a client `<RenderBlock>`, whose body becomes a component of its own;
+//   * a client editor calling a typed server action;
+//   * a STATIC region inside the client one, which is the nesting latte has;
+//   * an AUTO counter, server until the browser has a bundle.
+package site
+
+import std.reflect
+import {FormComponent, form, field, layout, page, param, render_mode,
+        required} from latte
+
+/// What the form posts. A model of its own, because a `@form` binds onto a
+/// value and not onto the page.
+@form
+pub class NoteForm {
+    @field(name: "note") @required(message: "say something")
+    pub note: string = ""
+    pub fn init() {}
+}
+
+@page(route: r"/", methods: ["GET", "POST"])
+@layout(name: "Shell")
+pub partial class Home extends FormComponent {
+    pub model: NoteForm = new NoteForm()
+    /// What the posted form left behind, so the page shows its own answer
+    /// with JavaScript switched off.
+    pub receipt: string = ""
+
+    pub fn init() { super.init() }
+
+    pub override fn form_id() -> string { return "note" }
+    pub override fn form_model() -> reflect.Value { return reflect.value(self.model) }
+
+    pub override fn on_submit() {
+        self.receipt = "posted: {self.model.note}"
+    }
+}
+</beans>
+
+<p id="static">This paragraph is static markup. No instance renders it twice.</p>
+
+<form method="post" id="plain">
+  <input name="note" bind:value={self.model.note} id="note" />
+  <button type="submit" id="post">post</button>
+</form>
+$if self.receipt != "" {
+  <p id="receipt">$self.receipt</p>
+}
+
+<h2>server</h2>
+<Counter label="server" start={1} />
+
+<h2>client</h2>
+<Counter render:mode="client" label="client" start={10} />
+
+<h2>a client block</h2>
+<RenderBlock mode="client" title:string={self.model.note} rows:int={3}>
+  <p id="block">$props.title has $props.rows rows</p>
+  <button id="block-add" on:click={fn(e: MouseEvent) { props.rows += 1 }}>more</button>
+</RenderBlock>
+
+<h2>an action</h2>
+<Editor title="write a note" />
+
+<h2>auto</h2>
+<Counter render:mode="auto" label="auto" start={100} />

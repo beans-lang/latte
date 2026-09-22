@@ -406,7 +406,137 @@ build/
 // ---------------------------------------------------------------------- init
 
 /// The files a project of this target is made of.
-fn pieces_for(name: string, target: bx.Target, latte_path: string) -> List<Piece> {
+/// The browser half of an html project: a module of its own, because a
+/// module root holds ONE entry and `main.b` is the server's.
+///
+/// It is written only for `latte init --with-client`, and its content is
+/// exactly what `latte build --client` compiles. An application with no
+/// `client` region needs none of it and gets none of it.
+fn client_pieces(name: string, latte_path: string) -> List<Piece> {
+    var rows: List<string> = [
+        "module {name}browser",
+        "kind application",
+        "",
+        "# The browser half of {name}. It requires the application — which is",
+        "# what puts the components in the bundle — and the region runtime.",
+        "# It requires NOTHING the server needs, which is what keeps the",
+        "# server's code out of the WebAssembly module.",
+        "require path \"..\"",
+    ]
+    if latte_path != "" {
+        rows.push("require path \"{latte_path}/client\"")
+    } else {
+        rows.push("require github.com/beans-lang/latte v{LATTE_VERSION}")
+    }
+    rows.push("")
+    return [new Piece("browser/beans.pot", rows.join("\n")),
+            new Piece("browser/main.b", client_main())]
+}
+
+fn client_main() -> string {
+    return r##"// The browser entry: what this application's `client` regions run in.
+//
+// It imports the generated site package — the `.b` half of every `.bx`,
+// which is where the components are — and the region runtime, and nothing
+// else. Anything the SERVER needs, a database or a configuration or a
+// secret, is not reachable from here, so it is not in the bundle.
+//
+// The eleven exports are the page's whole surface. They are declared here
+// and not in `latte_client` because `--emit shared` exports the
+// `pub extern "C"` names of the module being BUILT.
+//
+//     latte build --client
+package main
+
+import __NAME__.generated.site
+import {action_cancel_raw, action_result_raw, actions_in_flight,
+        boot_raw, catalogue_raw, event_raw, install_action_transport,
+        last_error_raw, mount_raw, props_raw, take_raw,
+        unmount_raw} from latte_client
+
+// The page's half of a server action. Declared HERE, in a module that only
+// ever builds for a browser, and installed into the region runtime at boot:
+// a declaration inside `latte_client` would put these symbols in the SERVER
+// binary too, because a client component that calls an action imports that
+// module and the server renders the same component for the prerender.
+pub extern "C" fn latte_js_action(call: i32, name: RawPtr<i8>, name_len: i32,
+                                  body: RawPtr<i8>, body_len: i32) -> i32
+pub extern "C" fn latte_js_action_cancel(call: i32) -> i32
+
+fn send_action(call: int, name: RawPtr<i8>, name_len: int,
+               body: RawPtr<i8>, body_len: int) -> int {
+    unsafe {
+        return latte_js_action(call as i32, name, name_len as i32,
+                               body, body_len as i32) as int
+    }
+}
+
+fn cancel_action(call: int) -> int {
+    unsafe { return latte_js_action_cancel(call as i32) as int }
+}
+
+pub extern "C" fn latte_client_boot() -> i32 {
+    install_action_transport(send_action, cancel_action)
+    return boot_raw() as i32
+}
+
+pub extern "C" fn latte_client_mount(id: RawPtr<i8>, id_len: i32,
+                                     name: RawPtr<i8>, name_len: i32,
+                                     props: RawPtr<i8>, props_len: i32) -> i32 {
+    return mount_raw(id, id_len as int, name, name_len as int,
+                     props, props_len as int) as i32
+}
+
+pub extern "C" fn latte_client_props(handle: i32, props: RawPtr<i8>,
+                                     props_len: i32) -> i32 {
+    return props_raw(handle as int, props, props_len as int) as i32
+}
+
+pub extern "C" fn latte_client_event(handle: i32, message: RawPtr<i8>,
+                                     message_len: i32) -> i32 {
+    return event_raw(handle as int, message, message_len as int) as i32
+}
+
+pub extern "C" fn latte_client_take(handle: i32, out: RawPtr<i8>,
+                                    cap: i32) -> i32 {
+    return take_raw(handle as int, out, cap as int) as i32
+}
+
+pub extern "C" fn latte_client_unmount(handle: i32) -> i32 {
+    return unmount_raw(handle as int) as i32
+}
+
+pub extern "C" fn latte_client_last_error(out: RawPtr<i8>, cap: i32) -> i32 {
+    return last_error_raw(out, cap as int) as i32
+}
+
+pub extern "C" fn latte_client_catalogue(out: RawPtr<i8>, cap: i32) -> i32 {
+    return catalogue_raw(out, cap as int) as i32
+}
+
+pub extern "C" fn latte_client_action_result(call: i32, ok: i32,
+                                             payload: RawPtr<i8>,
+                                             payload_len: i32) -> i32 {
+    return action_result_raw(call as int, ok as int, payload,
+                             payload_len as int) as i32
+}
+
+pub extern "C" fn latte_client_action_cancel(call: i32) -> i32 {
+    return action_cancel_raw(call as int) as i32
+}
+
+pub extern "C" fn latte_client_in_flight() -> i32 {
+    return actions_in_flight() as i32
+}
+
+/// Never called in a browser: `--emit shared` has no `_start`. It is here
+/// because a module root declares an entry, and it does nothing.
+fn main() {}
+"##
+}
+
+fn pieces_for(name: string, target: bx.Target, latte_path: string,
+              with_client: bool) -> List<Piece> {
     var pieces: List<Piece> = [
         new Piece("beans.pot", beans_pot(name, target, latte_path)),
         new Piece("latte.pot", latte_pot(name, target)),
@@ -422,6 +552,11 @@ fn pieces_for(name: string, target: bx.Target, latte_path: string) -> List<Piece
             pieces.push(new Piece("main.b", html_main()))
             pieces.push(new Piece("site/shell.bx", html_shell()))
             pieces.push(new Piece("site/home.bx", html_page()))
+            if with_client {
+                for one: Piece in client_pieces(name, latte_path) {
+                    pieces.push(one)
+                }
+            }
         }
     }
     return move pieces
@@ -448,7 +583,7 @@ pub fn is_module_name(name: string) -> bool {
 
 /// Write a project into `<name>/`, or into `.` when `here` is set.
 pub fn init_project(name: string, target: bx.Target, latte_path: string,
-                    here: bool) -> Result<string> {
+                    here: bool, with_client: bool = false) -> Result<string> {
     if !is_module_name(name) {
         return err("'{name}' cannot be a module name — letters, digits and underscores, not starting with a digit",
                    "bad_name")
@@ -459,7 +594,7 @@ pub fn init_project(name: string, target: bx.Target, latte_path: string,
         return err("{root}/beans.pot is already there — this is a project already",
                    "exists")
     }
-    let pieces: List<Piece> = pieces_for(name, target, latte_path)
+    let pieces: List<Piece> = pieces_for(name, target, latte_path, with_client)
     // Every path is checked before anything is written. A scaffold that wrote
     // three files and then found the fourth in the way would leave a directory
     // that is neither the old thing nor a project.

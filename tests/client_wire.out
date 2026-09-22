@@ -1,0 +1,57 @@
+== 1. the bundle boots and says what it can build ==
+ok   boot: 0
+ok   the counter is in the bundle: true
+ok   and latte's own region component is too: true
+
+== 2. mounting a region answers a batch that builds it ==
+ok   a handle came back: true
+-- the first batch
+   {"t":"batch","b":1,"r":[["o",0,"div"],["a",1,"class","counter"],["o",2,"output"],["a",3,"id","value"],["t",4,"hits=3"],["z"],["o",5,"button"],["a",6,"id","add"],["h",7,"click",1],["t",8,"+1"],["z"],["o",9,"input"],["a",10,"id","note"],["a",11,"value",""],["h",12,"input",2],["z"],["o",13,"p"],["a",14,"id","echo"],["t",15,""],["z"],["z"]],"u":[{"c":0,"e":[["in",0,0]]}],"d":[]}
+ok   it is a batch: batch
+ok   numbered from one: 1
+ok   it carries the props the page passed: true
+ok   and nothing is waiting after it is taken: 
+
+== 3. a click runs the handler here, and only the text moves ==
+-- the handlers it bound
+   [{"event":"click","id":1},{"event":"input","id":2}]
+ok   a click handler was bound: true
+ok   the event was accepted: 0
+-- the second batch
+   {"t":"batch","b":2,"r":[],"u":[{"c":0,"e":[["si",0],["si",0],["ut",0,"hits=4"],["so"],["so"]]}],"d":[]}
+ok   it is one text edit and nothing else: [{"c":0,"e":[["si",0],["si",0],["ut",0,"hits=4"],["so"],["so"]]}]
+ok   and the reference pool is empty, because nothing was built: []
+
+== 4. an input event carries its value through the same reader ==
+ok   the input was accepted: 0
+-- the third batch
+   {"t":"batch","b":3,"r":[],"u":[{"c":0,"e":[["si",0],["si",2],["sa",11,"value","beans"],["so"],["si",3],["ut",0,"beans"],["so"],["so"]]}],"d":[]}
+ok   the echo and the field both moved: true
+
+== 5. new props keep the instance and its own state ==
+ok   the props were accepted: 0
+-- the fourth batch
+   {"t":"batch","b":4,"r":[],"u":[{"c":0,"e":[["si",0],["si",0],["ut",0,"hits=11"],["so"],["so"]]}],"d":[]}
+ok   the click is still counted: true
+ok   and the typed text was not re-sent, because it never changed: false
+
+== 6. what a region refuses ==
+ok   a type the bundle does not have: -1
+-- and it says so
+   this browser bundle has no clienttest.site.Nowhere; the component is not reachable from the browser entry, so nothing in the page can build it
+ok   a prop of the wrong type: -1
+-- and it says which
+   clienttest.site.Counter: prop "start" is not an int
+ok   a handler id nothing bound is dropped, not refused: 0
+ok   and it produced no batch: 
+
+== 7. unmounting ==
+ok   the region goes: 0
+ok   and a second unmount says so: -1
+
+== 8. an action with no page to send it ==
+ok   a second region mounted: true
+ok   and nothing is in flight before anything is sent: 0
+ok   a call the page refuses leaves nothing waiting: 0
+
+all checks passed

@@ -27,8 +27,11 @@ import std.http
 import std.io
 import {ShellOptions, render_shell, BOOT_ATTRIBUTE, ROOT_ID,
         CLIENT_PATH as SHELL_CLIENT_PATH,
+        CLIENT_BUNDLE_PATH as SHELL_BUNDLE_PATH,
+        CLIENT_MODULE_SCRIPT as SHELL_MODULE_SCRIPT,
         SOCKET_PATH as SHELL_SOCKET_PATH} from latte
 import {ClientOptions, HeaderOptions, CLIENT_PATH, CLIENT_TYPE, CLIENT_FILE,
+        CLIENT_BUNDLE_PATH, CLIENT_MODULE_SCRIPT,
         SOCKET_PATH, map_asset, map_client} from latte.web
 
 // ================================================================ the report
@@ -102,8 +105,76 @@ fn main() {
     section_refusals(r)
     section_inline(r)
     section_assets(r)
+    section_client_region(r)
     io.println("")
     io.println("{r.checks} checks, {r.failures} bad")
+}
+
+/// § 7 — the loader a page carries when the application ships a browser
+/// bundle, and the pair rule that keeps a half-configured one out.
+fn section_client_region(r: Report) {
+    io.println("")
+    io.println("-- 7. the browser bundle's loader")
+
+    // The control first, and it is the important one: a page with no client
+    // region must carry exactly what it carried before this existed.
+    var none_: ShellOptions = plain()
+    r.no("7.1 no client region, no second script",
+         document_of(none_, "<p>hi</p>").contains("type=\"module\""))
+
+    var both: ShellOptions = plain()
+    both.client_script = "/_latte/latte-client.js"
+    both.client_module = "/_latte/app.wasm"
+    let page: string = document_of(both, "<p>hi</p>")
+    r.yes("7.2 with both, the module tag is in the head",
+          page.contains("<script type=\"module\" src=\"/_latte/latte-client.js\" data-latte-wasm=\"/_latte/app.wasm\"></script>"))
+    r.yes("7.3 and it is after the client script, which defines the applier",
+          at_of(page, "latte-client.js") > at_of(page, "data-latte-boot"))
+    r.yes("7.4 the body is unchanged", page.contains("<p>hi</p>"))
+
+    // Half of a pair is a deployment half-done, and both halves are refused
+    // by name rather than served.
+    var loader_only: ShellOptions = plain()
+    loader_only.client_script = "/_latte/latte-client.js"
+    r.eq("7.5 a loader with no bundle", first_fault(loader_only),
+         "shell: client_script is \"/_latte/latte-client.js\" and client_module is empty; the loader would run and find no bundle to load")
+    var bundle_only: ShellOptions = plain()
+    bundle_only.client_module = "/_latte/app.wasm"
+    r.eq("7.6 a bundle with no loader", first_fault(bundle_only),
+         "shell: client_module is \"/_latte/app.wasm\" and client_script is empty; nothing in the page would load the bundle, and every client region would stay a blank element")
+
+    // A bundle on another origin is NOT refused here: the loader fetches
+    // whatever url it is given, and a deployment that stages its assets on a
+    // CDN is a real deployment. What stops it by default is latte's own
+    // `connect-src 'self'`, which that deployment has to widen on purpose.
+    var elsewhere: ShellOptions = plain()
+    elsewhere.client_script = "/_latte/latte-client.js"
+    elsewhere.client_module = "https://cdn.example.com/app.wasm"
+    r.eq("7.7 a bundle on another origin is a deployment's choice",
+         first_fault(elsewhere), "(none)")
+
+    // What IS refused is a value that would break out of the attribute it
+    // travels in, the same rule every other url in the shell gets.
+    var hostile: ShellOptions = plain()
+    hostile.client_script = "/_latte/latte-client.js"
+    hostile.client_module = "/app.wasm\" onload=\"steal()"
+    r.yes("7.8 and a quote in one is refused before it reaches the document",
+          first_fault(hostile).contains("client_module"))
+}
+
+/// Where `needle` sits in `text`, or -1.
+fn at_of(text: string, needle: string) -> int {
+    match text.find(needle) {
+        some(at) => { return at }
+        none => { return -1 }
+    }
+}
+
+/// The first thing wrong with these options, or `"(none)"`.
+fn first_fault(options: ShellOptions) -> string {
+    let faults: List<string> = options.faults()
+    if faults.len() == 0 { return "(none)" }
+    return faults[0]
 }
 
 // ---------------------------------------------------------------- § 1
@@ -122,9 +193,12 @@ fn section_constants(r: Report) {
     r.eq("1.3 the shell's default script src is that path",
          plain().script, CLIENT_PATH)
     r.eq("1.4 the shell's default socket is that path", plain().socket, SOCKET_PATH)
-    r.eq("1.5 the boot attribute is the one latte.js reads",
+    r.eq("1.5 the client-region loader's path", SHELL_MODULE_SCRIPT,
+         CLIENT_MODULE_SCRIPT)
+    r.eq("1.6 the browser bundle's path", SHELL_BUNDLE_PATH, CLIENT_BUNDLE_PATH)
+    r.eq("1.7 the boot attribute is the one latte.js reads",
          BOOT_ATTRIBUTE, "data-latte-boot")
-    r.eq("1.6 the root element id", ROOT_ID, "latte-root")
+    r.eq("1.8 the root element id", ROOT_ID, "latte-root")
 }
 
 // ---------------------------------------------------------------- § 2

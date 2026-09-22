@@ -589,6 +589,88 @@ accepted: the three conversions
 accepted: bind:checked on an <input>
 accepted: a select with an explicit selected= and on:change
 
+======== render:mode and RenderBlock ========
+accepted: render:mode on a component tag
+  | <Badge render:mode="client" />
+  partial class Refusal {
+      pub override fn render(b: Builder) {
+          b.component_in<Badge>(0, "client", fn(_latte_c: Badge) {  // refusal.bx:5
+          })
+      }
+  }
+  
+refused: render:mode on an element
+  | <div render:mode="client">x</div>
+  refusal.bx:5:6: error: render:mode on <div> names where a COMPONENT runs, and this is an HTML element — put it on the component tag, or wrap the markup in a <RenderBlock mode="...">
+refused: render:mode as an expression
+  | <Badge render:mode={self.where} />
+  refusal.bx:5:8: error: render:mode takes a literal, as render:mode="client" — what runs in the browser has to be known when the browser bundle is built, and an expression is a value that exists only once the server is already rendering
+refused: render:mode with no value
+  | <Badge render:mode />
+  refusal.bx:5:8: error: render:mode takes a literal, as render:mode="client" — what runs in the browser has to be known when the browser bundle is built, and an expression is a value that exists only once the server is already rendering
+refused: a mode nobody has
+  | <Badge render:mode="sideways" />
+  refusal.bx:5:8: error: sideways is not a render mode — write static, server, client or auto
+refused: render:mode=inherit
+  | <Badge render:mode="inherit" />
+  refusal.bx:5:8: error: inherit is the absence of a mode — write no render:mode at all to inherit the region around this tag
+refused: a render: name latte does not have
+  | <Badge render:where="client" />
+  refusal.bx:5:8: error: render:where is not an attribute latte has — the render: namespace holds one name, render:mode
+accepted: a RenderBlock with one typed prop
+  | <RenderBlock mode="client" who:string={self.name}>
+  |   <p>$props.who</p>
+  | </RenderBlock>
+  partial class Refusal {
+      pub override fn render(b: Builder) {
+          b.component_in<Refusal_block0>(0, "client", fn(_latte_c: Refusal_block0) {  // refusal.bx:5
+              _latte_c.who = self.name
+          })
+      }
+  }
+  
+refused: a RenderBlock with no mode
+  | <RenderBlock>
+  |   <p>x</p>
+  | </RenderBlock>
+  refusal.bx:5:1: error: <RenderBlock> needs a mode: it exists to put its body in a different one from the region around it, so <RenderBlock mode="client"> is the whole of what it is for
+refused: a RenderBlock whose mode is an expression
+  | <RenderBlock mode={self.where}>
+  |   <p>x</p>
+  | </RenderBlock>
+  refusal.bx:5:14: error: RenderBlock mode takes a literal, as mode="client" — what runs in the browser has to be known when the browser bundle is built
+  refusal.bx:5:1: error: <RenderBlock> needs a mode: it exists to put its body in a different one from the region around it, so <RenderBlock mode="client"> is the whole of what it is for
+refused: a prop with no type
+  | <RenderBlock mode="client" who={self.name}>
+  |   <p>x</p>
+  | </RenderBlock>
+  refusal.bx:5:28: error: who on a RenderBlock needs a type: a prop crosses an execution boundary, so it is written who:<type>={...} with the type spelled out. A prop is a string, an int, a bool or a float
+refused: a prop of a type that cannot cross
+  | <RenderBlock mode="client" rows:List={self.rows}>
+  |   <p>x</p>
+  | </RenderBlock>
+  refusal.bx:5:28: error: rows:List — a List does not cross an execution boundary. A prop is a string, an int, a bool or a float; anything larger is a server action, not a prop
+refused: a prop whose name is not a field name
+  | <RenderBlock mode="client" 9x:string={self.name}>
+  |   <p>x</p>
+  | </RenderBlock>
+  refusal.bx:5:28: error: '9' is not an attribute name inside <RenderBlock>
+refused: a prop with no expression
+  | <RenderBlock mode="client" who:string="a">
+  |   <p>x</p>
+  | </RenderBlock>
+  refusal.bx:5:28: error: who:string needs an expression: who:string={self.who}
+refused: self inside a RenderBlock body
+  | <RenderBlock mode="client" who:string={self.name}>
+  |   <p>$self.name</p>
+  | </RenderBlock>
+  refusal.bx:6:6: error: an interpolated expression names `self` inside a <RenderBlock>, and that is the PARENT's self — a block runs in its own region, which may be a different runtime, so the parent's instance, its services and its handles are not there. Pass what you need as a prop and read it off `props`
+refused: self inside a handler in a RenderBlock body
+  | <RenderBlock mode="client" who:string={self.name}>
+  |   <button on:click={fn(e: MouseEvent) { self.name = "x" }}>go</button>
+  | </RenderBlock>
+  refusal.bx:6:11: error: an event handler names `self` inside a <RenderBlock>, and that is the PARENT's self — a block runs in its own region, which may be a different runtime, so the parent's instance, its services and its handles are not there. Pass what you need as a prop and read it off `props`
+
 ======== the upcast assertion, per distinct component tag ========
 accepted: a bare component tag
   | <Hint />
@@ -685,5 +767,5 @@ accepted: a capitalised misspelling is a component tag
 accepted: a number over two lines, which is not in a string
 accepted: a stack of two controls
 
-138 refusal(s) fired, 72 control(s) compiled
+152 refusal(s) fired, 74 control(s) compiled
 ======== markup refusals: every check passed ========

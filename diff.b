@@ -174,6 +174,9 @@ pub class Head {
     pub refs: List<int> = []
     pub preserved: bool = false
     pub preserve_seq: int = -1
+    /// `opaque`: the children belong to another runtime, the attributes do not.
+    pub opaque: bool = false
+    pub opaque_seq: int = -1
     pub fn init() {}
 }
 
@@ -355,6 +358,10 @@ pub fn read_head(frames: Frames, span: Span) -> Head {
             preserve(seq) => {
                 head.preserved = true
                 head.preserve_seq = seq
+            }
+            opaque(seq) => {
+                head.opaque = true
+                head.opaque_seq = seq
             }
             _ => {}
         }
@@ -612,8 +619,15 @@ pub class Differ {
             let mark: int = self.current.edits.len()
             self.diff_attrs(oh.attrs, nh.attrs)
             self.diff_binds(oh.binds, nh.binds)
-            self.merge(scan_spans(self.old_frames, o.body, o.stop),
-                       scan_spans(self.new_frames, n.body, n.stop))
+            // `opaque` stops the walk HERE and not one level up: the props a
+            // parent passes across an execution boundary travel as attributes
+            // of this element, so they must still diff. Checked on both sides,
+            // for the reason `preserve` is: frames from a render that did not
+            // own those children do not describe what is in the DOM now.
+            if !oh.opaque && !nh.opaque {
+                self.merge(scan_spans(self.old_frames, o.body, o.stop),
+                           scan_spans(self.new_frames, n.body, n.stop))
+            }
             self.close_step(mark)
             return
         }

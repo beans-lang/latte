@@ -77,6 +77,10 @@ pub enum Frame {
     reference(seq: int)
     preserve(seq: int)
 
+    /// This element's children belong to another runtime. Its attributes are
+    /// still this render's; the differ walks them and never walks inside.
+    opaque(seq: int)
+
     close
 }
 
@@ -152,6 +156,7 @@ pub fn describe_frame(frame: Frame) -> string {
         boundary_close => { return "/boundary" }
         reference(seq) => { return "{seq} ref" }
         preserve(seq) => { return "{seq} preserve" }
+        opaque(seq) => { return "{seq} opaque" }
         close => { return "/close" }
     }
 }
@@ -177,6 +182,7 @@ pub fn frame_seq(frame: Frame) -> int {
         boundary_close => { return -1 }
         reference(seq) => { return seq }
         preserve(seq) => { return seq }
+        opaque(seq) => { return seq }
         close => { return -1 }
     }
 }
@@ -192,6 +198,7 @@ pub fn frame_is_attribute(frame: Frame) -> bool {
         handler(_, _, _) => { return true }
         reference(_) => { return true }
         preserve(_) => { return true }
+        opaque(_) => { return true }
         _ => { return false }
     }
 }

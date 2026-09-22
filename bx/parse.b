@@ -310,6 +310,8 @@ pub class Parser {
             return none
         }
         let node: ElementNode = ElementNode.of(tag, component, at)
+        node.block = component && tag == RENDER_BLOCK_TAG &&
+                     self.rules.target() == Target.html
         self.parse_attributes(node)
         if self.lex.at_end() {
             self.report(at, "<{tag}> was never finished — add the missing >")
@@ -575,6 +577,10 @@ pub class Parser {
     /// Turn one attribute's shape into the node the emitter wants, or refuse it.
     fn classify(node: ElementNode, name: string, at: Span, has_value: bool,
                 is_code: bool, literal: string, code: string) -> Option<Attr> {
+        if node.block {
+            return self.classify_block(node, name, at, has_value, is_code,
+                                       literal, code)
+        }
         let colon: int = name.find_byte(58, 0)
         if colon >= 0 {
             let space: string = name.slice(0, colon)
@@ -584,6 +590,10 @@ pub class Parser {
             }
             if space == "bind" {
                 return self.classify_bind(node, rest, at, has_value, is_code, code)
+            }
+            if space == "render" {
+                return self.classify_render(node, rest, at, has_value, is_code,
+                                            literal)
             }
             // An XML namespace is not one of latte's; it is part of an ordinary
             // attribute name, and the colon is a byte the safe set allows. It
@@ -686,6 +696,58 @@ pub class Parser {
             return some(ExprAttr.of(name, code, at))
         }
         return some(LiteralAttr.of(name, self.rules.resolve_literal(literal), at))
+    }
+
+    /// `render:mode="client"` — where this instance runs.
+    fn classify_render(node: ElementNode, rest: string, at: Span,
+                       has_value: bool, is_code: bool,
+                       literal: string) -> Option<Attr> {
+        if rest != "mode" {
+            self.report(at, "render:{rest} is not an attribute latte has — the render: namespace holds one name, render:mode")
+            return none
+        }
+        if !node.component {
+            self.report(at, "render:mode on <{node.tag}> names where a COMPONENT runs, and this is an HTML element — put it on the component tag, or wrap the markup in a <{RENDER_BLOCK_TAG} mode=\"...\">")
+            return none
+        }
+        if is_code || !has_value {
+            self.report(at, "render:mode takes a literal, as render:mode=\"client\" — what runs in the browser has to be known when the browser bundle is built, and an expression is a value that exists only once the server is already rendering")
+            return none
+        }
+        return some(ModeAttr.of(literal, at))
+    }
+
+    /// One attribute on a `<RenderBlock>`: `mode="..."`, or a typed prop.
+    fn classify_block(node: ElementNode, name: string, at: Span,
+                      has_value: bool, is_code: bool, literal: string,
+                      code: string) -> Option<Attr> {
+        if name == "mode" {
+            if is_code || !has_value {
+                self.report(at, "{RENDER_BLOCK_TAG} mode takes a literal, as mode=\"client\" — what runs in the browser has to be known when the browser bundle is built")
+                return none
+            }
+            return some(ModeAttr.of(literal, at))
+        }
+        let colon: int = name.find_byte(58, 0)
+        if colon < 0 {
+            self.report(at, "{name} on a {RENDER_BLOCK_TAG} needs a type: a prop crosses an execution boundary, so it is written {name}:<type>=\{...\} with the type spelled out. A prop is a string, an int, a bool or a float")
+            return none
+        }
+        let prop: string = name.slice(0, colon)
+        let kind: string = name.slice(colon + 1, name.len())
+        if !is_beans_identifier(prop) {
+            self.report(at, "{prop} is not a Beans field name, and a {RENDER_BLOCK_TAG} prop becomes a field of the component its body compiles into")
+            return none
+        }
+        if !prop_type_is_serializable(kind) {
+            self.report(at, "{prop}:{kind} — a {kind} does not cross an execution boundary. A prop is a string, an int, a bool or a float; anything larger is a server action, not a prop")
+            return none
+        }
+        if !is_code {
+            self.report(at, "{prop}:{kind} needs an expression: {prop}:{kind}=\{self.{prop}\}")
+            return none
+        }
+        return some(PropAttr.of(prop, kind, code, at))
     }
 
     /// One parameter on a component tag: its Beans field, by its Beans name.

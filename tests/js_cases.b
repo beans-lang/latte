@@ -192,6 +192,29 @@ pub class Hollow extends Component {
     }
 }
 
+/// A region another runtime owns: the props move, the body never does.
+///
+/// Both appliers have to carry the `opaque` frame through their own tree and
+/// back out again, so the frame dump is what this case is for — a browser
+/// that silently dropped the mark would land on the same HTML and still fail
+/// here. The body is held still on purpose: this harness judges the applier
+/// against the SERIALIZER's HTML of the new tree, and a body the server
+/// changed behind an opaque mark would make those two differ by design.
+/// `tests/modes.b` § 9 is where that difference is the assertion.
+pub class Owned extends Component {
+    pub props: string = "a"
+    pub fn init() {}
+    pub override fn render(b: Builder) {
+        b.open(0, "latte-boundary")
+        b.attr(1, "data-latte-props", self.props)
+        b.opaque(2)
+        b.open(3, "p")
+        b.text(4, "body")
+        b.close()
+        b.close()
+    }
+}
+
 // ============================================================== recording
 
 class Step {
@@ -413,6 +436,23 @@ fn case_boundary() -> Case {
     shell.notify()
     settle(renderer)
     record(kase, renderer, applier, 4)
+    return kase
+}
+
+fn case_owned() -> Case {
+    let kase: Case = new Case("owned")
+    let page: Owned = new Owned()
+    let renderer: Renderer = new Renderer()
+    renderer.mount(page)
+    let applier: Applier = new Applier()
+    record(kase, renderer, applier, 1)
+
+    // The props change: one attribute edit, and the mark survives the
+    // round trip through both appliers' trees.
+    page.props = "b"
+    page.notify()
+    settle(renderer)
+    record(kase, renderer, applier, 2)
     return kase
 }
 
@@ -1158,6 +1198,7 @@ fn main() {
     cases.push(case_keyed())
     cases.push(case_boundary())
     cases.push(case_hollow())
+    cases.push(case_owned())
     malformed_cases(cases)
     var out: fmt.StringBuilder = new fmt.StringBuilder()
     emit_tables(out)

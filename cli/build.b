@@ -56,6 +56,14 @@ pub fn output_path(project: Project, profile: Profile) -> string {
     return path.join(profile.out, project.output_name())
 }
 
+/// Where an html project's browser entry lives, and what its bundle is
+/// called.
+///
+/// A directory with a manifest of its own, because a module root holds ONE
+/// entry and `main.b` is the server's. `latte build --client` builds it only
+/// when it is there, so a project with no `client` region needs none of it.
+pub const CLIENT_ENTRY: string = "browser/main.b"
+
 /// The `beansc` arguments for one project and profile.
 ///
 /// Its own function because it is what the gate asserts: an expected output
@@ -109,6 +117,53 @@ fn run_beansc(project: Project, arguments: List<string>, extra_path: string) -> 
         return err("beansc exited {finished.status}", "build")
     }
     return ok(true)
+}
+
+/// The `beansc` arguments for a browser bundle.
+///
+/// The three wasm flags are not options: `--target wasm32-unknown-unknown`
+/// is the browser target, `--runtime freestanding` is the only runtime
+/// profile it takes, and `--emit shared` is a module with no `_start` that
+/// exports its memory and its `pub extern "C"` names. Without the third the
+/// driver refuses: there is no application host for this target.
+pub fn client_arguments(profile: Profile, output: string,
+                        wasm_cc: string) -> List<string> {
+    var arguments: List<string> = ["build"]
+    arguments.push("--target"); arguments.push("wasm32-unknown-unknown")
+    arguments.push("--runtime"); arguments.push("freestanding")
+    arguments.push("--emit"); arguments.push("shared")
+    if wasm_cc != "" { arguments.push("--cc"); arguments.push(wasm_cc) }
+    if profile.is_release() { arguments.push("--release") }
+    else { arguments.push("--debug") }
+    arguments.push(CLIENT_ENTRY)
+    arguments.push("-o"); arguments.push(output)
+    return move arguments
+}
+
+/// Where a profile's browser bundle goes, relative to the project root.
+pub fn client_output(project: Project, profile: Profile) -> string {
+    return path.join(profile.out, "{project.output_name()}.wasm")
+}
+
+/// Build the browser half, when the project has one.
+///
+/// Answers the path, or `""` when there is no `browser/main.b` — which is
+/// every project with no `client` region, and is not an error.
+pub fn build_client(project: Project, profile: Profile) -> Result<string> {
+    let entry: string = path.join(project.root, CLIENT_ENTRY)
+    if !File.exists(entry) { return ok("") }
+    let output: string = client_output(project, profile)
+    let folder: string = path.join(project.root, path.parent(output))
+    match Dir.create_all(folder) {
+        ok(_) => {}
+        err(problem) => { return err("cannot make {folder}: {problem.msg}", "build") }
+    }
+    // Resolved before `beansc` runs: a build that compiled for a minute and
+    // then found it had no linker would have wasted every second of it.
+    let tools: WasmTools = find_wasm_tools()?
+    run_beansc(project, client_arguments(profile, output, tools.cc),
+               tools.linker_dir)?
+    return ok(output)
 }
 
 /// Generate, then compile, and for a canvas project stage the page.

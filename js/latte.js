@@ -183,7 +183,7 @@
     // child.
     function frameIsAttribute(op) {
         return op === 'a' || op === 'f' || op === 's' || op === 'h' ||
-               op === 'e' || op === 'v';
+               op === 'e' || op === 'v' || op === 'q';
     }
 
     // diff.b's `matching_close`. The builder guarantees balance; a walker that
@@ -282,7 +282,7 @@
     // diff.b's `read_head`: one element's attribute run, read once.
     function readHead(frames, span) {
         var head = { attrs: [], binds: [], refs: [], preserved: false,
-                     preserveSeq: -1 };
+                     preserveSeq: -1, opaque: false, opaqueSeq: -1 };
         for (var i = span.start + 1; i < span.body; i++) {
             var frame = frames[i];
             var op = frameOp(frame);
@@ -299,6 +299,9 @@
             } else if (op === 'v') {
                 head.preserved = true;
                 head.preserveSeq = frame[1];
+            } else if (op === 'q') {
+                head.opaque = true;
+                head.opaqueSeq = frame[1];
             }
         }
         return head;
@@ -368,6 +371,9 @@
             kind: 0, seq: 0, tag: '', key: '', html: '', raw: false,
             failed: false, component: 0, typeName: '',
             attrs: [], binds: [], refs: [], preserved: false, preserveSeq: -1,
+            // Another runtime owns this element's children. The server's
+            // differ never walks inside one, so no edit ever addresses one.
+            opaque: false, opaqueSeq: -1, foreign: false,
             kids: [], parent: null,
             // An element's or a text node's DOM node; a markup node's list of
             // them. A transparent container owns none of its own.
@@ -434,6 +440,24 @@
         // Whether the host has been taken over from whatever was in it. See
         // `claim` below.
         this.claimed = false;
+        // Whether the first batch ADOPTS what the server rendered instead of
+        // replacing it. Default on: the prerender is already on screen, the
+        // user may already have typed into it, and throwing it away is a
+        // flash, a lost caret and a lost scroll position. `claim` turns it
+        // off by itself for an empty host, where there is nothing to adopt.
+        this.adopts = options.adopt !== false;
+        // Set between the first `claim` and the end of the first batch. While
+        // it is on, nothing this applier builds is put into the host: the
+        // tree is assembled detached and then walked against the DOM the
+        // server wrote.
+        this.adopting = false;
+        // Per component, how many nodes could not be adopted. One fault per
+        // component and not per node: a mismatch cascades, and fifty
+        // sentences about one bad `<tbody>` help nobody.
+        this.mismatched = null;
+        // Set only around one adopted element, so `syncAttrs` can tell "write
+        // what the frames say" from "the user may already have typed here".
+        this.adoptingNode = false;
         this.roots = new Map();
         this.faults = [];
         // element -> logical node, so a delegated listener can walk up from
@@ -496,6 +520,15 @@
         this.claimed = true;
         var host = this.host;
         if (!host) { return; }
+        // Nothing in the host is nothing to adopt, and adopting an empty host
+        // would report every node as a mismatch. A page served with an empty
+        // root, and a region whose boundary asked not to be prerendered, both
+        // land here.
+        if (this.adopts && host.firstChild) {
+            this.adopting = true;
+            this.mismatched = bareMap();
+            return;
+        }
         // `removeChild` in a loop rather than `innerHTML = ''`: it is what the
         // rest of this file does (`detach`), it needs no HTML parser, and it
         // works on a host that is a DocumentFragment.
@@ -669,18 +702,25 @@
         // Live properties, from the same effective list. A name that was
         // applied last time and is gone now goes back to its empty value —
         // otherwise clearing a bound field would leave the old text on screen.
+        //
+        // NOT written while adopting, and that is the one rule hydration is
+        // for: the server rendered `value="x"` and the user has since typed
+        // into the field, so writing the frame's value would throw away the
+        // very state adoption exists to keep. The names are still RECORDED,
+        // so the first edit that really changes one still resets it.
         var live = bareMap();
         for (i = 0; i < want.length; i++) {
             var rule = livePropertyFor(el, want[i].name);
             if (!rule) { continue; }
             live[want[i].name] = true;
+            if (this.adoptingNode) { continue; }
             if (rule.prop === 'checked' || rule.prop === 'selected') {
                 writeLiveProperty(el, rule.prop, true);
             } else {
                 writeLiveProperty(el, rule.prop, want[i].value);
             }
         }
-        if (node.live) {
+        if (node.live && !this.adoptingNode) {
             for (var gone in node.live) {
                 if (live[gone]) { continue; }
                 var back = livePropertyFor(el, gone);
@@ -714,6 +754,8 @@
             for (i = 0; i < head.refs.length; i++) { node.refs.push(head.refs[i]); }
             node.preserved = head.preserved;
             node.preserveSeq = head.preserveSeq;
+            node.opaque = head.opaque;
+            node.opaqueSeq = head.opaqueSeq;
             node.dom = this.makeElement(node.tag);
             if (node.dom) { this.nodes.set(node.dom, node); }
             this.syncAttrs(node, component);
@@ -760,6 +802,249 @@
             }
         }
         return node;
+    };
+
+    // ---- adoption ----------------------------------------------------------
+    //
+    // Hydration: bind the logical tree this applier just built to the DOM the
+    // server already rendered, instead of replacing it.
+    //
+    // It runs ONCE, after the whole first batch, and it is a single walk of
+    // (logical tree, existing DOM) in the order the serializer wrote them —
+    // which is the same order `build` assembles them in, because both read
+    // the same frames. Where they agree the server's node is kept and the
+    // freshly built one is dropped; where they disagree the built one is
+    // spliced in and the disagreement is reported once for that component.
+    //
+    // Keeping the node is the whole point. It is what preserves text the user
+    // typed before the script ran, the caret inside it, the scroll position
+    // of a list, the focus ring, and the identity of anything an extension or
+    // a stylesheet transition is already holding.
+    //
+    // The two shapes that legitimately disagree are worth knowing:
+    //
+    //   * **Adjacent text.** Two text frames side by side parse back as ONE
+    //     text node, so a text node longer than the frame it is being matched
+    //     against is SPLIT rather than refused.
+    //   * **A tag the parser inserts.** `<table><tr>` becomes
+    //     `<table><tbody><tr>` in every browser, and the frames say `tr`. That
+    //     is a mismatch, it is reported, and the subtree is rebuilt — which is
+    //     correct, just not free. Write the `<tbody>`.
+
+    function Cursor(host) {
+        this.host = host;
+        this.at = host ? host.firstChild : null;
+    }
+
+    Cursor.prototype.peek = function () { return this.at; };
+
+    Cursor.prototype.take = function () {
+        var node = this.at;
+        if (node) { this.at = node.nextSibling; }
+        return node;
+    };
+
+    /// Put `node` where the cursor is, without consuming anything.
+    Cursor.prototype.put = function (node) {
+        if (!this.host) { return; }
+        this.host.insertBefore(node, this.at);
+    };
+
+    Applier.prototype.settleAdoption = function () {
+        var root = this.roots.get(0);
+        if (!root || !this.host) { this.mismatched = null; return; }
+        var cursor = new Cursor(this.host);
+        for (var i = 0; i < root.kids.length; i++) {
+            this.adoptNode(root.kids[i], cursor, 0);
+        }
+        // Anything the server wrote that the frames do not describe. It can
+        // only be a document the client and the server disagree about, so it
+        // goes — leaving it would put a node in the page that no edit can
+        // ever address.
+        var extra = 0;
+        while (cursor.peek()) {
+            var stray = cursor.take();
+            this.host.removeChild(stray);
+            extra += 1;
+        }
+        if (extra > 0) {
+            this.fault('hydration: the server rendered ' + extra +
+                       ' node(s) at the root that this batch does not describe');
+        }
+        this.reportMismatches();
+        this.mismatched = null;
+    };
+
+    Applier.prototype.noteMismatch = function (component, node, found) {
+        if (!this.mismatched) { return; }
+        var key = String(component);
+        var held = this.mismatched[key];
+        if (!held) {
+            // The FIRST one is described, and only the first: a mismatch
+            // cascades, so the tenth is a consequence and the first is the
+            // cause. What a reader needs is what the frames wanted and what
+            // the parser left, side by side.
+            held = { count: 0, wanted: describeNode(node),
+                     found: describeDom(found) };
+            this.mismatched[key] = held;
+        }
+        held.count += 1;
+    };
+
+    function describeNode(node) {
+        if (node.kind === SPAN_ELEMENT) { return '<' + node.tag + '>'; }
+        if (node.kind === SPAN_TEXT) { return 'the text ' + JSON.stringify(node.html); }
+        if (node.kind === SPAN_MARKUP) { return 'the markup ' + JSON.stringify(node.html); }
+        return kindName(node.kind);
+    }
+
+    function describeDom(found) {
+        if (!found) { return 'nothing'; }
+        if (found.nodeType === 1) { return '<' + found.tagName.toLowerCase() + '>'; }
+        if (found.nodeType === 3) { return 'the text ' + JSON.stringify(found.nodeValue); }
+        return 'a node of type ' + found.nodeType;
+    }
+
+    Applier.prototype.reportMismatches = function () {
+        if (!this.mismatched) { return; }
+        for (var key in this.mismatched) {
+            var held = this.mismatched[key];
+            this.fault('hydration: component ' + key + ' could not adopt ' +
+                       held.count + ' node(s) the server rendered; they were ' +
+                       'rebuilt. The first was ' + held.wanted + ', where the ' +
+                       'document had ' + held.found + '. The markup the ' +
+                       'browser parsed is not the markup the server wrote — ' +
+                       'an element the parser inserts, such as a <tbody>, is ' +
+                       'the usual cause');
+        }
+    };
+
+    /// Bind one logical node to the DOM the server wrote, or splice in the
+    /// one this applier built.
+    Applier.prototype.adoptNode = function (node, cursor, component) {
+        var i;
+        // A mount is the child component's own node; its content was built by
+        // that component's update and is laid out in this same host.
+        if (node.kind === SPAN_MOUNT) { component = node.component; }
+
+        if (node.kind === SPAN_ELEMENT) {
+            var dom = cursor.peek();
+            if (!dom || dom.nodeType !== 1 ||
+                dom.tagName.toLowerCase() !== String(node.tag).toLowerCase()) {
+                this.spliceIn(node, cursor, component);
+                return;
+            }
+            cursor.take();
+            if (node.dom) { this.nodes.delete(node.dom); }
+            node.dom = dom;
+            this.nodes.set(dom, node);
+            // The attributes are written again — they should already match,
+            // and where they do not the client's view is the one an edit will
+            // be measured against. The LIVE properties are not: `.value` on
+            // an input the user has already typed into is exactly the state
+            // adoption exists to keep.
+            this.syncAdopted(node, component);
+            // `opaque` and `preserve` both mean "what is under here is not
+            // mine", and adoption is bound by that exactly as the differ is.
+            // It is not a nicety: a client region's own runtime may already
+            // have replaced its boundary's content by the time the circuit's
+            // first batch arrives, and a walk that insisted on matching it
+            // would report a mismatch and rebuild the server's prerender
+            // over the top of a live region.
+            if (node.opaque || node.preserved) { return; }
+            var inner = new Cursor(dom);
+            for (i = 0; i < node.kids.length; i++) {
+                this.adoptNode(node.kids[i], inner, component);
+            }
+            while (inner.peek()) { dom.removeChild(inner.take()); }
+            return;
+        }
+
+        if (node.kind === SPAN_TEXT) {
+            // An empty text frame writes no HTML at all — the serializer
+            // emits nothing for it — so there is nothing in the document to
+            // adopt and nothing has gone wrong. The empty node goes in
+            // quietly, because reporting it would make every page with an
+            // unfilled interpolation in it look like a hydration failure.
+            if (node.html === '') { this.putQuietly(node, cursor); return; }
+            var text = cursor.peek();
+            if (!text || text.nodeType !== 3) {
+                this.spliceIn(node, cursor, component);
+                return;
+            }
+            var body = text.nodeValue;
+            if (body === node.html) {
+                cursor.take();
+                node.dom = text;
+                return;
+            }
+            if (body.length > node.html.length &&
+                body.slice(0, node.html.length) === node.html) {
+                // Two frames, one parsed node. Split it and take the front.
+                text.splitText(node.html.length);
+                cursor.take();
+                cursor.at = text.nextSibling;
+                node.dom = text;
+                return;
+            }
+            this.spliceIn(node, cursor, component);
+            return;
+        }
+
+        if (node.kind === SPAN_MARKUP) {
+            var count = node.doms ? node.doms.length : 0;
+            if (count === 0) { return; }
+            var taken = [];
+            var walk = cursor.peek();
+            for (i = 0; i < count; i++) {
+                if (!walk || walk.nodeName !== node.doms[i].nodeName) { break; }
+                taken.push(walk);
+                walk = walk.nextSibling;
+            }
+            if (taken.length !== count) {
+                this.spliceIn(node, cursor, component);
+                return;
+            }
+            for (i = 0; i < count; i++) { cursor.take(); }
+            node.doms = taken;
+            return;
+        }
+
+        // A mount, a region, a fragment and a boundary write no HTML of their
+        // own: their children lay out in the enclosing element, so they share
+        // this cursor.
+        for (i = 0; i < node.kids.length; i++) {
+            this.adoptNode(node.kids[i], cursor, component);
+        }
+    };
+
+    /// The attributes of an adopted element, and none of its live
+    /// properties. See the note in `syncAttrs`.
+    Applier.prototype.syncAdopted = function (node, component) {
+        this.adoptingNode = true;
+        try {
+            this.syncAttrs(node, component);
+        } finally {
+            this.adoptingNode = false;
+        }
+    };
+
+    /// A node the document was never going to have, put where it belongs
+    /// with nothing reported.
+    Applier.prototype.putQuietly = function (node, cursor) {
+        var doms = collectDom(node, []);
+        for (var i = 0; i < doms.length; i++) { cursor.put(doms[i]); }
+    };
+
+    /// The node the server did not write: put the built one where the cursor
+    /// stands and leave the cursor alone.
+    Applier.prototype.spliceIn = function (node, cursor, component) {
+        var found = cursor.peek();
+        var doms = collectDom(node, []);
+        for (var i = 0; i < doms.length; i++) { cursor.put(doms[i]); }
+        if (doms.length > 0 || node.kind === SPAN_TEXT) {
+            this.noteMismatch(component, node, found);
+        }
     };
 
     Applier.prototype.makeElement = function (tag) {
@@ -893,6 +1178,14 @@
             // any batch went out.
             this.roots.delete(disposed[i]);
         }
+        // AFTER the whole batch, not after component 0's update: a mounted
+        // child's content arrives as an update of its own, and the walk below
+        // needs the tree complete or it would find a mount with no children
+        // where the server wrote a subtree.
+        if (this.adopting) {
+            this.adopting = false;
+            this.settleAdoption();
+        }
     };
 
     Applier.prototype.run = function (frames, update) {
@@ -949,7 +1242,13 @@
             anchor = this.anchorFor(cur, at);
             node.parent = cur;
             cur.kids.splice(at, 0, node);
-            attach(node, host, anchor);
+            // While adopting, the tree is assembled detached: `settleAdoption`
+            // is what puts it against the DOM the server wrote. Only the HOST
+            // is off limits — an insert into an element this applier built is
+            // ordinary assembly and still happens.
+            if (!(this.adopting && host === this.host)) {
+                attach(node, host, anchor);
+            }
             return;
         }
 
@@ -1111,6 +1410,9 @@
             }
             if (node.preserved) {
                 buffer.frames.push({ text: node.preserveSeq + ' preserve' });
+            }
+            if (node.opaque) {
+                buffer.frames.push({ text: node.opaqueSeq + ' opaque' });
             }
             for (i = 0; i < node.kids.length; i++) { emitNode(node.kids[i], buffer); }
             buffer.frames.push({ text: '/close', closes: true });
@@ -1774,30 +2076,44 @@
         return id;
     }
 
-    Circuit.prototype.dispatch = function (name, event) {
-        if (this.ended || !this.attached) { return; }
-        var el = event.target;
-        var stop = this.host.parentNode;
+    // The walk from `event.target` up to `host`, looking for a node THIS
+    // applier built that carries a handler for `name`.
+    //
+    // One function, because a circuit and a client region do the same walk
+    // over two different appliers, and two copies of it would be two answers
+    // to "whose event is this". A node another applier owns is not in this
+    // one's `nodes`, which is what keeps a click inside a client region from
+    // reaching the server's handler table — and what lets it keep bubbling to
+    // a server-owned ancestor, which is what the DOM does and what an author
+    // writing `on:click` on a wrapper expects.
+    function findHandler(applier, host, target, name) {
+        var el = target;
+        var stop = host ? host.parentNode : null;
         while (el && el !== stop) {
             if (el.nodeType === 1) {
-                var node = this.applier.nodes.get(el);
+                var node = applier.nodes.get(el);
                 if (node) {
                     var id = handlerIdFor(node, name);
-                    if (id > 0) {
-                        if (name === 'submit') {
-                            // Without this the form posts and the page
-                            // navigates away from the circuit.
-                            event.preventDefault();
-                        }
-                        this.sendFenced({ t: 'ev', h: wireInt(id), k: name,
-                                          p: payloadFor(name, event, el) });
-                        return;
-                    }
+                    if (id > 0) { return { id: id, element: el }; }
                 }
             }
-            if (el === this.host) { break; }
+            if (el === host) { break; }
             el = el.parentNode;
         }
+        return null;
+    }
+
+    Circuit.prototype.dispatch = function (name, event) {
+        if (this.ended || !this.attached) { return; }
+        var found = findHandler(this.applier, this.host, event.target, name);
+        if (!found) { return; }
+        if (name === 'submit') {
+            // Without this the form posts and the page navigates away from
+            // the circuit.
+            event.preventDefault();
+        }
+        this.sendFenced({ t: 'ev', h: wireInt(found.id), k: name,
+                          p: payloadFor(name, event, found.element) });
     };
 
     // The five payload shapes, one per family. `k` selects a FAMILY on the
@@ -1854,6 +2170,93 @@
     // load, so the circuit and its component state survive it. Anything the
     // browser should still handle itself — a modified click, a target, a
     // download, a different origin — is left alone.
+    // ---------------------------------------------------------------- region
+    //
+    // One execution boundary the browser owns.
+    //
+    // It is the same `Applier` a circuit drives, over the same edit stream,
+    // with the same event walk and the same payload serializers. What differs
+    // is the transport: a circuit has a socket, and a region has a `send`
+    // that hands the message to whatever runs its components — today a
+    // WebAssembly module (`latte-client.js`), which answers synchronously
+    // with the edits that came out.
+    //
+    // Two things this deliberately does NOT have, because a local runtime has
+    // no need of either: a fence (a call that returns has already happened)
+    // and a replay buffer (there is no connection to lose).
+    function Region(options) {
+        options = options || {};
+        this.document = options.document ||
+            (typeof document !== 'undefined' ? document : null);
+        this.host = options.host || null;
+        this.send = options.send || function () { return ''; };
+        this.onfault = options.onfault || defaultLog.warn;
+        this.applier = new Applier({ document: this.document, host: this.host,
+                                     onfault: this.onfault });
+        this.listeners = [];
+        this.ended = false;
+    }
+
+    /// Take the boundary over and apply the region's first batch.
+    Region.prototype.attach = function (batch) {
+        if (this.ended) { return this; }
+        this.applier.claim();
+        this.pump(batch);
+        this.listen();
+        return this;
+    };
+
+    /// Apply one encoded batch, or nothing when there is none.
+    Region.prototype.pump = function (batch) {
+        if (this.ended || !batch) { return; }
+        var message;
+        try {
+            message = JSON.parse(batch);
+        } catch (problem) {
+            this.onfault('a region sent a batch that is not JSON');
+            return;
+        }
+        if (!message || message.t !== 'batch') {
+            this.onfault('a region sent a message that is not a batch');
+            return;
+        }
+        this.applier.apply(message);
+    };
+
+    Region.prototype.listen = function () {
+        if (!this.host || !this.host.addEventListener) { return; }
+        var self = this;
+        for (var i = 0; i < EVENT_NAMES.length; i++) {
+            var name = EVENT_NAMES[i];
+            var capture = eventCaptures(name);
+            var listener = (function (eventName) {
+                return function (event) { self.dispatch(eventName, event); };
+            })(name);
+            this.host.addEventListener(name, listener, capture);
+            this.listeners.push({ name: name, listener: listener, capture: capture });
+        }
+    };
+
+    Region.prototype.dispatch = function (name, event) {
+        if (this.ended) { return; }
+        var found = findHandler(this.applier, this.host, event.target, name);
+        if (!found) { return; }
+        if (name === 'submit') { event.preventDefault(); }
+        this.pump(this.send({ t: 'ev', h: wireInt(found.id), k: name,
+                              p: payloadFor(name, event, found.element) }));
+    };
+
+    Region.prototype.stop = function () {
+        this.ended = true;
+        if (this.host && this.host.removeEventListener) {
+            for (var i = 0; i < this.listeners.length; i++) {
+                var row = this.listeners[i];
+                this.host.removeEventListener(row.name, row.listener, row.capture);
+            }
+        }
+        this.listeners = [];
+    };
+
     Circuit.prototype.listenNav = function () {
         var self = this;
         var listener = function (event) { self.maybeNavigate(event); };
@@ -2504,6 +2907,14 @@
         version: WIRE_VERSION,
         Applier: Applier,
         Circuit: Circuit,
+        Region: Region,
+        findHandler: findHandler,
+        payloadFor: payloadFor,
+
+        /// One execution boundary the browser owns. `latte-client.js` calls
+        /// this; it is public so a suite can drive a region with a transport
+        /// of its own and never load a WebAssembly module at all.
+        region: function (options) { return new Region(options); },
         // Public so a suite can assert the browser half registers exactly the
         // set `wire.event_names()` answers, rather than trusting that someone
         // kept the two in step.

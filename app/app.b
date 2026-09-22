@@ -37,14 +37,20 @@ import {Activator, Anonymous, Antiforgery, CircuitOptions, CircuitSet,
         Component, FormComponent, FormMap, FormState, PageHost, PageInstance,
         PageMap, PageRequest, PageResponse, Principal, ServiceSource,
         ShellOptions, Signer, SeamSigner, NO_POLLER_MESSAGE, is_safe_method,
-        Island, Islands, PersistOptions, PersistState, ViewModel,
-        describe_island, open_page,
-        pack_state, render_shell, restore_models, scan_forms, scan_injections,
-        scan_memo, scan_pages_for, scan_persist} from latte
+        Island, Islands, ModeScan, PersistOptions, PersistState, RenderMode,
+        ViewModel, ActionMap, ActionRequest, ActionReply, TokenOutcome,
+        ACTION_FORBIDDEN, ACTION_FORM_ID, ACTION_INVALID, ACTION_REFUSED,
+        ACTION_STALE, ACTION_UNKNOWN,
+        CLIENT_BUNDLE_PATH, CLIENT_MODULE_SCRIPT,
+        describe_island, describe_token, open_page,
+        pack_state, render_shell, restore_models, run_action, scan_actions,
+        scan_forms, scan_injections,
+        scan_memo, scan_pages_for, scan_persist, scan_render_modes} from latte
 import {run} from latte.boundary
-import {CircuitSeam, ClientOptions, EndpointOptions, HeaderOptions, WebRequest,
+import {ActionAnswer, ActionOptions, CircuitSeam, ClientOptions,
+        EndpointOptions, HeaderOptions, WebRequest,
         WebReply, SOCKET_PATH, fresh_id, has_fiber_poller, hmac_signer,
-        map_asset, map_circuit, map_client, map_pages, same_bytes,
+        map_actions, map_asset, map_circuit, map_client, map_pages, same_bytes,
         security_headers} from latte.web
 
 // ============================================================== assets
@@ -116,6 +122,36 @@ pub class LatteOptions {
     /// the markup.
     pub persist: bool = false
     pub persist_options: PersistOptions = new PersistOptions()
+
+    /// The WebAssembly bundle this application's `client` regions run in, as
+    /// a path on disk. Empty means latte serves none.
+    ///
+    /// It is a path and not bytes because it is read once, at startup, the
+    /// way `js/latte.js` is — and because a deployment started in the wrong
+    /// directory should fail then, with the path in the message, rather than
+    /// serve a 404 that looks like a browser problem.
+    pub client_module: string = ""
+
+    /// Where the page points at the bundle. Empty means latte's own path,
+    /// which is where `client_module` is served.
+    ///
+    /// Set it WITHOUT `client_module` when something else serves the bundle
+    /// — a CDN, a reverse proxy, a static directory — and latte should
+    /// write the script tag and nothing more. Setting neither, in an
+    /// application that has a `client` region, is refused at startup.
+    pub client_url: string = ""
+
+    /// The directory the region runtime's loader and its imports are read
+    /// from. The default is `js/`, beside `js/latte.js`; a deployment that
+    /// stages its assets elsewhere says so.
+    pub client_loader: string = ""
+
+    /// The application-wide default execution mode, inherited by every
+    /// component that declares none.
+    ///
+    /// `server` is what latte did before modes existed, so an application
+    /// that names nothing renders exactly the bytes it rendered before.
+    pub render_mode: RenderMode = RenderMode.server
 
     pub fn init() {}
 
@@ -281,6 +317,9 @@ fn copy_shell(from: ShellOptions) -> ShellOptions {
     out.circuit_id = from.circuit_id
     out.stylesheets = from.stylesheets.clone()
     out.state = from.state
+    out.client_script = from.client_script
+    out.client_module = from.client_module
+    out.action_token = from.action_token
     return move out
 }
 
@@ -303,6 +342,10 @@ pub class LatteApp {
     pub pages: PageMap
     pub forms: FormMap
     pub host: PageHost
+    /// Every `@action` in the executable. Empty for an application that
+    /// declares none, and then no route is registered and no page carries a
+    /// token.
+    pub actions: ActionMap = new ActionMap()
     pub anti: Antiforgery
     pub set: CircuitSet
     pub factory: PageFactory
@@ -375,9 +418,26 @@ pub class LatteApp {
     ///     above runs before.
     pub fn mount(web: espresso.WebApplication,
                  endpoint: EndpointOptions) -> Result<bool> {
-        web.use(security_headers(new HeaderOptions()))?
+        var headers: HeaderOptions = new HeaderOptions()
+        // Compiling WebAssembly is script execution as far as CSP is
+        // concerned, and `script-src 'self'` alone does not allow it — Chrome
+        // refuses `WebAssembly.instantiate` outright without this word, and
+        // the failure is a region that never mounts with one line in the
+        // console. It is added only for an application that ships a bundle,
+        // so a page with no client region keeps exactly the policy it had.
+        if self.shell.client_module != "" {
+            headers.script.push("'wasm-unsafe-eval'")
+        }
+        web.use(security_headers(headers))?
 
         var client: ClientOptions = new ClientOptions()
+        client.bundle_file = self.options.client_module
+        // The loader is served whenever a page points at a bundle, even when
+        // something else serves the bundle itself.
+        client.serve_loader = self.shell.client_module != ""
+        if self.options.client_loader != "" {
+            client.module_dir = self.options.client_loader
+        }
         map_client(web, client)?
         for asset: Asset in self.options.assets {
             map_asset(web, asset.path, asset.body, asset.content_type,
@@ -385,6 +445,19 @@ pub class LatteApp {
         }
 
         let holder: LatteApp = self
+        // The action route BEFORE the pages, because `/_latte/action/...` is
+        // latte's path and the page table must never be asked about it. It
+        // used to sit after, and `map_pages` answered every action with 415:
+        // it reads a urlencoded body and an action's is JSON.
+        if self.actions.plans.len() > 0 {
+            var action_options: ActionOptions = new ActionOptions()
+            map_actions(web, action_options,
+                fn(name: string, body: string, token: string,
+                   session: string) -> ActionAnswer {
+                    return holder.act(name, body, token, session)
+                })?
+        }
+
         map_pages(web, fn(request: WebRequest) -> Option<WebReply> {
             return holder.answer(request)
         }, self.options.secure_cookies)?
@@ -400,6 +473,59 @@ pub class LatteApp {
             set.resume_fn(), set.wake_fn())
         map_circuit(web, SOCKET_PATH, seam, endpoint)?
         return ok(true)
+    }
+
+    /// Answer one action call.
+    ///
+    /// The three checks the browser cannot be trusted with happen here, in
+    /// this order and before the action is looked up:
+    ///
+    ///  1. **The antiforgery token.** Bound to the session cookie, so a token
+    ///     lifted off another user's page verifies against the wrong session
+    ///     and is refused.
+    ///  2. **The authorization**, from the `@action`'s own requirements, by
+    ///     `run_action`.
+    ///  3. **Every argument's type**, also by `run_action`, against the
+    ///     method's declared parameters.
+    ///
+    /// A scope per call, released on every exit, exactly as a page gets: an
+    /// action group is built by the container and a `scoped` service inside
+    /// it must not outlive the call that asked for it.
+    fn act(name: string, body: string, token: string,
+           session: string) -> ActionAnswer {
+        let outcome: TokenOutcome = self.anti.check(token, session,
+                                                    ACTION_FORM_ID, self.now())
+        match outcome {
+            valid => {}
+            _ => {
+                var refusal: ActionReply = new ActionReply()
+                refusal.kind = ACTION_STALE
+                refusal.message = "this call's antiforgery token {describe_token(outcome)}; reload the page"
+                return new ActionAnswer(403, refusal.encode())
+            }
+        }
+
+        var scope: Option<barista.ServiceProvider> = none
+        var activator: Option<Activator> = none
+        if self.provider.has_registrations() {
+            match self.provider.create_scope() {
+                ok(made) => {
+                    scope = some(made)
+                    activator = some(new Container(made))
+                }
+                err(problem) => {}
+            }
+        }
+        defer close_scope(scope)
+
+        var asked: ActionRequest = new ActionRequest()
+        asked.name = name
+        asked.arguments = body
+        asked.who = self.factory.who
+        asked.token = token
+        asked.session = session
+        let reply: ActionReply = run_action(self.actions, asked, activator)
+        return new ActionAnswer(status_for_action(reply.kind), reply.encode())
     }
 
     /// Answer one HTTP request, in its own service scope.
@@ -441,6 +567,7 @@ pub class LatteApp {
         asked.path = request.path
         asked.body = request.body
         asked.session = request.session
+        asked.bundle_ready = request.bundle_ready
         asked.who = self.factory.who
         let answer: PageResponse =
             self.host.handle_with(asked, self.now(), activator, source)
@@ -463,6 +590,16 @@ pub class LatteApp {
         // all of that with the pristine form.
         var used: ShellOptions = self.shell
         if !is_safe_method(asked.method) { used = self.static_shell }
+        // The token every server action on this page must present. It is per
+        // SESSION, so the shell has to be copied: two requests are served by
+        // two fibers on one worker and a field written into the shared
+        // options by one would reach the other's document.
+        if self.actions.plans.len() > 0 {
+            var signed: ShellOptions = copy_shell(used)
+            signed.action_token = self.anti.issue(asked.session, ACTION_FORM_ID,
+                                                  self.now())
+            used = signed
+        }
         // The island rides on the answer to an UNSAFE method, and only there.
         // That is the whole hole this closes: a GET's circuit renders the same
         // page the GET did, so it needs nothing carried; a POST's answer holds
@@ -643,6 +780,27 @@ pub fn build_with(options: LatteOptions,
     let anti: Antiforgery = new Antiforgery(signer, options.token_seconds)
     let host: PageHost = new PageHost(pages, forms, anti)
 
+    // Every `@render_mode` in the executable, by name, before a socket
+    // exists — the same contract as the four scans above. A mode that only
+    // failed when somebody reached the page is a mode nobody would find.
+    let modes: ModeScan = scan_render_modes(options.render_mode)
+    if modes.faults.len() > 0 { return err(modes.faults.join(" | ")) }
+
+    // Every `@action` in the executable, by name, before a socket exists. An
+    // action whose parameter cannot cross is a 400 on every call, and that
+    // is a configuration fault rather than a request's.
+    let actions: ActionMap = scan_actions()
+    if actions.report() != "" { return err(actions.report()) }
+    // A `client` region with no bundle to run in is an element that stays
+    // blank for ever, so the two are refused as a pair. The browser_types
+    // list is what a build has to be able to construct.
+    let browser_types: List<string> = modes.browser_types()
+    if browser_types.len() > 0 && options.client_module == "" &&
+       options.client_url == "" {
+        return err("{browser_types.join(", ")} declare @render_mode(value: \"client\") or \"auto\" and this application points at no browser bundle; build one with `latte build --client` and set LatteOptions.client_module, set LatteOptions.client_url if something else serves it, or change the mode")
+    }
+    host.modes = modes
+
     var shell: ShellOptions = new ShellOptions()
     shell.title = options.title
     shell.lang = options.lang
@@ -652,6 +810,20 @@ pub fn build_with(options: LatteOptions,
     static_shell.lang = options.lang
     static_shell.stylesheets = options.stylesheets.clone()
     static_shell.circuit = false
+    // BOTH shells carry the loader. A client region does not need a circuit
+    // and the answer to a POST is served without one, so a page that dropped
+    // the loader there would come back inert for exactly the requests where
+    // a form had just been submitted.
+    var bundle_url: string = options.client_url
+    if bundle_url == "" && options.client_module != "" {
+        bundle_url = CLIENT_BUNDLE_PATH
+    }
+    if bundle_url != "" {
+        shell.client_script = CLIENT_MODULE_SCRIPT
+        shell.client_module = bundle_url
+        static_shell.client_script = CLIENT_MODULE_SCRIPT
+        static_shell.client_module = bundle_url
+    }
 
     var faults: List<string> = shell.faults()
     for problem: string in static_shell.faults() { faults.push(problem) }
@@ -720,9 +892,13 @@ pub fn build_with(options: LatteOptions,
     // provider — see the note beside `factory.activator` for why it is not a
     // scope, and what would change that.
     set.services = some(root_container)
+    set.modes = modes
 
-    return ok(new LatteApp(pages, forms, host, anti, set, factory, islands,
-                           shell, static_shell, options, services, provider))
+    var built: LatteApp = new LatteApp(pages, forms, host, anti, set, factory,
+                                       islands, shell, static_shell, options,
+                                       services, provider)
+    built.actions = actions
+    return ok(built)
 }
 
 // ============================================================== main
@@ -765,4 +941,19 @@ pub fn run_main(options: LatteOptions) {
             io.println("latte ok: {app.pages.pages.len()} page(s), {app.forms.forms.len()} form(s)")
         }
     }
+}
+
+/// The HTTP status one action answer gets.
+///
+/// A `failed` action answers 200: it RAN, and it said no. That is a business
+/// answer and not a transport one, and a client that treated it as a server
+/// error would retry it — which is the one thing an action must never do by
+/// itself.
+fn status_for_action(kind: string) -> int {
+    if kind == ACTION_UNKNOWN { return 404 }
+    if kind == ACTION_FORBIDDEN { return 403 }
+    if kind == ACTION_STALE { return 403 }
+    if kind == ACTION_INVALID { return 400 }
+    if kind == ACTION_REFUSED { return 500 }
+    return 200
 }

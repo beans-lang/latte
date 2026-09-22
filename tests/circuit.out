@@ -248,4 +248,11 @@ ok 15.19a the replay is in order
 ok 15.19 the fence is last
 ok 15.20 two inert messages, two fences, in order
 
-218 checks, 0 bad
+-- 16. a circuit fills @inject at attach, not only after a nav
+ok 16.1 the attach mounted the child with its service
+ok 16.2 and the container was asked exactly once
+ok 16.3 with nothing refused
+ok 16.4 and a navigation still does
+ok 16.5 asking the container once more
+
+223 checks, 0 bad

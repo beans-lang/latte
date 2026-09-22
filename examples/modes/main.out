@@ -1,0 +1,28 @@
+== the page, with no browser bundle yet ==
+<main id="page"><h1>Render modes</h1><p id="static">This paragraph is static markup. No instance renders it twice.</p><form method="post" id="plain"><input name="note" value="" id="note"><button type="submit" id="post">post</button></form><h2>server</h2><section class="counter"><output>server = 1</output><button>add one</button></section><h2>client</h2><latte-boundary data-latte-boundary="5" data-latte-mode="client" data-latte-component="modes.site.Counter" data-latte-props="{&quot;label&quot;:&quot;client&quot;,&quot;start&quot;:10}" data-latte-prerendered=""><section class="counter"><output>client = 10</output><button>add one</button></section></latte-boundary><h2>a client block</h2><latte-boundary data-latte-boundary="6" data-latte-mode="client" data-latte-component="modes.site.Home_block0" data-latte-props="{&quot;title&quot;:&quot;&quot;,&quot;rows&quot;:3}" data-latte-prerendered=""><p id="block"> has 3 rows</p><button id="block-add">more</button></latte-boundary><h2>an action</h2><latte-boundary data-latte-boundary="7" data-latte-mode="client" data-latte-component="modes.site.Editor" data-latte-props="{&quot;title&quot;:&quot;write a note&quot;}" data-latte-prerendered=""><section class="editor"><h3>write a note</h3><input id="draft" value="" placeholder="a note"><button id="save">save</button><p id="answer"></p></section></latte-boundary><h2>auto</h2><section class="counter"><output>auto = 100</output><button>add one</button></section></main>
+
+== the same page, once the browser has one ==
+<main id="page"><h1>Render modes</h1><p id="static">This paragraph is static markup. No instance renders it twice.</p><form method="post" id="plain"><input name="note" value="" id="note"><button type="submit" id="post">post</button></form><h2>server</h2><section class="counter"><output>server = 1</output><button>add one</button></section><h2>client</h2><latte-boundary data-latte-boundary="5" data-latte-mode="client" data-latte-component="modes.site.Counter" data-latte-props="{&quot;label&quot;:&quot;client&quot;,&quot;start&quot;:10}" data-latte-prerendered=""><section class="counter"><output>client = 10</output><button>add one</button></section></latte-boundary><h2>a client block</h2><latte-boundary data-latte-boundary="6" data-latte-mode="client" data-latte-component="modes.site.Home_block0" data-latte-props="{&quot;title&quot;:&quot;&quot;,&quot;rows&quot;:3}" data-latte-prerendered=""><p id="block"> has 3 rows</p><button id="block-add">more</button></latte-boundary><h2>an action</h2><latte-boundary data-latte-boundary="7" data-latte-mode="client" data-latte-component="modes.site.Editor" data-latte-props="{&quot;title&quot;:&quot;write a note&quot;}" data-latte-prerendered=""><section class="editor"><h3>write a note</h3><input id="draft" value="" placeholder="a note"><button id="save">save</button><p id="answer"></p></section></latte-boundary><h2>auto</h2><latte-boundary data-latte-boundary="8" data-latte-mode="client" data-latte-component="modes.site.Counter" data-latte-props="{&quot;label&quot;:&quot;auto&quot;,&quot;start&quot;:100}" data-latte-prerendered=""><section class="counter"><output>auto = 100</output><button>add one</button></section></latte-boundary></main>
+
+== the form, posted with no script at all ==
+<main id="page"><h1>Render modes</h1><p id="static">This paragraph is static markup. No instance renders it twice.</p><form method="post" id="plain"><input name="note" value="hello" id="note"><button type="submit" id="post">post</button></form><p id="receipt">posted: hello</p><h2>server</h2><section class="counter"><output>server = 1</output><button>add one</button></section><h2>client</h2><latte-boundary data-latte-boundary="5" data-latte-mode="client" data-latte-component="modes.site.Counter" data-latte-props="{&quot;label&quot;:&quot;client&quot;,&quot;start&quot;:10}" data-latte-prerendered=""><section class="counter"><output>client = 10</output><button>add one</button></section></latte-boundary><h2>a client block</h2><latte-boundary data-latte-boundary="6" data-latte-mode="client" data-latte-component="modes.site.Home_block0" data-latte-props="{&quot;title&quot;:&quot;hello&quot;,&quot;rows&quot;:3}" data-latte-prerendered=""><p id="block">hello has 3 rows</p><button id="block-add">more</button></latte-boundary><h2>an action</h2><latte-boundary data-latte-boundary="7" data-latte-mode="client" data-latte-component="modes.site.Editor" data-latte-props="{&quot;title&quot;:&quot;write a note&quot;}" data-latte-prerendered=""><section class="editor"><h3>write a note</h3><input id="draft" value="" placeholder="a note"><button id="save">save</button><p id="answer"></p></section></latte-boundary><h2>auto</h2><section class="counter"><output>auto = 100</output><button>add one</button></section></main>
+
+== the whole document, so the two scripts and the token show ==
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Render modes</title>
+<script src="/_latte/latte.js" defer data-latte-boot="1" data-latte-ws="/_latte/ws" data-latte-action="1900.0123456789abcdef" data-latte-root="latte-root"></script>
+<script type="module" src="/_latte/latte-client.js" data-latte-wasm="/_latte/app.wasm"></script>
+</head>
+<body>
+<div id="latte-root"><p>the body</p></div>
+</body>
+</html>
+
+== what this application declares ==
+default server
+modes.site.Editor client prerender=true
+actions: notes.purge, notes.save, notes.stats

@@ -92,3 +92,35 @@ pub interface TargetRules {
     /// Empty when `bind:value` works on this tag; otherwise the refusal.
     fn bind_value_refusal(tag: string) -> string
 }
+
+/// The tag that opens an execution boundary in markup.
+///
+/// Recognised by the compiler rather than looked up in a table of elements:
+/// its body becomes a component of its own, so it is a declaration and not a
+/// thing that renders.
+pub const RENDER_BLOCK_TAG: string = "RenderBlock"
+
+/// Whether a prop's declared type is one that crosses a boundary.
+///
+/// The same four `region.b` encodes, written here because the markup
+/// compiler has to refuse a fifth before a build ever reaches the runtime.
+pub fn prop_type_is_serializable(name: string) -> bool {
+    return name == "string" || name == "int" || name == "bool" || name == "float"
+}
+
+/// Whether a word names one of the modes, `inherit` included.
+///
+/// `inherit` is known and refused separately: "not a mode" and "the absence
+/// of a mode" are different mistakes and deserve different sentences.
+pub fn mode_word_is_known(word: string) -> bool {
+    return word == "static" || word == "server" || word == "client" ||
+           word == "auto" || word == "inherit"
+}
+
+/// The value a generated prop field starts at, before the parent writes it.
+pub fn default_for(prop_type: string) -> string {
+    if prop_type == "string" { return "\"\"" }
+    if prop_type == "int" { return "0" }
+    if prop_type == "bool" { return "false" }
+    return "0.0"
+}

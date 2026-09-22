@@ -1089,6 +1089,24 @@ pub class Antiforgery {
 /// There is no header map and no cookie jar: the host has already decided which
 /// session this client is, which is the host's job and not latte's. What
 /// arrives here is a method, a path, a body and a session id.
+/// What `auto` means for one request.
+///
+/// One function and not a local, because both of `PageHost`'s render paths
+/// need the same answer and a page whose GET and POST disagreed about it
+/// would prerender one way and re-render the other.
+pub fn auto_for(request: PageRequest) -> RenderMode {
+    if request.bundle_ready { return RenderMode.client }
+    return RenderMode.server
+}
+
+/// What the components inside one page inherit: its own `@render_mode`, or
+/// the application default when it declared none.
+pub fn page_inherits(modes: ModeScan, type_name: string) -> RenderMode {
+    let declared: RenderMode = modes.mode_of(type_name)
+    if declared.equals(RenderMode.inherit) { return modes.default_mode }
+    return declared
+}
+
 pub class PageRequest {
     pub method: string = "GET"
     pub path: string = "/"
@@ -1098,6 +1116,10 @@ pub class PageRequest {
     /// Empty means the host has none, which is a refusal for any unsafe method.
     pub session: string = ""
     pub who: Principal = new Anonymous()
+    /// Whether this browser already has a working browser bundle, read from
+    /// `BUNDLE_COOKIE`. It is what an `auto` region resolves to: `client`
+    /// when the bundle is there, `server` while it is not.
+    pub bundle_ready: bool = false
     pub fn init() {}
 }
 
@@ -1129,6 +1151,10 @@ pub class PageResponse {
 pub class PageHost {
     pub pages: PageMap
     pub forms: FormMap
+    /// Every `@render_mode` in the application, and the default a component
+    /// that declares none inherits. Empty for a host that set none, which is
+    /// every host written before modes existed.
+    pub modes: ModeScan = new ModeScan()
     anti: Antiforgery
     pub fn init(pages: PageMap, forms: FormMap, anti: Antiforgery) {
         self.pages = pages
@@ -1264,7 +1290,7 @@ pub class PageHost {
             }
             none => {}
         }
-        return self.render(instance, source)
+        return self.render(instance, source, auto_for(request))
     }
 
     fn post(found: PageMatch, instance: PageInstance, page: FormComponent,
@@ -1320,15 +1346,23 @@ pub class PageHost {
                     page.on_submit()
                     page.state.submitted = true
                 }
-                return self.render(instance, source)
+                return self.render(instance, source, auto_for(request))
             }
         }
     }
 
-    fn render(instance: PageInstance, source: Option<ServiceSource>) -> PageResponse {
+    fn render(instance: PageInstance, source: Option<ServiceSource>,
+              auto: RenderMode) -> PageResponse {
         var reply: PageResponse = new PageResponse()
         let renderer: Renderer = new Renderer()
         renderer.services = source
+        renderer.modes = self.modes
+        // The SERVER renders the page: it is what answers the request. What a
+        // page's own `@render_mode` sets is the mode its components inherit,
+        // which is a different question — see `Registry.inherited_mode`.
+        renderer.owner_mode = RenderMode.server
+        renderer.inherited_mode = page_inherits(self.modes, instance.plan.type_name)
+        renderer.auto_mode = auto
         if !mount_page(renderer, instance) {
             reply.status = 500
             for problem: string in instance.problems { reply.problems.push(problem) }

@@ -42,6 +42,18 @@ pub partial class Counter extends Component {
 A click runs the handler on the server, the framework re-renders that one
 component, diffs it against the previous frame, and sends only what changed.
 
+Or in the browser, if you say so. One attribute moves a component into a
+WebAssembly runtime in the page, where its handlers run with no socket and no
+request — same class, same markup, same `render`:
+
+```html
+<Counter render:mode="client" start={10} />
+```
+
+[`docs/render-modes.md`](docs/render-modes.md) is the whole of it:
+`static`, `server`, `client` and `auto`, what crosses a boundary, typed
+server actions, and hydration. `examples/modes/` is all five on one page.
+
 ## Two targets
 
 Latte renders a component two ways, from one markup language and one compiler.
@@ -67,7 +79,7 @@ node tools/serve.mjs 8731   # then open /examples/showcase/index.html
 ## Contents
 
 - [Requirements](#requirements) · [Try it](#try-it) · [Building an application](#building-an-application) · [Commands](#commands)
-- [Markup](#markup) · [Annotations](#annotations)
+- [Markup](#markup) · [Annotations](#annotations) · [Render modes](#render-modes)
 - [Writing an application](#writing-an-application) — [the minimum](#the-minimum),
   [services](#services-barista), [view-models](#view-models-signals-and-commands),
   [state across the seam](#state-across-the-prerender-seam),
@@ -86,6 +98,10 @@ node tools/serve.mjs 8731   # then open /examples/showcase/index.html
 - **[barista](https://github.com/beans-lang/barista)** is the service
   container. Only `latte_app` requires it; an application that never names a
   barista type needs no `require` row of its own.
+- **A Clang with a wasm32 backend and a `wasm-ld`**, and only for an
+  application with a `client` region: that is what builds the browser
+  bundle. `brew install llvm lld` on a Mac; the copy inside a rustup
+  toolchain works too. Nothing else in latte needs either.
 
 Your application's `beans.pot` needs **one row**. `latte_app` lives inside this
 repository, so the same row reaches both, and it brings espresso and barista
@@ -106,6 +122,8 @@ require github.com/beans-lang/latte v0.1.1
 Then `import github.com/beans-lang/latte` and
 `import {LatteApp} from github.com/beans-lang/latte/app`. The bindings are
 `latte` and `latte_app` — the names those manifests declare, not the paths.
+An application with a `client` region also reaches `latte_client`, the region
+runtime, through that same row — from its browser entry and nowhere else.
 
 An import resolves through the *importing* package's own `require` rows, so a
 file inside latte finds barista through latte's row — an application that only
@@ -162,8 +180,8 @@ a build never sees: a merge, or somebody running `beansc` directly.
 | `latte build -c Release` | `--release` — `-O3`, `NDEBUG` | `build/release/` |
 
 ```
-latte init <name> [--target html|canvas] [--latte <path>] [--here]
-latte build [-c Release]     regenerate, then compile
+latte init <name> [--target html|canvas] [--client] [--latte <path>] [--here]
+latte build [-c Release] [--client]   regenerate, then compile
 latte check [--drift]        type-check; --drift fails on a stale generated file
 latte generate               the markup only
 latte clean [--generated]    remove build/
@@ -304,12 +322,14 @@ every `<` opens a tag.
 | `$slot` | where a layout places the page it wraps; also `$slot:<name>` for named slots |
 | `$html(expr)` | raw HTML, unescaped — you own what goes in |
 | `<Child prop={...} />` | mounts another component |
+| `<RenderBlock mode="client" n:int={...}>` | an execution boundary around a block of markup; its body becomes a component of its own |
 
 ### Attribute prefixes
 
 | prefix | what it does |
 |---|---|
-| `on:click={fn(e: MouseEvent) { ... }}` | event handler, run on the server |
+| `on:click={fn(e: MouseEvent) { ... }}` | event handler, run wherever its component runs |
+| `render:mode="static\|server\|client\|auto"` | where THIS component instance runs. A literal, on a component tag. See [Render modes](#render-modes) |
 | `bind:value={self.field}` | two-way binding on `<input>` and `<textarea>` |
 | `bind:checked={self.flag}` | two-way binding on a checkbox |
 | `bind:value.int` / `.float` / `.bool` | converted on the way in; an unparseable value leaves the field alone rather than writing a zero |
@@ -351,6 +371,9 @@ it marks an element's subtree, not a child.
 | `@length(min:, max:, message:)` | a string `@field` | length bounds |
 | `@range(min:, max:, message:)` | an int or float `@field` | value bounds |
 | `@stream` | a type | the page emits streamed regions |
+| `@render_mode(value:, prerender:)` | a type | where this component runs: `static`, `server`, `client` or `auto`. `prerender` defaults to true |
+| `@actions(name:)` | a type | a group of server actions a browser region may call |
+| `@action(policy:, roles:)` | a method | one of them. Authorization is checked on the server, on every call |
 
 **Every one of these is checked at startup, by name, before a socket exists.** A
 `@length` on an int, a `@field` that is not public, an `@inject` nothing can
@@ -443,6 +466,10 @@ one `Antiforgery` is shared by construction rather than by remembering to.
 | `persist` | `false` | carry `@persist` state across the prerender seam |
 | `persist_options` | 4096 B / 300 s | the island's byte cap and expiry |
 | `now` | `0` | `0` reads the wall clock; anything else is used as-is, which is what an expected-output test wants |
+| `render_mode` | `server` | the mode every component inherits unless it says otherwise |
+| `client_module` | `""` | the WebAssembly bundle latte serves for `client` regions, as a path on disk |
+| `client_url` | `""` | where the page points at that bundle, when something else serves it |
+| `client_loader` | `""` | the directory the region runtime's loader is read from (default `js/`) |
 | `idle_ms`, `retention_ms`, `poll_ms`, `socket_ms` | | circuit timings |
 
 #### Entry points
@@ -669,6 +696,7 @@ restriction.
 | `examples/counter.bx` | one component, rendered to stdout — no socket |
 | `examples/todo.b` | a hand-written component, no markup compiler |
 | `examples/shop/` + `examples/shelf/` | a third-party component library used across a module boundary: four packages in three modules |
+| `examples/modes/` | **where a component runs** — a static paragraph, a plain form, a server counter, a client counter, a client markup block, a client editor calling a typed server action, and an auto counter, all on one page |
 | `examples/latte_bx.b` | the markup compiler's command line |
 
 ### `examples/board`'s stylesheet
@@ -748,17 +776,71 @@ Beyond the suites, it runs legs that answer questions a suite cannot:
 | `csp-browser` | under latte's policy Chrome loads the script and reaches the origin; under espresso's it runs nothing |
 | `wasm-core` | the core needs no OS capability, and `std.net`/`std.fs` are still refused for it |
 | `cli` | `latte init` writes a project that `latte build` builds, for both targets, and a canvas build stages every script its page imports |
+| `client-wire` | a browser bundle mounts a region, dispatches an event and refuses what it should — under node, with no DOM |
+| `client-browser` | one client region in Chromium, Firefox and WebKit, and a click on it that makes **no network request at all** |
+| `client-abi` | every WebAssembly import a bundle has is declared in Beans and supplied by the page |
+| `modes-browser` | `examples/modes` in a real browser: two runtimes on one page, a typed action with its refusals, the inspector, and hydration keeping text typed before the attach |
 
 A refusal test needs a positive control beside it. Without one you cannot tell
 "refused for the right reason" from "refused earlier, for a different one" — and
 `probes/delete_faults.sh` is how you find out whether the test would notice the
 refusal disappearing.
 
+## Render modes
+
+A component can run on the server, in the browser, or not at all — and it is
+the same component either way. There is no client copy of anything, and no
+handwritten JavaScript.
+
+```html
+<Counter />                        <!-- wherever the page runs: the server -->
+<Counter render:mode="client" />   <!-- in the browser, in WebAssembly -->
+<Counter render:mode="auto" />     <!-- client once the bundle is cached -->
+
+<RenderBlock mode="client" title:string={self.heading}>
+  <p>$props.title</p>
+</RenderBlock>
+```
+
+A mode belongs to a **region**, not to a component: the component that
+declared it and everything under it that did not. Only a *change* of mode
+makes an execution boundary, so an application that declares no mode renders
+exactly the bytes it rendered before. Props cross a boundary — a `string`, an
+`int`, a `bool` or a `float` — and nothing else does; a `self`, a service or
+a closure is refused by name.
+
+A `client` region is server-rendered first and the browser **adopts** it, so
+the page paints before the bundle arrives and text typed before the script
+attaches survives it. A browser region reaches the server through a typed
+server action, whose implementation is never in the bundle:
+
+```beans
+var args: ActionArgs = new ActionArgs()
+args.text("body", self.draft)
+self.call = call_action<string>("notes.save", args, fn(answer) { ... })
+```
+
+[`docs/render-modes.md`](docs/render-modes.md) is the reference: the
+precedence rules, what crosses, prerendering and hydration, actions and their
+refusals, `auto`, and the honest list of what does not work yet.
+
+```bash
+latte init myapp --client       # a project with a browser half
+latte build --client            # the server, and the bundle beside it
+```
+
+`--client` writes `browser/`, a module of its own — because a module root
+holds one entry and `main.b` is the server's — and `latte build --client`
+compiles it into `build/debug/myapp.wasm`. Point `LatteOptions.client_module`
+at that.
+
 ## Status
 
 The framework is built and checked: pages, layouts, forms, streaming, the circuit,
 the differ, the wire, a service container, `@inject`, view-models, signals,
-`live`, `@memo`, and signed state across the prerender seam. The check is 33
-suites over 68 legs, both backends, byte-identical, and it drives a real Chrome.
+`live`, `@memo`, signed state across the prerender seam, render modes,
+execution boundaries, a WebAssembly client runtime, typed server actions and
+hydration by adoption. The check is 52 suites over 121 legs, both backends,
+byte-identical, and it drives Chromium, Firefox and WebKit.
 
 The API will still move.

@@ -19,6 +19,7 @@
   "namespaces": [
     {"name": "on:", "detail": "on:<event>={fn(e: <EventType>) { ... }}", "note": "A DOM event handler. The event must be one latte's table has; see events."},
     {"name": "bind:", "detail": "bind:value={<place>} | bind:checked={<place>}", "note": "A two-way binding. It emits an attribute and a handler, so it takes two sequence numbers."},
+    {"name": "render:", "detail": "render:mode=\"static|server|client|auto\"", "note": "Where this component instance runs. A literal and never an expression: what runs in the browser has to be known when the browser bundle is built. It belongs on a component tag; on an element it is refused."},
     {"name": "xlink:", "detail": "xlink:href=\"...\"", "note": "An ordinary XML attribute. xlink:href carries a URL and passes the scheme allowlist, because an SVG <a xlink:href=\"javascript:\"> runs script."},
     {"name": "xml:", "detail": "xml:lang=\"...\"", "note": "An ordinary XML attribute."},
     {"name": "xmlns:", "detail": "xmlns:xlink=\"...\"", "note": "An ordinary XML attribute."}
@@ -57,6 +58,9 @@
     {"name": "attrs", "detail": "attrs={<expr>}", "note": "A map of attributes splatted onto the element. Each still passes the name and URL checks at run time."},
     {"name": "preserve", "detail": "preserve", "note": "The subtree is left alone by the differ."},
     {"name": "live", "detail": "live", "note": "Every interpolated text run in this subtree is signal-bound: it compiles to live_text, the signals it reads subscribe to it, and a write patches that one text node with no render and no diff. An expression under it that reads no signal is a fault, not a value that renders once and never moves again."}
+  ],
+  "compilerTags": [
+    {"name": "RenderBlock", "detail": "<RenderBlock mode=\"client\" <name>:<type>={<expr>}> ... </RenderBlock>", "note": "An execution boundary around a block of markup. `mode` is required and is a literal. Each prop is written with its type — a string, an int, a bool or a float — and is read inside the body as props.<name>. `self` inside the body is refused: it would be the parent's, which does not exist in the runtime the block may be running in."}
   ],
   "voidElements": ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"],
   "rawTextElements": ["script", "style"],

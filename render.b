@@ -79,7 +79,50 @@ pub class Renderer extends DirtySink {
     /// not grow for the life of a circuit.
     bound: Map<int, List<int>> = {}
 
+    /// The application's `@render_mode` scan. Handed to the Registry at
+    /// mount, the same way `services` is.
+    pub modes: ModeScan = new ModeScan()
+
+    /// Who is rendering. The page renderer is the server; a boundary's inner
+    /// renderer is whatever the boundary said.
+    pub owner_mode: RenderMode = RenderMode.server
+
+    /// What a component that declares nothing resolves to here. See
+    /// `Registry.inherited_mode` for why it is a separate question.
+    pub inherited_mode: RenderMode = RenderMode.server
+
+    /// What `auto` resolves to for this render. See `Registry.auto_mode`.
+    pub auto_mode: RenderMode = RenderMode.server
+
+    /// What this renderer's boundary ids are prefixed with.
+    pub region_path: string = ""
+
     pub fn init() { super.init() }
+
+    /// Every DOM event name bound anywhere in this tree, in first-seen order.
+    ///
+    /// It is read off the frames rather than off the registry's handler maps
+    /// because a map is keyed by slot id and does not carry the name — and
+    /// the name is the whole of what a refusal has to say.
+    pub fn bound_events() -> List<string> {
+        var out: List<string> = []
+        for id: int in self.ids() {
+            match self.buffer(id) {
+                some(buffer) => {
+                    for frame: Frame in buffer.frames.items {
+                        match frame {
+                            handler(_, event, _) => {
+                                if !out.contains(event) { out.push(event) }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                none => {}
+            }
+        }
+        return move out
+    }
 
     // ---- the dirty set ----------------------------------------------------
 
@@ -255,6 +298,11 @@ pub class Renderer extends DirtySink {
         // way the dirty sink is, so a component mounted anywhere in the tree
         // reaches it without anything threading it down.
         self.root.registry.services = self.services
+        self.root.registry.modes = self.modes
+        self.root.registry.owner_mode = self.owner_mode
+        self.root.registry.inherited_mode = self.inherited_mode
+        self.root.registry.auto_mode = self.auto_mode
+        self.root.registry.region_path = self.region_path
         // The ROOT component is not mounted by a Builder — nothing called
         // `Builder.mount` for it — so the adopt pass that owns signals,
         // attaches view-models and fills `@inject` fields has to happen here

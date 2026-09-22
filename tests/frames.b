@@ -32,7 +32,7 @@ import std.io
 import std.reflect
 import {Builder, Callback, Component, DirtySink, Frame, FocusEvent, InputEvent,
         KeyboardEvent, MouseEvent, Reference, Renderer, Serializer, Signal,
-        SubmitEvent, describe_frame, inject} from latte
+        SubmitEvent, RenderMode, describe_frame, inject} from latte
 
 // ---------------------------------------------------------------- reporting
 //
@@ -1710,6 +1710,9 @@ const SITE_OPEN_ELEMENT: string = "unwind_to / an element was left open"
 const SITE_OPEN_REGION: string = "unwind_to / a region was left open"
 const SITE_OPEN_FRAGMENT: string = "unwind_to / a fragment was left open"
 const SITE_OPEN_BOUNDARY: string = "unwind_to / a boundary was left open"
+const SITE_MODE_WORD: string = "region_for / render:mode names no mode"
+const SITE_MODE_INHERIT: string = "region_for / render:mode is inherit"
+const SITE_MODE_NEST: string = "region_for / a server region inside a client one"
 
 /// Every report site in `builder.b` except the one that needs two render
 /// passes; `wrong_class_at_one_slot` below carries that one.
@@ -2713,6 +2716,45 @@ fn sites() -> List<Site> {
             b.end_boundary()
         }, "body"))
 
+    // -- region_for -------------------------------------------------------
+    //
+    // The three refusals a render mode can raise at the Builder. All three
+    // are also refused by the markup compiler, with a file and a line, so
+    // these are reachable only from a hand-written render — which is exactly
+    // what this section is for.
+
+    out.push(new Site(SITE_MODE_WORD, "an-instance-mode-nobody-has",
+        fn(b: Builder) {
+            b.component_in<Plain>(0, "sideways", fn(c: Plain) { c.label = "x" })
+        },
+        "0: render:mode=\"sideways\" on <Plain> at 0 is not a mode; it must be one of static, server, client or auto",
+        "<p>x/1</p>",
+        fn(b: Builder) {
+            b.component_in<Plain>(0, "server", fn(c: Plain) { c.label = "x" })
+        }, "<p>x/1</p>"))
+
+    out.push(new Site(SITE_MODE_INHERIT, "an-instance-mode-of-inherit",
+        fn(b: Builder) {
+            b.component_in<Plain>(0, "inherit", fn(c: Plain) { c.label = "x" })
+        },
+        "0: render:mode=\"inherit\" on <Plain> at 0 is the absence of a mode; write no render:mode to inherit",
+        "<p>x/1</p>",
+        fn(b: Builder) {
+            b.component<Plain>(0, fn(c: Plain) { c.label = "x" })
+        }, "<p>x/1</p>"))
+
+    out.push(new Site(SITE_MODE_NEST, "a-server-region-inside-a-client-one",
+        fn(b: Builder) {
+            b.registry.owner_mode = RenderMode.client
+            b.component_in<Plain>(0, "server", fn(c: Plain) { c.label = "x" })
+        },
+        "0: <Plain> at 0 resolves to server inside a client region; a server region inside a browser one needs a server mount protocol latte does not have yet. Move it out of the client region, or make it client",
+        "<p>x/1</p>",
+        fn(b: Builder) {
+            b.registry.owner_mode = RenderMode.client
+            b.component_in<Plain>(0, "client", fn(c: Plain) { c.label = "x" })
+        }, "<p>x/1</p>"))
+
     out.push(new Site(SITE_OPEN_BOUNDARY, "two-boundaries-left-open",
         fn(b: Builder) {
             b.boundary(0)
@@ -2764,7 +2806,7 @@ fn fault_sites(r: Report) {
 
     // The accounting. A site nothing below trips is a refusal with no test,
     // and the only way to see that is to count the sites rather than the
-    // cases. 24 is every `self.faults.push` in builder.b; `grep -c` says so.
+    // cases. 30 is every `self.faults.push` in builder.b; `grep -c` says so.
     var names: List<string> = reached.keys()
     names.sort()
     io.println("-- the sites in builder.b, and how many shapes reach each")
@@ -2774,7 +2816,7 @@ fn fault_sites(r: Report) {
             none => {}
         }
     }
-    r.eqi("every fault site in builder.b has a case", names.len(), 27)
+    r.eqi("every fault site in builder.b has a case", names.len(), 30)
 }
 
 /// Three controls in the table render no html of their own, because a handler,

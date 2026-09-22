@@ -1,0 +1,135 @@
+== 1. the scan finds every action and names every group ==
+ok   the actions this executable answers: broken.detached, broken.generic, broken.hidden, broken.wrapped_dto, broken.wrong_argument, broken.wrong_error, broken.wrong_reply, notes.count, notes.describe, notes.publish, notes.save, twice.clash
+ok   notes.save is usable: found
+ok     its parameters: id, body
+ok     its reply: Result<string, string>
+ok     read as a Result: true
+ok   notes.publish carries its roles: 1
+ok   a refused action is not routable: gone
+
+== 2. a call, its arguments and its reply ==
+ok   a Result that succeeded: {"ok":true,"k":"ok","v":"note 7: hello","e":""}
+ok   a Result that failed: {"ok":false,"k":"failed","v":null,"e":"a note needs a body"}
+ok   a DTO in and a DTO out: {"ok":true,"k":"ok","v":{"stamp":"a note","size":12,"clean":true},"e":""}
+ok   three scalars, one of them a float: {"ok":true,"k":"ok","v":12,"e":""}
+ok   and a whole number is a float too: {"ok":true,"k":"ok","v":8,"e":""}
+
+== 3. what a call is refused for, before it runs ==
+ok   an action nobody declared: no action is named "notes.nowhere"
+ok   an argument that is missing: notes.save: the argument "body" is missing
+ok   an argument of the wrong type: notes.save: "id" is not an int
+ok   a body that is not JSON: invalid
+ok   a body that is not an object: notes.save: the arguments must be a JSON object
+ok   a DTO argument that is not an object: notes.describe: "draft" is a latte$entry.Draft and must be a JSON object
+ok   a role the caller does not have: forbidden
+ok   and the same call from somebody who does: {"ok":true,"k":"ok","v":"published 1","e":""}
+
+== 4. every fault site in actions.b ==
+-- a-dto-field-that-cannot-cross
+   site:    dto_plan_for / a field that cannot cross
+   fault:   latte$entry.Bad.tags is a List<string>, which cannot cross a server action; a field of a DTO is a string, an int, a bool or a float
+   control: (quiet)
+ok   a-dto-field-that-cannot-cross: the exact fault: latte$entry.Bad.tags is a List<string>, which cannot cross a server action; a field of a DTO is a string, an int, a bool or a float
+ok   a-dto-field-that-cannot-cross: the control is quiet: (quiet)
+-- an-action-outside-a-group
+   site:    scan_actions / @action on a type that is not @actions
+   fault:   latte$entry.Stray.wander is annotated @action but latte$entry.Stray is not annotated @actions, so nothing would ever route to it
+   control: (quiet)
+ok   an-action-outside-a-group: the exact fault: latte$entry.Stray.wander is annotated @action but latte$entry.Stray is not annotated @actions, so nothing would ever route to it
+ok   an-action-outside-a-group: the control is quiet: (quiet)
+-- a-group-name-a-url-cannot-carry
+   site:    scan_actions / a group name a URL cannot carry
+   fault:   latte$entry.BadlyNamed is annotated @actions(name: "not a name"); an action group's name reaches a URL path, so it is letters, digits, '-' and '_'
+   control: (quiet)
+ok   a-group-name-a-url-cannot-carry: the exact fault: latte$entry.BadlyNamed is annotated @actions(name: "not a name"); an action group's name reaches a URL path, so it is letters, digits, '-' and '_'
+ok   a-group-name-a-url-cannot-carry: the control is quiet: (quiet)
+-- two-actions-under-one-name-the-second
+   site:    scan_actions / two actions under one name, the second
+   fault:   2 plan(s) carry the clash
+   control: (quiet)
+ok   two-actions-under-one-name-the-second: the exact fault: 2 plan(s) carry the clash
+ok   two-actions-under-one-name-the-second: the control is quiet: (quiet)
+-- two-actions-under-one-name-the-first
+   site:    scan_actions / two actions under one name, the first
+   fault:   refused
+   control: (quiet)
+ok   two-actions-under-one-name-the-first: the exact fault: refused
+ok   two-actions-under-one-name-the-first: the control is quiet: (quiet)
+-- a-group-with-no-action
+   site:    scan_actions / a group with no action in it
+   fault:   latte$entry.NoActions is annotated @actions and declares no @action method, so the group answers nothing
+   control: (quiet)
+ok   a-group-with-no-action: the exact fault: latte$entry.NoActions is annotated @actions and declares no @action method, so the group answers nothing
+ok   a-group-with-no-action: the control is quiet: (quiet)
+-- a-method-that-is-not-public
+   site:    plan_for_action / a method that is not public
+   fault:   latte$entry.BrokenActions.hidden is annotated @action but is not public, and reflection does not bypass visibility
+   control: (quiet)
+ok   a-method-that-is-not-public: the exact fault: latte$entry.BrokenActions.hidden is annotated @action but is not public, and reflection does not bypass visibility
+ok   a-method-that-is-not-public: the control is quiet: (quiet)
+-- a-generic-method
+   site:    plan_for_action / a generic method
+   fault:   latte$entry.BrokenActions.generic is annotated @action and is generic; a reflective call cannot name which instantiation to run, so latte could never dispatch it
+   control: (quiet)
+ok   a-generic-method: the exact fault: latte$entry.BrokenActions.generic is annotated @action and is generic; a reflective call cannot name which instantiation to run, so latte could never dispatch it
+ok   a-generic-method: the control is quiet: (quiet)
+-- a-static-method
+   site:    plan_for_action / a static method
+   fault:   latte$entry.BrokenActions.detached is annotated @action and is static; an action group is built by the container so it can hold its services, and a static method has no receiver to build
+   control: (quiet)
+ok   a-static-method: the exact fault: latte$entry.BrokenActions.detached is annotated @action and is static; an action group is built by the container so it can hold its services, and a static method has no receiver to build
+ok   a-static-method: the control is quiet: (quiet)
+-- a-parameter-that-cannot-cross
+   site:    plan_for_action / a parameter that cannot cross
+   fault:   latte$entry.BrokenActions.wrong_argument: the parameter "rows" is a List<string>, which cannot cross a server action. A parameter is a string, an int, a bool, a float, or a class whose public fields are all of those
+   control: (quiet)
+ok   a-parameter-that-cannot-cross: the exact fault: latte$entry.BrokenActions.wrong_argument: the parameter "rows" is a List<string>, which cannot cross a server action. A parameter is a string, an int, a bool, a float, or a class whose public fields are all of those
+ok   a-parameter-that-cannot-cross: the control is quiet: (quiet)
+-- an-error-side-that-is-not-a-string
+   site:    plan_for_action / a Result whose error is not a string
+   fault:   latte$entry.BrokenActions.wrong_error returns Result<string, int>; an action's failure crosses as text, so the error side of its Result must be a string
+   control: (quiet)
+ok   an-error-side-that-is-not-a-string: the exact fault: latte$entry.BrokenActions.wrong_error returns Result<string, int>; an action's failure crosses as text, so the error side of its Result must be a string
+ok   an-error-side-that-is-not-a-string: the control is quiet: (quiet)
+-- a-reply-that-cannot-cross
+   site:    plan_for_action / a reply that cannot cross
+   fault:   latte$entry.BrokenActions.wrong_reply answers a List<string>, which cannot cross a server action. A reply is a string, an int, a bool, a float, or a class whose public fields are all of those
+   control: (quiet)
+ok   a-reply-that-cannot-cross: the exact fault: latte$entry.BrokenActions.wrong_reply answers a List<string>, which cannot cross a server action. A reply is a string, an int, a bool, a float, or a class whose public fields are all of those
+ok   a-reply-that-cannot-cross: the control is quiet: (quiet)
+-- a-result-of-a-class
+   site:    plan_for_action / a Result of something that is not a scalar
+   fault:   latte$entry.BrokenActions.wrapped_dto answers Result<latte$entry.Saved, string>; latte can read a Result of a string, an int, a bool or a float, and not of a class — reading one back needs the closed type spelled out and a dispatcher only has a descriptor. Answer the latte$entry.Saved directly and carry the failure in a field of it, or answer a Result of one scalar
+   control: (quiet)
+ok   a-result-of-a-class: the exact fault: latte$entry.BrokenActions.wrapped_dto answers Result<latte$entry.Saved, string>; latte can read a Result of a string, an int, a bool or a float, and not of a class — reading one back needs the closed type spelled out and a dispatcher only has a descriptor. Answer the latte$entry.Saved directly and carry the failure in a field of it, or answer a Result of one scalar
+ok   a-result-of-a-class: the control is quiet: (quiet)
+-- a-plans-faults-reach-the-map
+   site:    scan_actions / a plan's faults reach the map's
+   fault:   9 of a plan's faults reached the map
+   control: (quiet)
+ok   a-plans-faults-reach-the-map: the exact fault: 9 of a plan's faults reached the map
+ok   a-plans-faults-reach-the-map: the control is quiet: (quiet)
+-- the sites in actions.b, and how many shapes reach each
+   1x dto_plan_for / a field that cannot cross
+   1x plan_for_action / a Result of something that is not a scalar
+   1x plan_for_action / a Result whose error is not a string
+   1x plan_for_action / a generic method
+   1x plan_for_action / a method that is not public
+   1x plan_for_action / a parameter that cannot cross
+   1x plan_for_action / a reply that cannot cross
+   1x plan_for_action / a static method
+   1x scan_actions / @action on a type that is not @actions
+   1x scan_actions / a group name a URL cannot carry
+   1x scan_actions / a group with no action in it
+   1x scan_actions / a plan's faults reach the map's
+   1x scan_actions / two actions under one name, the first
+   1x scan_actions / two actions under one name, the second
+
+== 5. a reply's encoding, one value at a time ==
+ok   a string: "a \"quoted\" word"
+ok   an int: -9
+ok   a bool: true
+ok   a float: 0.5
+ok   a DTO, in declaration order: {"stamp":"s","size":2,"clean":false}
+
+53 checks, 0 bad

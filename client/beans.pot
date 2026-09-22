@@ -1,0 +1,22 @@
+module latte_client
+kind library
+
+# The browser half of an execution boundary: the runtime that owns a `client`
+# region's components, renders them, diffs them and hands the edits to the
+# page's own applier.
+#
+# A SIBLING module and not a package under `latte/`, for the reason
+# `latte_app` is one: a package under a module may not import its own module
+# root, and this needs `Renderer`, `Builder`, `RenderMode` and the wire
+# encoder — all of which live at that root.
+#
+# It imports NOTHING but latte and std.reflect. In particular it does not
+# import `latte.browser`: that package is the canvas target's host and pulls
+# CanvasKit, the scene graph, the layout engine and the paint stack with it,
+# none of which an HTML page has any use for. The few bytes of pointer
+# handling this module needs it declares itself, in `text.b`, beside a note
+# saying where the other copy is.
+#
+# Nothing an HTML server links ever names this module, so a native build of an
+# application carries none of it.
+require path ".."

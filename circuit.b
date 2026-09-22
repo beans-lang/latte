@@ -24,6 +24,7 @@
 package latte
 
 import std.fmt
+import std.reflect
 
 // ---------------------------------------------------------------- options
 //
@@ -237,6 +238,18 @@ pub class Circuit {
     /// `scoped` service is refused by name, which is the honest failure.
     pub services: Option<ServiceSource> = none
 
+    /// Every `@render_mode` in the application. Empty for one that declares
+    /// none, and then no component in this circuit is ever a boundary.
+    pub modes: ModeScan = new ModeScan()
+
+    /// What `auto` resolved to for the document this circuit attached to.
+    ///
+    /// Read from the same cookie the HTTP render read, at the handshake, so
+    /// the circuit's first render agrees with the prerender it is adopting.
+    /// A circuit that decided for itself would rebuild every auto region on
+    /// attach.
+    pub auto_mode: RenderMode = RenderMode.server
+
     /// Server-side only, and it never reaches the wire. A contained panic's
     /// message goes here; what the client sees is a trace id.
     pub log: List<string> = []
@@ -441,6 +454,7 @@ pub class Circuit {
                 self.attached = true
                 self.url = message.url
                 self.authorized_ms = now_ms
+                self.ready_renderer(component)
                 self.renderer.mount(component)
                 self.publish()
             }
@@ -496,12 +510,30 @@ pub class Circuit {
                 self.url = message.url
                 self.authorized_ms = now_ms
                 self.renderer = new Renderer()
-                self.renderer.services = self.services
+                self.ready_renderer(component)
                 self.renderer.mount(component)
                 self.publish()
             }
             none => { self.stop("notfound", "no page answers that url") }
         }
+    }
+
+    /// Everything the renderer needs before a page is mounted into it.
+    ///
+    /// One method and not two call sites: `attach` used to set nothing here
+    /// while `nav` set the service source, so a component's `@inject` field
+    /// was filled after a navigation and empty on the first mount — a
+    /// difference nothing in the circuit could see, because the two paths
+    /// were written a hundred lines apart.
+    fn ready_renderer(component: Component) {
+        self.renderer.services = self.services
+        self.renderer.modes = self.modes
+        // The server renders the page; what a page's own `@render_mode` sets
+        // is what its components inherit. See `Registry.inherited_mode`.
+        self.renderer.owner_mode = RenderMode.server
+        self.renderer.auto_mode = self.auto_mode
+        self.renderer.inherited_mode = page_inherits(
+            self.modes, reflect.value(component).type().qualified_name())
     }
 
     fn on_js(message: ClientMessage, now_ms: int) {
@@ -990,6 +1022,9 @@ pub class CircuitSet {
     /// and a component with no `@inject` field never asks for it.
     pub services: Option<ServiceSource> = none
 
+    /// Every `@render_mode` in the application, handed to each circuit.
+    pub modes: ModeScan = new ModeScan()
+
     /// How a page is restored from a `@persist` island, handed on the same way.
     /// The default ignores the island, which is what an application that
     /// persists nothing wants.
@@ -1048,6 +1083,8 @@ pub class CircuitSet {
         let made: Circuit = new Circuit(id, self.options, self.page_maker(facts))
         made.guard = self.guard
         made.services = self.services
+        made.modes = self.modes
+        if read_fact(facts, "bundle") == "1" { made.auto_mode = RenderMode.client }
         made.restore = self.restore
         made.session = read_fact(facts, "session")
         made.open(now_ms)

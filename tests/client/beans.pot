@@ -1,0 +1,10 @@
+module clienttest
+kind application
+
+# The browser half of a latte application, as `latte build` writes it: the
+# components, and an entry that exports the eight names the page calls.
+#
+# Two rows, because the entry names types from both halves — the component
+# model at latte's root and the region runtime beside it.
+require path "../.."
+require path "../../client"

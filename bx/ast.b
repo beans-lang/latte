@@ -286,6 +286,61 @@ pub class PreserveAttr extends Attr {
 /// It carries nothing and emits nothing of its own. Like `preserve` and `ref`
 /// it is an instruction to the framework rather than an attribute the wire
 /// ever sees.
+/// `render:mode="client"` on a component tag, or `mode="client"` on a
+/// `<RenderBlock>`.
+///
+/// A literal and never an expression: what runs in the browser has to be
+/// known when the browser bundle is built, and an expression is a value that
+/// only exists once the server is already rendering.
+pub class ModeAttr extends Attr {
+    pub value: string = ""
+
+    pub fn init(value: string, span: Span) {
+        self.value = value
+        super.init(span)
+    }
+
+    pub static fn of(value: string, span: Span) -> ModeAttr {
+        return new ModeAttr(value, span)
+    }
+
+    pub override fn name() -> string { return "render:mode" }
+
+    pub override fn show() -> string {
+        return "mode \"{self.value}\" @{self.span.show()}"
+    }
+}
+
+/// `count:int={self.rows.len()}` on a `<RenderBlock>` — one prop that
+/// crosses the boundary, with the type written where the author can see it.
+///
+/// The type is written and not inferred because it is the contract: only a
+/// string, an int, a bool and a float cross an execution boundary, and a
+/// props binding whose type nobody wrote is one nobody can check.
+pub class PropAttr extends Attr {
+    pub prop_name: string = ""
+    pub prop_type: string = ""
+    pub code: string = ""
+
+    pub fn init(prop_name: string, prop_type: string, code: string, span: Span) {
+        self.prop_name = prop_name
+        self.prop_type = prop_type
+        self.code = code
+        super.init(span)
+    }
+
+    pub static fn of(prop_name: string, prop_type: string, code: string,
+                     span: Span) -> PropAttr {
+        return new PropAttr(prop_name, prop_type, code, span)
+    }
+
+    pub override fn name() -> string { return self.prop_name }
+
+    pub override fn show() -> string {
+        return "prop {self.prop_name}: {self.prop_type} = \{{self.code}\} @{self.span.show()}"
+    }
+}
+
 pub class LiveAttr extends Attr {
     pub fn init(span: Span) {
         super.init(span)
@@ -338,6 +393,9 @@ pub class ElementNode extends Node {
     pub children: List<Node> = []
     /// Whether the tag named a component rather than an HTML element.
     pub component: bool = false
+    /// Whether the tag is `<RenderBlock>`: an execution boundary the compiler
+    /// recognises, whose body becomes a component of its own.
+    pub block: bool = false
     /// Whether it was written `<br />` rather than `<br></br>`.
     pub self_closed: bool = false
 
@@ -352,6 +410,7 @@ pub class ElementNode extends Node {
     }
 
     pub override fn kind() -> string {
+        if self.block { return "block" }
         if self.component { return "component" }
         return "element"
     }

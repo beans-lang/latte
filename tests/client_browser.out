@@ -1,0 +1,49 @@
+== chromium ==
+ok   the region is mounted: 1
+ok   and it built its own DOM: hits=3
+ok   inside the boundary the server wrote: r1
+ok   the page around it is untouched: after
+ok   the click landed: hits=4
+ok   and it made no request at all: 0
+ok   a second click, still no network: hits=5/0
+ok   an input event reaches the module: beans
+ok   and still nothing went out: 0
+ok   new props reach the live instance: hits=12
+ok   and its own state survived them: beans
+ok   the text the user typed is still in the field: beans
+ok   removing the boundary unmounts the region: 0
+ok   no page error: none
+
+== firefox ==
+ok   the region is mounted: 1
+ok   and it built its own DOM: hits=3
+ok   inside the boundary the server wrote: r1
+ok   the page around it is untouched: after
+ok   the click landed: hits=4
+ok   and it made no request at all: 0
+ok   a second click, still no network: hits=5/0
+ok   an input event reaches the module: beans
+ok   and still nothing went out: 0
+ok   new props reach the live instance: hits=12
+ok   and its own state survived them: beans
+ok   the text the user typed is still in the field: beans
+ok   removing the boundary unmounts the region: 0
+ok   no page error: none
+
+== webkit ==
+ok   the region is mounted: 1
+ok   and it built its own DOM: hits=3
+ok   inside the boundary the server wrote: r1
+ok   the page around it is untouched: after
+ok   the click landed: hits=4
+ok   and it made no request at all: 0
+ok   a second click, still no network: hits=5/0
+ok   an input event reaches the module: beans
+ok   and still nothing went out: 0
+ok   new props reach the live instance: hits=12
+ok   and its own state survived them: beans
+ok   the text the user typed is still in the field: beans
+ok   removing the boundary unmounts the region: 0
+ok   no page error: none
+
+every engine agrees

@@ -1,0 +1,25 @@
+<beans>
+// ONE counter, used in three modes.
+//
+// Nothing in this file says where it runs. The page below mounts it three
+// times — once inheriting the page's server mode, once with
+// `render:mode="client"`, once `auto` — and the same `render` produces all
+// three. That is the claim the whole feature rests on: changing the mode
+// declaration moves a component between runtimes and changes nothing else.
+package site
+
+import {param} from latte
+
+pub partial class Counter extends Component {
+    @param pub label: string = "count"
+    @param pub start: int = 0
+    pub clicks: int = 0
+
+    pub fn total() -> int { return self.start + self.clicks }
+}
+</beans>
+
+<section class="counter">
+  <output>$self.label = $self.total()</output>
+  <button on:click={fn(e: MouseEvent) { self.clicks += 1 }}>add one</button>
+</section>

@@ -1,0 +1,12 @@
+module modesbrowser
+kind application
+
+# The browser half of `examples/modes`, and a module of its own because a
+# module root holds one entry: `../main.b` is the server's.
+#
+# It requires the application — which is what puts the components in the
+# bundle — and the region runtime. It does NOT require espresso, barista or
+# anything the server needs, and `modes.server` is not named anywhere in it,
+# which is why none of that is in the WebAssembly module.
+require path ".."
+require path "../../../client"

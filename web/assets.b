@@ -41,6 +41,34 @@ pub const SOCKET_PATH: string = "/_latte/ws";
 /// working directory.
 pub const CLIENT_FILE: string = "js/latte.js";
 
+/// Where the browser bundle's loader is served, and read from.
+/// `latte.CLIENT_MODULE_SCRIPT` is the same string; `tests/w9_shell.b` § 1
+/// asserts the pair, for the reason the two above are asserted.
+pub const CLIENT_MODULE_SCRIPT: string = "/_latte/latte-client.js";
+pub const CLIENT_MODULE_FILE: string = "js/latte-client.js";
+
+/// The loader's whole import graph, served under `/_latte/` so the relative
+/// `import "./latte-runtime.js"` inside it resolves.
+///
+/// A LIST and not one file, because a module script's imports are fetched by
+/// the browser and a missing one is a 404 the page reports as "the region
+/// runtime did not load" — with no clue which file. Naming all three here
+/// means a file added to the graph and forgotten is a startup refusal with
+/// the path in it.
+pub fn client_module_files() -> List<string> {
+    return ["latte-client.js", "latte-runtime.js", "latte-floats.js"]
+}
+
+/// Where a browser bundle is served. `latte.CLIENT_BUNDLE_PATH` matches.
+pub const CLIENT_BUNDLE_PATH: string = "/_latte/app.wasm";
+
+/// The `Content-Type` a WebAssembly module must be served with.
+///
+/// Not decoration: `WebAssembly.instantiateStreaming` refuses any other type
+/// outright, and under `X-Content-Type-Options: nosniff` — which
+/// `security_headers` always sends — there is no sniffing to fall back on.
+pub const BUNDLE_TYPE: string = "application/wasm";
+
 /// The `Content-Type` the client is served with.
 ///
 /// `text/javascript` and not `application/javascript`: it is the one the HTML
@@ -66,6 +94,25 @@ pub class ClientOptions {
     /// path carries no content hash, so a cached copy of an older client would
     /// keep talking to a newer server for as long as the age said.
     pub cache_control: string = "no-cache"
+
+    /// Where the loader and the modules it imports are served, and the
+    /// directory they are read from. They are served only when a page points
+    /// at a bundle: a page with no client region must not fetch a loader
+    /// with nothing to load.
+    pub module_prefix: string = "/_latte/"
+    pub module_dir: string = "js"
+
+    /// The browser bundle: where it is served, and the file on disk. An
+    /// empty `bundle_file` means latte serves no bundle — either the
+    /// application has no `client` region, or something else serves it.
+    pub bundle_path: string = CLIENT_BUNDLE_PATH
+    pub bundle_file: string = ""
+
+    /// Whether the region runtime's loader is served. It is a separate
+    /// question from the bundle, because a deployment may serve the bundle
+    /// itself and still want latte's loader.
+    pub serve_loader: bool = false
+
     pub fn init() {}
 }
 
@@ -95,16 +142,48 @@ pub fn map_client(app: espresso.WebApplication,
                        "client")
         }
     }
-    return map_asset(app, options.path, source, CLIENT_TYPE,
+    map_asset(app, options.path, source, CLIENT_TYPE, options.cache_control)?
+    if !options.serve_loader && options.bundle_file == "" { return ok(true) }
+
+    for name: string in client_module_files() {
+        let file: string = "{options.module_dir}/{name}"
+        var loader: string = ""
+        match fs.read(file) {
+            ok(text) => { loader = text }
+            err(problem) => {
+                return err("latte cannot read \"{file}\" ({problem.kind}); it is part of the region runtime's loader, which this application needs because a page points at a browser bundle. The path is relative to the process's working directory, or set ClientOptions.module_dir",
+                           "client")
+            }
+        }
+        map_asset(app, "{options.module_prefix}{name}", loader, CLIENT_TYPE,
+                  options.cache_control)?
+    }
+    if options.bundle_file == "" { return ok(true) }
+
+    // `fs.read` answers the file's bytes as a string, NUL bytes and all, and
+    // `text_body` holds a string by reference — so a WebAssembly module is
+    // served without a copy and without a second code path. What it must not
+    // share with the two scripts above is the content type.
+    var bundle: string = ""
+    match fs.read(options.bundle_file) {
+        ok(text) => { bundle = text }
+        err(problem) => {
+            return err("latte cannot read the browser bundle at \"{options.bundle_file}\" ({problem.kind}); build it with `latte build` and point LatteOptions.client_module at it",
+                       "client")
+        }
+    }
+    return map_asset(app, options.bundle_path, bundle, BUNDLE_TYPE,
                      options.cache_control)
 }
 
 /// Serve one in-memory body at one exact path.
 ///
-/// `body` is a `string` and not `Bytes` because everything latte serves this
-/// way is text — the client script, a stylesheet — and espresso's `text_body`
-/// holds a string by reference rather than copying it into a per-connection
-/// buffer. A binary asset belongs to an application's own route.
+/// `body` is a `string` and not `Bytes`, and that is not a text-only
+/// restriction: a Beans string holds arbitrary bytes, `fs.read` answers them
+/// unchanged, and espresso's `text_body` holds the string by reference rather
+/// than copying it into a per-connection buffer. So the WebAssembly bundle
+/// goes out through this route like everything else — one path, one ETag, one
+/// conditional-request rule.
 pub fn map_asset(app: espresso.WebApplication, path: string, body: string,
                  content_type: string, cache_control: string) -> Result<bool> {
     if !path.starts_with("/") {

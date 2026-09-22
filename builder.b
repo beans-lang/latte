@@ -203,6 +203,28 @@ pub class Component {
         }
     }
 
+    /// Where this component is running: `server`, `client` or `static`.
+    ///
+    /// A component that has to know — one that opens a WebSocket of its own,
+    /// or reads `localStorage`, or must not start a timer during a
+    /// prerender — asks here. It answers the mode of the REGION it is in,
+    /// which is the honest question: "am I prerendering" is not a property
+    /// of the component, it is a property of who is rendering it.
+    ///
+    /// `static` means exactly that: this render produces HTML and there
+    /// will be no instance afterwards, so nothing subscribed here will ever
+    /// be told anything.
+    ///
+    /// It answers `server` for a component nothing has mounted, which is
+    /// the same answer an unmounted component gives to every other question
+    /// about its surroundings.
+    pub fn running_in() -> RenderMode {
+        match self.mount.page {
+            some(registry) => { return registry.owner_mode }
+            none => { return RenderMode.server }
+        }
+    }
+
     /// When the slot that mounted this component is not reached by a render
     /// pass, so the component is dropped.
     pub fn dispose() {}
@@ -341,6 +363,38 @@ fn scalar_text(value: reflect.Value, kind: ParamKind) -> string {
 }
 
 pub class Registry {
+    /// Every `@render_mode` in the executable. Empty for an application that
+    /// declared none, and `Builder.component` checks that first — an
+    /// application with no modes pays one length comparison per mount.
+    pub modes: ModeScan = new ModeScan()
+
+    /// Who is rendering these frames. A child whose resolved mode differs
+    /// from this is a boundary, because the code on the other side of it does
+    /// not run here.
+    pub owner_mode: RenderMode = RenderMode.server
+
+    /// What a child that declares nothing resolves to.
+    ///
+    /// Not the same question as `owner_mode`, and the difference is what lets
+    /// a page say "everything in me runs in the browser": the SERVER renders
+    /// that page — it is what answers the request — while every component
+    /// inside it inherits `client` and becomes a region. The two are equal
+    /// for every application that declares no mode, which is why nothing
+    /// changes for one.
+    pub inherited_mode: RenderMode = RenderMode.server
+
+    /// What `auto` resolves to for this render.
+    ///
+    /// `auto` is not a runtime; it is a decision between the two that are,
+    /// taken once per page render and pinned for the life of every instance
+    /// that render mounts. See `BUNDLE_COOKIE`.
+    pub auto_mode: RenderMode = RenderMode.server
+
+    /// What a boundary id is prefixed with here. Slot ids are unique within a
+    /// Registry and a nested Renderer has its own, so the prefix is what
+    /// keeps two regions' boundary ids apart in one document.
+    pub region_path: string = ""
+
     next: int = 1
     pub mouse: Map<int, fn(MouseEvent)> = {}
     pub input: Map<int, fn(InputEvent)> = {}
@@ -549,6 +603,19 @@ pub class Registry {
     }
 
     /// Fill one freshly built component's `@inject` fields.
+    /// What a missing container is missing FROM, for the message above.
+    ///
+    /// A browser region has no request and no session, so the container an
+    /// application registers on the server is not a thing that could be
+    /// shipped to it; `latte_client.provide_services` is how one gets there
+    /// instead, and saying "this page" would send a reader to the wrong file.
+    fn where_from() -> string {
+        if self.owner_mode.in_browser() {
+            return "this browser bundle (see latte_client.provide_services)"
+        }
+        return "this page"
+    }
+
     fn inject(receiver: reflect.Value, described: reflect.Type) -> List<string> {
         var problems: List<string> = []
         let plan: MountPlan = self.mount_plan(described)
@@ -557,7 +624,7 @@ pub class Registry {
             none => {
                 for binding: InjectBinding in plan.bindings {
                     problems.push(
-                        "{described.qualified_name()}.{binding.field.name()} is @inject, but this page has no service container to fill it from")
+                        "{described.qualified_name()}.{binding.field.name()} is @inject, but {self.where_from()} has no service container to fill it from")
                 }
                 return move problems
             }
@@ -1150,9 +1217,136 @@ pub class Builder {
     // ---- children ---------------------------------------------------------
 
     pub fn component<T>(seq: int, setup: fn(T)) {
+        self.component_in<T>(seq, "", setup)
+    }
+
+    /// A component tag with an explicit execution mode on the instance:
+    /// `<Counter render:mode="client" />`.
+    ///
+    /// `mode` is `""` for a tag that wrote none, which is every tag the
+    /// markup compiler emitted before render modes existed — and the path
+    /// below is then the one that has always run, frame for frame.
+    pub fn component_in<T>(seq: int, mode: string, setup: fn(T)) {
+        let described: reflect.Type = type_of(T)
+        let resolved: Option<ResolvedMode> = self.region_for(described, mode, seq)
+        match resolved {
+            none => {
+                let slot: int = self.open_slot(seq)
+                if !self.children.contains_key(slot) { self.mount<T>(slot, described) }
+                self.fill_slot<T>(seq, slot, setup)
+            }
+            some(answer) => {
+                self.mount_region<T>(seq, described, answer,
+                                     fn() -> Result<reflect.Value, string> {
+                                         return activate_type(described)
+                                     }, setup)
+            }
+        }
+    }
+
+    /// `component_made`, with an execution mode on the instance.
+    pub fn component_made_in<T>(seq: int, mode: string, make: fn() -> T,
+                                setup: fn(T)) {
+        let described: reflect.Type = type_of(T)
+        let resolved: Option<ResolvedMode> = self.region_for(described, mode, seq)
+        match resolved {
+            none => {
+                let slot: int = self.open_slot(seq)
+                if !self.children.contains_key(slot) { self.mount_made<T>(slot, make) }
+                self.fill_slot<T>(seq, slot, setup)
+            }
+            some(answer) => {
+                self.mount_region<T>(seq, described, answer,
+                                     fn() -> Result<reflect.Value, string> {
+                                         return ok(reflect.value(make()))
+                                     }, setup)
+            }
+        }
+    }
+
+    /// The mode this tag resolves to, or `none` when it is not a boundary.
+    ///
+    /// `none` is the answer for every tag in an application that declares no
+    /// mode anywhere, and the check that gets there is one length comparison.
+    fn region_for(described: reflect.Type, mode: string,
+                  seq: int) -> Option<ResolvedMode> {
+        if mode == "" && self.registry.modes.plans.len() == 0 &&
+           self.registry.inherited_mode.equals(self.registry.owner_mode) {
+            return none
+        }
+        var instance: RenderMode = RenderMode.inherit
+        if mode != "" {
+            match RenderMode.of(mode) {
+                some(asked) => {
+                    if asked.equals(RenderMode.inherit) {
+                        self.faults.push(
+                            "render:mode=\"inherit\" on <{described.name()}> at {seq} is the absence of a mode; write no render:mode to inherit")
+                    } else {
+                        instance = asked
+                    }
+                }
+                none => {
+                    self.faults.push(
+                        "render:mode=\"{mode}\" on <{described.name()}> at {seq} is not a mode; it must be one of {render_mode_words()}")
+                }
+            }
+        }
+        let name: string = described.qualified_name()
+        var answer: ResolvedMode = resolve_render_mode(
+            self.registry.inherited_mode, self.registry.modes.mode_of(name),
+            instance, RenderMode.inherit,
+            self.registry.modes.prerender_of(name))
+        // `auto` is resolved HERE and nowhere later: everything below this
+        // line is about two runtimes, and `auto` is the name of a choice
+        // between them rather than a third.
+        if answer.mode.equals(RenderMode.auto) {
+            answer = new ResolvedMode(self.registry.auto_mode, answer.source,
+                                      answer.prerender)
+        }
+        if !is_execution_boundary(self.registry.owner_mode, answer.mode) {
+            return none
+        }
+        // The one crossing latte cannot do: a SERVER region inside a browser
+        // one. A static region inside one is fine — it has no runtime, so
+        // the browser renders it like anything else — which is why the test
+        // is on `interactive` and not on `in_browser` alone.
+        if self.registry.owner_mode.in_browser() && answer.mode.interactive() &&
+           !answer.mode.in_browser() {
+            self.faults.push(
+                "<{described.name()}> at {seq} resolves to {answer.mode.name()} inside a client region; a server region inside a browser one needs a server mount protocol latte does not have yet. Move it out of the client region, or make it client")
+            return none
+        }
+        return some(answer)
+    }
+
+    /// Mount the boundary itself: a `RenderRegion` at this slot, holding the
+    /// factory and the parameter setter for the component it stands for.
+    fn mount_region<T>(seq: int, described: reflect.Type, answer: ResolvedMode,
+                       make: fn() -> Result<reflect.Value, string>,
+                       setup: fn(T)) {
         let slot: int = self.open_slot(seq)
-        if !self.children.contains_key(slot) { self.mount<T>(slot, type_of(T)) }
-        self.fill_slot<T>(seq, slot, setup)
+        if !self.children.contains_key(slot) {
+            self.mount<RenderRegion>(slot, type_of(RenderRegion))
+        }
+        let path: string = self.registry.region_path
+        let host: RenderMode = self.registry.owner_mode
+        let auto: RenderMode = self.registry.auto_mode
+        self.fill_slot<RenderRegion>(seq, slot, fn(region: RenderRegion) {
+            region.region_id = "{path}{slot}"
+            region.mode = answer.mode
+            region.host_mode = host
+            region.type_name = described.qualified_name()
+            region.prerender = answer.prerender
+            region.source = answer.source
+            region.auto_mode = auto
+            region.make = make
+            region.apply = fn(value: reflect.Value) {
+                match value.copy() as? T {
+                    some(typed) => { setup(typed) }
+                    none => {}
+                }
+            }
+        })
     }
 
     /// The same mount, from a factory closure the markup compiler emits
@@ -1638,6 +1832,14 @@ pub class Builder {
     pub fn preserve(seq: int) {
         if !self.take_attribute_slot(seq, "", "preserve") { return }
         self.frames.push(Frame.preserve(seq))
+    }
+
+    /// `opaque`: another runtime owns this element's children. The differ
+    /// still walks the attributes — that is how props cross the boundary —
+    /// and never walks inside.
+    pub fn opaque(seq: int) {
+        if !self.take_attribute_slot(seq, "", "opaque") { return }
+        self.frames.push(Frame.opaque(seq))
     }
 
     // ---- the render cycle -------------------------------------------------

@@ -1,0 +1,27 @@
+== chromium ==
+ok   the client counter mounted: client = 10
+ok   and auto did not, on a first visit: 1
+ok   both counters rendered: server = 1 | client = 10 | auto = 100
+ok   a client click needs no request: 0
+ok   a server click goes round the circuit: server = 2 | client = 11 | auto = 100
+ok   a RenderBlock body is its own component:  has 4 rows
+ok   the action answered: saved as note 1
+ok   with exactly one POST: 1
+ok   to the action's own path: true
+ok   and the server kept the count: saved as note 2
+ok   an action that says no says why: failed: a note needs a body
+ok   a role the caller does not have: 403 forbidden
+ok   and a call with no antiforgery token: 403 stale
+ok   the browser bundle can build the components: true
+ok   and holds nothing from the server package: 
+ok   a client region keeps working with the circuit down: client = 12
+ok   the inspector lists every boundary: 3
+ok   with its mode, its owner and whether it is alive: client/browser/true client/browser/true client/browser/true
+ok   and which of them the server prerendered: true
+ok   auto became a client region once the bundle was known: 2
+ok   no page error: none
+ok   the page renders with no script at all: This paragraph is static markup. No instance renders it twice.
+ok   including every region's prerender: server = 1 | client = 10 | auto = 100
+ok   text typed before the circuit attached survives it: typed before the script
+
+the application behaves

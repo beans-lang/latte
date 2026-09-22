@@ -111,6 +111,14 @@ ok hollow 5 dump
 ok hollow 5 html
 ok hollow 5 beans-self
 ok hollow 5 faults
+ok owned 1 dump
+ok owned 1 html
+ok owned 1 beans-self
+ok owned 1 faults
+ok owned 2 dump
+ok owned 2 html
+ok owned 2 beans-self
+ok owned 2 faults
 ok bad-step-in 1 dump
 ok bad-step-in 1 html
 ok bad-step-in 1 beans-self
@@ -215,6 +223,127 @@ ok control-list-edits 2 dump
 ok control-list-edits 2 html
 ok control-list-edits 2 beans-self
 ok control-list-edits 2 faults
+
+=== 1b. the same batches, adopting what the server rendered
+ok page adopt html
+ok page adopt kept the nodes
+ok page adopt dump
+ok page adopt faults
+ok page adopt then 2
+ok page adopt then 3
+ok page adopt then 4
+ok page adopt then 5
+ok page adopt then 6
+ok page adopt then 7
+ok page adopt then 8
+ok page adopt then 9
+ok page adopt then 10
+ok page adopt then 11
+ok keyed adopt html
+ok keyed adopt kept the nodes
+ok keyed adopt dump
+ok keyed adopt faults
+ok keyed adopt then 2
+ok keyed adopt then 3
+ok keyed adopt then 4
+ok keyed adopt then 5
+ok keyed adopt then 6
+ok keyed adopt then 7
+ok keyed adopt then 8
+ok boundary adopt html
+ok boundary adopt kept the nodes
+ok boundary adopt dump
+ok boundary adopt faults
+ok boundary adopt then 2
+ok boundary adopt then 3
+ok boundary adopt then 4
+ok hollow adopt html
+ok hollow adopt kept the nodes
+ok hollow adopt dump
+ok hollow adopt faults
+ok hollow adopt then 2
+ok hollow adopt then 3
+ok hollow adopt then 4
+ok hollow adopt then 5
+ok owned adopt html
+ok owned adopt kept the nodes
+ok owned adopt dump
+ok owned adopt faults
+ok owned adopt then 2
+ok bad-step-in adopt html
+ok bad-step-in adopt kept the nodes
+ok bad-step-in adopt dump
+ok bad-step-in adopt faults
+ok bad-step-in adopt then 2
+ok bad-insert-index adopt html
+ok bad-insert-index adopt kept the nodes
+ok bad-insert-index adopt dump
+ok bad-insert-index adopt faults
+ok bad-insert-index adopt then 2
+ok bad-remove-index adopt html
+ok bad-remove-index adopt kept the nodes
+ok bad-remove-index adopt dump
+ok bad-remove-index adopt faults
+ok bad-remove-index adopt then 2
+ok bad-move-from adopt html
+ok bad-move-from adopt kept the nodes
+ok bad-move-from adopt dump
+ok bad-move-from adopt faults
+ok bad-move-from adopt then 2
+ok bad-move-to adopt html
+ok bad-move-to adopt kept the nodes
+ok bad-move-to adopt dump
+ok bad-move-to adopt faults
+ok bad-move-to adopt then 2
+ok no-attribute-to-remove adopt html
+ok no-attribute-to-remove adopt kept the nodes
+ok no-attribute-to-remove adopt dump
+ok no-attribute-to-remove adopt faults
+ok no-attribute-to-remove adopt then 2
+ok no-handler-to-remove adopt html
+ok no-handler-to-remove adopt kept the nodes
+ok no-handler-to-remove adopt dump
+ok no-handler-to-remove adopt faults
+ok no-handler-to-remove adopt then 2
+ok step-out-at-the-root adopt html
+ok step-out-at-the-root adopt kept the nodes
+ok step-out-at-the-root adopt dump
+ok step-out-at-the-root adopt faults
+ok step-out-at-the-root adopt then 2
+ok no-staged-subtree adopt html
+ok no-staged-subtree adopt kept the nodes
+ok no-staged-subtree adopt dump
+ok no-staged-subtree adopt faults
+ok no-staged-subtree adopt then 2
+ok update-before-its-mount adopt html
+ok update-before-its-mount adopt kept the nodes
+ok update-before-its-mount adopt dump
+ok update-before-its-mount adopt faults
+ok update-before-its-mount adopt then 2
+ok ended-one-level-deep adopt html
+ok ended-one-level-deep adopt kept the nodes
+ok ended-one-level-deep adopt dump
+ok ended-one-level-deep adopt faults
+ok ended-one-level-deep adopt then 2
+ok control-good-edits adopt html
+ok control-good-edits adopt kept the nodes
+ok control-good-edits adopt dump
+ok control-good-edits adopt faults
+ok control-good-edits adopt then 2
+ok control-list-edits adopt html
+ok control-list-edits adopt kept the nodes
+ok control-list-edits adopt dump
+ok control-list-edits adopt faults
+ok control-list-edits adopt then 2
+ok an empty host builds, and reports nothing
+ok and lands on the same document
+ok the field survived the attach
+ok and so did what was typed into it
+ok with nothing reported
+ok a later edit still writes the field
+ok the document is what the frames say
+ok and the mismatch is reported once, naming the component
+ok with the sentence a reader can act on
 
 === 2. the applier contract: a kind-mismatched edit is dropped
 ok set_text-at-element base clean
@@ -522,4 +651,4 @@ ok an answered fence never fires a second time
 ok and no third socket was opened
 ok the circuit is still live
 
-496 checks, 0 bad
+623 checks, 0 bad
