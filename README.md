@@ -848,7 +848,7 @@ The framework is built and checked: pages, layouts, forms, streaming, the circui
 the differ, the wire, a service container, `@inject`, view-models, signals,
 `live`, `@memo`, signed state across the prerender seam, render modes,
 execution boundaries, a WebAssembly client runtime, typed server actions and
-hydration by adoption. The check is 52 suites over 121 legs, both backends,
+hydration by adoption. The check is 52 suites over 122 legs, both backends,
 byte-identical, and it drives Chromium, Firefox and WebKit.
 
 The API will still move.
