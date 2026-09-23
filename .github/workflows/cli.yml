@@ -14,6 +14,10 @@ on:
         description: "Create a GitHub Release (off = build and test a candidate)"
         type: boolean
         default: false
+      draft:
+        description: "Make that release a draft: nothing public, no tag, delete it after"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -221,9 +225,27 @@ jobs:
           $env:LATTE_INSTALL_BASE_URL = $base
           $prefix = Join-Path $env:RUNNER_TEMP 'latte-home'
           & .\tools\latte-install.ps1 -Prefix $prefix -NoModifyPath
-          $got = (& (Join-Path $prefix 'bin\latte.cmd') version) -join ''
+          $launcher = Join-Path $prefix 'bin\latte.cmd'
+          $got = (& $launcher version) -join ''
           if ($got -ne "latte $version") { throw "the installed latte said '$got'" }
           if (-not (Test-Path (Join-Path $prefix 'share\latte\canvaskit\canvaskit.wasm'))) { throw 'no kit' }
+          # `latte upgrade` finishes after latte.cmd exits, so wait for the swap.
+          $marker = Join-Path $prefix 'before-upgrade'
+          Set-Content -Path $marker -Value 'x'
+          & $launcher upgrade --force
+          if ($LASTEXITCODE -ne 0) { throw "latte upgrade --force exited $LASTEXITCODE" }
+          $deadline = (Get-Date).AddSeconds(180)
+          $got = ''
+          while ((Get-Date) -lt $deadline) {
+              if (-not (Test-Path $marker) -and (Test-Path $launcher)) {
+                  try { $got = (& $launcher version 2>$null) -join '' } catch { $got = '' }
+                  if ($got -eq "latte $version") { break }
+              }
+              Start-Sleep -Seconds 2
+          }
+          if (Test-Path $marker) { throw 'latte upgrade --force never replaced the installation' }
+          if ($got -ne "latte $version") { throw "after the upgrade, latte said '$got'" }
+          Write-Host "latte upgrade --force replaced the installation and it answers '$got'"
 
       # The whole CLI gate, against the archive this job ships.
       - name: Gate — install the archive, build and run pinned projects
@@ -368,6 +390,8 @@ jobs:
         env:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
+          # A tag push is never a draft; a manual run is one unless asked not to be.
+          DRAFT: ${{ github.ref_type != 'tag' && inputs.draft }}
         run: |
           set -euo pipefail
           tag="v$VERSION"
@@ -388,11 +412,17 @@ jobs:
           and a project with \`latte upgrade --project\`. Every archive is listed in
           \`SHA256SUMS\`, which the installers check before they replace anything.
           EOF
-          # A re-run must land on its feet rather than fail on the release it made.
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          # A re-run must land on its feet; a leftover draft must not swallow a release.
+          if existing=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null); then
+              if [[ "$existing" == true && "$DRAFT" != true ]]; then
+                  echo "a draft release $tag exists: delete it, then publish again" >&2
+                  exit 1
+              fi
               gh release upload "$tag" assets/* --repo "$GITHUB_REPOSITORY" --clobber
           else
-              gh release create "$tag" assets/* \
+              draft=()
+              [[ "$DRAFT" == true ]] && draft=(--draft)
+              gh release create "$tag" assets/* "${draft[@]}" \
                 --repo "$GITHUB_REPOSITORY" \
                 --title "latte $VERSION" \
                 --notes-file notes.md
