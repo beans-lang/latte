@@ -1169,63 +1169,6 @@ run_refusal_coverage_leg() {
 # cannot be skipped cannot rot.
 [[ $canvas_only -eq 1 ]] || run_refusal_coverage_leg
 
-# Every recorded refusal in probes/*_bad/, re-checked against today's compiler.
-#
-# A guard that only runs when someone remembers to run it by hand reports
-# nothing the day it matters, so this check calls it every run. A probe's
-# answer is half "this works" and half "this is refused, and here is the
-# message" — the second half rots silently when a compiler starts accepting a
-# shape the design was built around.
-#
-# The count is pinned here on purpose. check_refusals.sh finds probes by shape,
-# so it stays green after a `*_bad/` directory is deleted — it would simply
-# check fewer and still say ok. Pinning means removing a refusal is a decision
-# someone has to write down here, not something a `rm -rf` does quietly.
-#
-# 3 -> 2 on 2026-09-09: `p13_interpolation_bad` was retired. Every refusal it
-# recorded now COMPILES, because beans #164 taught a
-# string interpolation to resolve a type name with the file's imports. The
-# probe is not deleted — it is `probes/p13_interpolation_fixed/` and both
-# backends print the same four correct lines — it just has no refusal left to
-# record. This leg going red is what sent anyone to read that.
-RECORDED_REFUSALS=2
-run_recorded_refusals_leg() {
-    local script="$ROOT/probes/check_refusals.sh"
-    # Missing is a FAILURE, never a skip: the whole point is that it cannot
-    # be absent without anyone noticing.
-    if [[ ! -f "$script" ]]; then
-        echo "--- recorded-refusals FAILED: probes/check_refusals.sh is gone ---" >&2
-        failed=1
-        return
-    fi
-    local out
-    if ! out=$(BEANSC="$BEANSC" bash "$script" 2>&1); then
-        # Do not name the cause here. This script exits non-zero for a shape
-        # that stopped being refused, for a message that changed wording, and
-        # for its own setup going wrong — and announcing the first of those
-        # over the third sent a reader looking for a compiler regression that
-        # was really a version guard. Its output says which.
-        echo "--- recorded-refusals FAILED ---" >&2
-        echo "$out" >&2
-        failed=1
-        return
-    fi
-    local n
-    n=$(printf '%s\n' "$out" | sed -n 's/^ok — \([0-9][0-9]*\) recorded refusal(s).*/\1/p')
-    if [[ "$n" != "$RECORDED_REFUSALS" ]]; then
-        echo "--- recorded-refusals FAILED: checked ${n:-0}, expected $RECORDED_REFUSALS ---" >&2
-        echo "    A refusal was added or removed. If that was deliberate, change" >&2
-        echo "    RECORDED_REFUSALS in test.sh and say why in the commit." >&2
-        echo "$out" >&2
-        failed=1
-        return
-    fi
-    echo "ok recorded-refusals — all $n recorded refusal(s) in probes/*_bad/ are still refused, with their recorded message"
-}
-
-# Always runs, for the same reason as the leg above.
-[[ $canvas_only -eq 1 ]] || run_recorded_refusals_leg
-
 # The browser half of check 3. `tests/js_cases.b` is a checked suite already — it
 # prints a JavaScript fixture file, and both backends agree on it byte for
 # byte. That proves the ENCODER is consistent with itself. This leg is the

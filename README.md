@@ -50,9 +50,9 @@ request — same class, same markup, same `render`:
 <Counter render:mode="client" start={10} />
 ```
 
-[`docs/render-modes.md`](docs/render-modes.md) is the whole of it:
-`static`, `server`, `client` and `auto`, what crosses a boundary, typed
-server actions, and hydration. `examples/modes/` is all five on one page.
+[Render modes](#render-modes) below covers `static`, `server`, `client` and
+`auto`, typed server actions, and hydration. `examples/modes/` is all five on
+one page.
 
 ## Two targets
 
@@ -63,11 +63,9 @@ circuit sends edits. Nothing about it changed.
 
 **Canvas** draws the interface itself — on a `<canvas>`, through CanvasKit, with
 the layout, the state, the editing, the focus and the accessibility tree
-compiled to WebAssembly. `docs/browser.md` is how to build and run it,
-`docs/migration.md` is what changed for an existing application (nothing, unless
-you ask), `docs/notes.md` is the reasoning behind the decisions that are too
-long to sit in a comment, `docs/table-performance.md` is what a frame of table
-scrolling costs and why, and `docs/unfinished.md` is what does not work yet.
+compiled to WebAssembly. An existing application changes nothing unless it
+asks for it. [The command line](#the-command-line) builds a canvas application
+of your own; this builds and serves the showcase from a checkout:
 
 ```sh
 npm install && node tools/font_prepare.mjs
@@ -419,21 +417,6 @@ A name that matches neither a suite nor an example is an error, not a quiet
 pass. So is a missing expected output: a check that skips on a missing input dies
 silently the first time the layout moves.
 
-### The probes
-
-Not part of `test.sh`. They answer questions about the tests rather than about
-the code, and one of them rewrites source files.
-
-```bash
-probes/check_refusals.sh              # every recorded refusal, re-checked
-probes/delete_faults.sh               # delete each refusal, watch its case fail
-probes/delete_faults.sh builder.b     # just one source file
-```
-
-`delete_faults.sh` deletes one `faults.push` at a time and requires a check that
-*names that site* to turn red. It **rewrites the source files, so it must never
-run beside a check.** Run it after touching a refusal.
-
 ## Markup
 
 A `.bx` file is a whole document, not Beans with tags in it: outside `<beans>`
@@ -750,9 +733,9 @@ pub class BoardModel extends ViewModel {
 
 **The body takes the model as a parameter instead of capturing it**, and the
 owner is `weak`. A closure that captures `self` into a field the same object
-owns is a cycle — model → command → closure → model — and `probes/p6_cycle`
-measures which of six shapes release without a forced sweep. This is one of
-them. The `as?` inside is the cost of not leaking a model per circuit.
+owns is a cycle — model → command → closure → model. Of six shapes measured,
+this is one that releases without a forced sweep. The `as?` inside is the cost
+of not leaking a model per circuit.
 
 `Signal<T>` cannot skip an equal write: `T` is unconstrained, so there is no
 equality to call. latte compares the rendered text one level down instead.
@@ -900,20 +883,17 @@ Beyond the suites, it runs legs that answer questions a suite cannot:
 | `examples/packages` | every package of every nested example module still checks |
 | `component-type` | a `<Tag>` that is not a `Component` is refused by `beansc`, and one that is checks clean |
 | `refusal-coverage` | every `faults.push` in the audited files has a case **and a positive control** |
-| `recorded-refusals` | every program in `probes/*_bad/` is still refused, with its recorded message |
 | `browser-apply` | `js/latte.js` lands the Beans applier's HTML in a real Chrome |
 | `csp-browser` | under latte's policy Chrome loads the script and reaches the origin; under espresso's it runs nothing |
 | `wasm-core` | the core needs no OS capability, and `std.net`/`std.fs` are still refused for it |
-| `cli` | `latte init` writes a project that `latte build` builds, for both targets, and a canvas build stages every script its page imports |
+| `cli` | `latte init` writes projects `latte build` builds and runs, for both targets; the packaged archive installs, builds and runs git-pinned projects, and upgrades |
 | `client-wire` | a browser bundle mounts a region, dispatches an event and refuses what it should — under node, with no DOM |
 | `client-browser` | one client region in Chromium, Firefox and WebKit, and a click on it that makes **no network request at all** |
 | `client-abi` | every WebAssembly import a bundle has is declared in Beans and supplied by the page |
 | `modes-browser` | `examples/modes` in a real browser: two runtimes on one page, a typed action with its refusals, the inspector, and hydration keeping text typed before the attach |
 
 A refusal test needs a positive control beside it. Without one you cannot tell
-"refused for the right reason" from "refused earlier, for a different one" — and
-`probes/delete_faults.sh` is how you find out whether the test would notice the
-refusal disappearing.
+"refused for the right reason" from "refused earlier, for a different one".
 
 ## Render modes
 
@@ -948,10 +928,6 @@ var args: ActionArgs = new ActionArgs()
 args.text("body", self.draft)
 self.call = call_action<string>("notes.save", args, fn(answer) { ... })
 ```
-
-[`docs/render-modes.md`](docs/render-modes.md) is the reference: the
-precedence rules, what crosses, prerendering and hydration, actions and their
-refusals, `auto`, and the honest list of what does not work yet.
 
 ```bash
 latte init myapp --client       # a project with a browser half
