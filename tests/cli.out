@@ -38,6 +38,9 @@ ok 4.1 html, debug
 ok 4.2 html, release
 ok 4.3 canvas, debug
 ok 4.4 canvas, release, lto
+ok 4.7 canvas, with a wasm-ld that is not on PATH
+ok 4.8 an html build never takes the linker
+ok 4.9 a browser bundle, release, with a linker
 ok 4.5 an unnamed project is called after its module
 ok 4.6 and a named one after its name
 
@@ -56,3 +59,34 @@ ok 6.3 every staged font is registered
 ok 6.4 the stylesheet sizes the canvas
 ok 6.5 every path in it is relative, so it serves under any prefix
 ok 6.6 a title with markup characters is escaped
+
+== 7. pins ==
+ok 7.1 the latte row's ref, not the commented one
+ok 7.2 a quoted ref loses its quotes
+ok 7.3 a remote nobody requires
+ok 7.4 path rows, relative and absolute, against the project
+ok 7.5 the rows that move, and only those
+ok 7.6 the moved text keeps comments, quotes and spacing
+ok 7.7 and moving it again moves nothing
+ok 7.8 a project on a checkout by path has no pin to move
+
+== 8. where a canvas page comes from ==
+ok 8.1 a checkout's three folders
+ok 8.2 an installation's three folders
+ok 8.3 a pin this latte's kit serves
+ok 8.4 a pin to another latte is refused, and says how to move
+ok 8.5 a pin that is not a version tag is refused too
+ok 8.6 no installation at all
+ok 8.7 an installation whose kit does not say its version
+ok 8.8 a VERSION file's fields
+
+== 9. doctor ==
+ok 9.1 a newer patch
+ok 9.2 the floor itself
+ok 9.3 an older one
+ok 9.4 three digits beat two
+ok 9.5 a minor that moves
+ok 9.6 a major that is behind
+ok 9.7 beansc's answer
+ok 9.8 something that is not beansc
+ok 9.9 an installed kit holds its stamp, the page, CanvasKit and the fonts

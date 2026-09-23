@@ -78,7 +78,7 @@ node tools/serve.mjs 8731   # then open /examples/showcase/index.html
 
 ## Contents
 
-- [Requirements](#requirements) · [Try it](#try-it) · [Building an application](#building-an-application) · [Commands](#commands)
+- [Requirements](#requirements) · [Try it](#try-it) · [The command line](#the-command-line) · [Working in this repository](#working-in-this-repository)
 - [Markup](#markup) · [Annotations](#annotations) · [Render modes](#render-modes)
 - [Writing an application](#writing-an-application) — [the minimum](#the-minimum),
   [services](#services-barista), [view-models](#view-models-signals-and-commands),
@@ -111,7 +111,7 @@ with it — you name those only when your own source does:
 module myapp
 kind application
 
-require github.com/beans-lang/latte v0.1.1
+require github.com/beans-lang/latte v0.2.0
 
 # and only if this module's own source names their types. Pin them at the refs
 # latte pins, or the build refuses two refs for one dependency:
@@ -136,31 +136,117 @@ beansc run examples/board/main.b -- serve 8080   # the Brew Board, with Tailwind
 beansc run examples/cafe/main.b  -- serve 8080   # the worked example
 ```
 
-## Building an application
+## The command line
 
-```bash
-beansc build examples/latte_cli.b -o build/latte   # the tool
+`latte` writes a project, regenerates its markup, and builds it, for both
+targets. One binary, the way `dotnet` is one binary: it finds the project by
+walking up from where you are, and every command that compiles anything
+regenerates the markup first.
 
-build/latte init myapp && cd myapp                 # an html application
-build/latte init myapp --target canvas             # or one drawn on a canvas
-build/latte build
+### Install
+
+```sh
+# macOS arm64, Linux x86_64 and arm64 (glibc or musl)
+curl -fsSL https://github.com/beans-lang/latte/releases/latest/download/latte-install.sh | sh
 ```
 
-**Or download it.** `.github/workflows/cli.yml` builds `latte` for six
-platforms — macOS arm64, Linux x86_64 and arm64 (glibc and static musl), and
-Windows x64 — and attaches them to a release with a `SHA256SUMS` file. Every
-archive is built on a machine of its own kind and the binary is run there
-before it is packaged, so a platform that cannot produce a working `latte`
-fails the build instead of shipping one. `tools/package_cli.sh` is the same
-step, runnable by hand.
+```powershell
+# Windows x64
+irm https://github.com/beans-lang/latte/releases/latest/download/latte-install.ps1 | iex
+```
 
-`init` writes a project that renders on the first build: the two manifests, an
-entry, a layout, a page, and nothing else. `generated/` is not among them — the
-first build writes it, because a scaffolder that wrote it too would be a second
-implementation of the mirror rule.
+It installs into `~/.latte` (`%LOCALAPPDATA%\Latte` on Windows) and puts
+`bin/` on your `PATH`. Then ask what this machine can build:
+
+```sh
+latte doctor
+```
+
+You also need [Beans](https://github.com/beans-lang/beans#install) 0.1.44 or
+newer. A canvas application, or an html one with a `client` region, also needs
+a Clang with a wasm32 backend and a `wasm-ld` (`brew install llvm lld`,
+`apt install clang lld`, or LLVM for Windows). `latte doctor` says which of
+these is missing and how to get it.
+
+The installer checks the download against the release's `SHA256SUMS` and runs
+the new binary before it replaces anything. `--version 0.2.0`, `--prefix <dir>`
+and `--no-modify-path` do what they say; `latte-install.sh --help` lists them.
+
+**What you get.** Skia comes with it: a canvas build needs no checkout, no npm
+and no network beyond fetching your dependencies.
 
 ```
-myapp/
+~/.latte/
+├── bin/latte          the launcher: tells the binary where its kit is
+├── bin/latte.real     the command line itself
+├── share/latte/       the page kit
+│   ├── canvaskit/     CanvasKit 0.39.1 — Skia, compiled to WebAssembly
+│   ├── js/            latte's browser scripts
+│   ├── fonts/         Roboto, prepared for CanvasKit
+│   └── licenses/      Skia's BSD-3-Clause and Roboto's Apache-2.0
+└── libexec/           the installers `latte upgrade` runs
+```
+
+### Commands
+
+| command | what it does |
+|---|---|
+| `latte init <name>` | write a project: the manifests, an entry, a layout and a page |
+| `latte build` | regenerate the markup, compile, and stage the browser half beside it |
+| `latte check` | regenerate and type-check; nothing is compiled |
+| `latte generate` | compile the markup and stop |
+| `latte clean` | remove `build/` |
+| `latte doctor` | say what this machine can build, and what is missing |
+| `latte upgrade` | replace this installation with the latest release |
+| `latte upgrade --project` | move this project's pins to this latte's |
+| `latte vocabulary` | print the `.bx` surface as JSON, for an editor |
+| `latte version` | print the version |
+
+| option | for | what it does |
+|---|---|---|
+| `--target html\|canvas` | `init`, `vocabulary` | which target; html is the default |
+| `--client` | `init`, `build` | scaffold `browser/`, or build it into a WebAssembly bundle |
+| `--latte <path>` | `init` | build against a latte checkout instead of a release |
+| `--here` | `init` | write into this directory |
+| `-c Release`, `--release`, `--debug` | `build` | which configuration; Debug is the default |
+| `--drift` | `check` | fail on a generated file that is not what its markup says |
+| `--generated` | `clean` | remove `generated/` as well |
+| `--force` | `upgrade` | reinstall even when this version is already installed |
+
+### A first application
+
+```sh
+latte init shop && cd shop            # an html application
+latte build
+cd build/debug && ./shop serve 8080   # http://127.0.0.1:8080/
+```
+
+```sh
+latte init pad --target canvas && cd pad
+latte build
+python3 -m http.server -d build/debug 8000   # any static file server will do
+```
+
+**The build folder is the application.** An html build is a server binary with
+latte's browser scripts in `js/` beside it; a canvas build is a page, a
+WebAssembly module, CanvasKit and the fonts. There is no `latte run`: run the
+binary, or serve the folder. Every path in a canvas page is relative, so it
+works under any prefix.
+
+```
+build/debug/                       build/debug/
+├── shop           the server      ├── index.html     written by the build
+└── js/            latte.js and    ├── pad.wasm
+                   the region      ├── latte/         latte's page scripts
+                   runtime         ├── canvaskit/     Skia
+                                   └── fonts/
+```
+
+A project looks like this. `generated/` is not written by `init`; the first
+build writes it.
+
+```
+shop/
 ├── beans.pot        the module, and what it depends on
 ├── latte.pot        the application: name, target, fonts, profiles
 ├── main.b           the entry
@@ -169,16 +255,13 @@ myapp/
 ```
 
 **An application does not need latte to build.** `generated/` is checked in, so
-a clone compiles with plain `beansc` and no latte binary present at all. `latte`
-is what you need to *write* a project: to scaffold one, and to regenerate the
-markup as part of every build.
+a clone compiles with plain `beansc`. `latte` is what you need to *write* one:
+to scaffold it, and to regenerate the markup as part of every build.
 
 **Every build regenerates the markup first.** Markup and the code built from it
 are two files, and any process where a person can compile one without the other
-eventually ships the pair out of step — a generated file that still compiles,
-still renders last week's screen, and says nothing. `latte build` cannot produce
-one. `latte check --drift` is the gate form, for the ways a file goes stale that
-a build never sees: a merge, or somebody running `beansc` directly.
+eventually ships the pair out of step. `latte build` cannot produce one, and
+`latte check --drift` is the gate form, for a merge or a direct `beansc` run.
 
 **Two configurations, the way `dotnet` has two.**
 
@@ -187,57 +270,95 @@ a build never sees: a merge, or somebody running `beansc` directly.
 | `latte build` | `--debug` — `-O0`, frame pointers, DWARF line tables | `build/debug/` |
 | `latte build -c Release` | `--release` — `-O3`, `NDEBUG` | `build/release/` |
 
-```
-latte init <name> [--target html|canvas] [--client] [--latte <path>] [--here]
-latte build [-c Release] [--client]   regenerate, then compile
-latte check [--drift]        type-check; --drift fails on a stale generated file
-latte generate               the markup only
-latte clean [--generated]    remove build/
-latte vocabulary             the .bx surface as JSON, for an editor
-```
-
-**A canvas build writes a directory you can serve**, not just a module: the page,
-latte's own JavaScript, CanvasKit and the fonts, all staged out of whichever
-latte the project is built against. None of it is checked in, so a latte that
-fixed something is a rebuild away rather than a copy somebody has to notice went
-stale.
+`latte.pot` is the application's manifest, beside `beans.pot`:
 
 ```
-build/debug/
-├── index.html      written by the build, from the project's name and title
-├── myapp.wasm
-├── latte/          latte's js/
-├── canvaskit/
-└── fonts/
-```
-
-Every path in the page is relative, so any static file server will do, under any
-prefix. `latte.pot` names the target:
-
-```
-name    myapp
+name    pad
 target  canvas
 markup  site
 title   "My Application"
 font    fonts/inter.ttf      # CanvasKit ships none; with no row, latte's are staged
+
+profile release
+    out  dist
+    lto  true
 ```
 
-`--latte <path>` is for working on latte itself: it writes `require path` rows
-against a checkout you name, so a project builds against uncommitted changes.
-The path is asked for rather than guessed, because a row pointing at a directory
-that is not there fails later with a message about a missing package rather than
-about the row.
+### Where the browser half comes from
 
-**There is no `run` and no `watch`**, and that is a decision rather than a gap.
-Both mean "start the thing and keep it alive", and latte's two targets disagree
-about what the thing is: an html application is a server this tool would own the
-lifetime of, and a canvas application is a directory that needs an HTTP server
-in front of it — which latte has, over espresso, but this tool deliberately does
-not link, so that `latte build` works on a machine that cannot build espresso at
-all. Adding them means choosing to depend on espresso here, and that is the
-change to make when somebody needs it.
+A build stages latte's browser scripts, and for a canvas build CanvasKit and
+the fonts, from one place, chosen by how the project reaches latte:
 
-## Commands
+1. `$LATTE_ROOT`, if set: a latte checkout you named on purpose.
+2. A `require path` row to a latte checkout — what `latte init --latte <path>`
+   writes, for working on latte itself.
+3. `require github.com/beans-lang/latte vX`: the kit in the installation,
+   **only if** it is latte X. The scripts call the module's exports by name, so
+   a kit from another version is refused before compiling, with the fix.
+
+The project's imports follow the same row: `latte.compose` and `latte_app`
+through a path row, `github.com/beans-lang/latte/compose` and
+`github.com/beans-lang/latte/app` through a git pin. `latte init` writes the
+matching form and `latte build` compiles the markup with it.
+
+### Upgrading
+
+```sh
+latte upgrade              # this installation, to the latest release
+latte upgrade --force      # reinstall the same version
+latte upgrade --project    # inside a project: move it to this latte
+```
+
+`upgrade --project` moves the project's `latte`, `espresso` and `barista` pins
+to the ones this latte was released with, then runs `beansc pot update` so
+`beans.lock` moves with them. If beansc cannot resolve the new pins,
+`beans.pot` is put back as it was. `browser/beans.pot` moves too, when there
+is one.
+
+### Building it from source
+
+```sh
+beansc build examples/latte_cli.b -o build/latte   # the binary, no kit
+npm install && node tools/font_prepare.mjs         # CanvasKit and the fonts
+bash tools/package_cli.sh dist                     # a release archive for this machine
+bash tools/check_cli.sh                            # the gate below
+```
+
+A binary built this way is not an installation: it builds projects that reach
+latte by path, and refuses a git-pinned one until it is installed.
+`tools/package_cli.sh` builds the whole package — launcher, binary, kit,
+installers — and `tools/make_kit.sh` builds the kit on its own.
+
+`tools/check_cli.sh` is the gate, and a `test.sh` leg. It scaffolds and builds
+both targets against this checkout, runs the html one and asks it for its page,
+then installs the packaged archive with the installer and does it again with
+projects pinned to latte by git — reached through `url.insteadOf` at a
+snapshot of this tree, with a private package cache. It also covers the
+refusals: a stale pin, a damaged kit, `upgrade --project` restoring what beansc
+refused, and the launcher's own `upgrade`.
+
+### Releases
+
+`.github/workflows/cli.yml` runs on every push and pull request:
+
+- **kit** builds the page kit once, so every archive carries the same Skia.
+- **build** packages `latte` natively on macOS arm64, Linux x86_64 and arm64
+  (glibc), and Windows x64. Each archive is run through its launcher, and
+  `doctor`, `init` and `generate` are smoke-tested. The macOS and Linux jobs
+  then run `tools/check_cli.sh` against the exact archive they ship. The
+  Windows job installs it with `latte-install.ps1`.
+- **musl** builds static x86_64 and aarch64 Linux archives inside Alpine, and
+  installs and runs them there with busybox `sh`.
+- **publish** runs on a `v*` tag, or on a manual run with `publish` ticked. It
+  refuses a release missing any of the six archives, and uploads them with the
+  two installers and `SHA256SUMS`.
+
+To cut a release, set `LATTE_VERSION` in `cli/version.b`, give `CHANGELOG.md` a
+`## [X.Y.Z]` heading, and push the tag `vX.Y.Z`. `tools/check_version.sh`
+refuses a tag, a heading or an espresso/barista pin that disagrees with the
+rest.
+
+## Working in this repository
 
 Everything runs from the latte module root, because the client script and the
 example stylesheets are read relative to the working directory.

@@ -1,16 +1,5 @@
-// project.b — what a latte project is, and how a command finds it.
-//
-// A project is a directory with a `beans.pot` in it. That is not a second
-// definition of anything: it is the compiler's own rule — `find_root` in
-// beans/src/module.b walks up from a file to the nearest manifest — so a
-// command run from `site/` and the same command run from the root do the same
-// work on the same files.
-//
-// **Markup folders are named, and anything outside them is refused.** A project
-// says `markup site`, or says nothing and gets `site` if it exists. Either way
-// the whole project is swept for `.bx` files no markup root covers, and one
-// found is an error. A screen that is never regenerated is a screen that still
-// compiles, still renders last week's design, and says nothing.
+// project.b — a project is the nearest directory holding a `beans.pot`, the
+// compiler's own rule; a `.bx` outside every markup folder is refused.
 
 package cli
 
@@ -28,8 +17,15 @@ pub class Project {
     pub manifest: AppManifest = new AppManifest()
     /// The folders holding `.bx` markup, relative to the root.
     pub markup: List<string> = []
+    /// How this project's source names latte: `latte`, or its git path.
+    pub latte_root: string = "latte"
 
     pub fn init() {}
+
+    /// One of latte's packages, spelled the way this project imports it.
+    pub fn import_of(name: string) -> string {
+        return latte_import(self.latte_root, name)
+    }
 
     /// What the build is called: `latte.pot`'s name, else the module name.
     pub fn output_name() -> string {
@@ -44,12 +40,8 @@ pub class Project {
     }
 }
 
-/// The directory names a sweep never descends into.
-///
-/// `generated` holds this tool's own output, `build` holds the compiler's,
-/// `node_modules` is somebody else's, and a dot directory is tooling. None can
-/// hold a source `.bx` a person wrote, and walking them makes a sweep of a real
-/// project cost the whole tree.
+/// The directory names a sweep never descends into: output, somebody else's
+/// packages, and tooling. None holds a `.bx` a person wrote.
 fn skipped_directory(name: string) -> bool {
     return name == "generated" || name == "build" || name == "node_modules" ||
            name.starts_with(".")
@@ -58,10 +50,8 @@ fn skipped_directory(name: string) -> bool {
 /// The nearest directory at or above `start` holding a `beans.pot`.
 pub fn find_root(start: string) -> Result<string> {
     var here: string = start
-    // A relative path runs out of parents before it runs out of directories —
-    // `path.parent(".")` is `""` — so a walk from `.` would look in one
-    // directory and stop. Starting from the absolute working directory is what
-    // lets the walk climb.
+    // `path.parent(".")` is `""`, so a walk from `.` would stop at once;
+    // the absolute working directory is what lets it climb.
     if here == "" || here == "." { here = Dir.current() }
     var depth: int = 0
     for depth < 64 {
@@ -92,11 +82,8 @@ fn read_module_name(root: string) -> Result<string> {
     return err("{file}: no 'module <name>' line", "manifest")
 }
 
-/// Every `.bx` file in the project that no markup root covers.
-///
-/// A screen in a folder nobody declared is the failure this tool exists to make
-/// impossible, so it is an error with the fix in it rather than a file quietly
-/// left ungenerated.
+/// Every `.bx` file in the project that no markup root covers — an error with
+/// the fix in it, never a file quietly left ungenerated.
 fn orphan_markup(root: string, covered: List<string>) -> Result<List<string>> {
     var orphans: List<string> = []
     for under: string in Dir.walk(root)? {
@@ -165,6 +152,7 @@ pub fn open_project(start: string) -> Result<Project> {
     var project: Project = new Project()
     project.root = root
     project.module_name = read_module_name(root)?
+    project.latte_root = latte_import_root(fs.read(path.join(root, "beans.pot"))?)
     project.manifest = read_manifest(root)?
     project.markup = resolve_markup(root, project.manifest)?
     if !fs.exists(path.join(root, project.entry)) {

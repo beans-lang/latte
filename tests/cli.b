@@ -1,13 +1,5 @@
-// The `latte` command line, without a filesystem.
-//
-// Everything here is a pure function of its inputs — a manifest's text, a
-// project's shape, a target and a profile — so the whole surface a mistake
-// would land in is checked without a temporary directory anywhere. What needs
-// real files is the `cli` leg in test.sh, which scaffolds both targets and
-// builds them; this is the half that can say *why* rather than only "it built".
-//
-// § 1 the manifest, § 2 what it refuses, § 3 the mirror, § 4 the beansc
-// command line, § 5 names, § 6 the page.
+// The `latte` command line, without a filesystem: § 1 manifest, 2 refusals, 3 mirror,
+// 4 beansc line, 5 names, 6 page, 7 pins, 8 page kit, 9 doctor. tools/check_cli.sh builds.
 package main
 
 import std.io
@@ -166,6 +158,23 @@ title "the #1 shop"
        cli.beansc_arguments(lto_app, lto_app.manifest.release,
                             cli.output_path(lto_app, lto_app.manifest.release), "cc").join(" "),
        "build --target wasm32-unknown-unknown --runtime freestanding --emit shared --cc cc --release --lto main.b -o build/release/drawpad.wasm")
+    // `--linker` rides after `--cc`, for a wasm-ld that is not on PATH; beansc
+    // turns it into -fuse-ld, which is why no PATH is rewritten for the child.
+    eq("4.7 canvas, with a wasm-ld that is not on PATH",
+       cli.beansc_arguments(canvas_app, canvas_app.manifest.debug,
+                            cli.output_path(canvas_app, canvas_app.manifest.debug),
+                            "clang", "/opt/lld/bin/wasm-ld").join(" "),
+       "build --target wasm32-unknown-unknown --runtime freestanding --emit shared --cc clang --linker /opt/lld/bin/wasm-ld --debug main.b -o build/debug/drawpad.wasm")
+    eq("4.8 an html build never takes the linker",
+       cli.beansc_arguments(html_app, html_app.manifest.debug,
+                            cli.output_path(html_app, html_app.manifest.debug),
+                            "", "/opt/lld/bin/wasm-ld").join(" "),
+       "build --debug main.b -o build/debug/shopfront")
+    eq("4.9 a browser bundle, release, with a linker",
+       cli.client_arguments(html_app.manifest.release,
+                            cli.client_output(html_app, html_app.manifest.release),
+                            "clang", "/l/wasm-ld").join(" "),
+       "build --target wasm32-unknown-unknown --runtime freestanding --emit shared --cc clang --linker /l/wasm-ld --release browser/main.b -o build/release/shopfront.wasm")
     // The name a build is called by: latte.pot's, and the module's when it
     // says nothing.
     let unnamed: cli.Project = a_project("shopfront", parsed("target html\n"))
@@ -199,4 +208,91 @@ title "the #1 shop"
     eq("6.6 a title with markup characters is escaped",
        "{cli.page_html(titled, "shopfront", []).contains("<title>Ada &amp; Co &lt;hats&gt;</title>")}",
        "true")
+
+    rule("7. pins")
+    let pot: string = r##"module shop
+kind application
+
+# require github.com/beans-lang/latte v0.0.9   a comment is not a row
+require github.com/beans-lang/latte v0.1.1    # the framework
+require path "../widgets"
+require github.com/beans-lang/espresso   "v0.2.9"
+require path "/opt/latte"
+require github.com/beans-lang/barista v0.1.1
+"##
+    eq("7.1 the latte row's ref, not the commented one",
+       cli.required_ref(pot, cli.LATTE_REMOTE), "v0.1.1")
+    eq("7.2 a quoted ref loses its quotes",
+       cli.required_ref(pot, cli.ESPRESSO_REMOTE), "v0.2.9")
+    eq("7.3 a remote nobody requires", cli.required_ref(pot, "github.com/x/y"), "")
+    // Joined, not normalized: the file system resolves the `..`.
+    eq("7.4 path rows, relative and absolute, against the project",
+       cli.required_paths("/p/shop", pot).join(", "), "/p/shop/../widgets, /opt/latte")
+    let moves: List<cli.Repin> = cli.repins_for(pot)
+    var said: List<string> = []
+    for one: cli.Repin in moves { said.push("{one.remote} {one.from}->{one.to}") }
+    // barista is already at the pin, so it does not move; the other two do.
+    eq("7.5 the rows that move, and only those",
+       said.join("; "),
+       "github.com/beans-lang/latte v0.1.1->v{cli.LATTE_VERSION}; github.com/beans-lang/espresso v0.2.9->{cli.ESPRESSO_PIN}")
+    let moved: string = cli.repinned_text(pot, moves)
+    let expected: List<string> = [r##"module shop
+kind application
+
+# require github.com/beans-lang/latte v0.0.9   a comment is not a row
+require github.com/beans-lang/latte v"##, cli.LATTE_VERSION, r##"    # the framework
+require path "../widgets"
+require github.com/beans-lang/espresso   ""##, cli.ESPRESSO_PIN, r##""
+require path "/opt/latte"
+require github.com/beans-lang/barista v0.1.1
+"##]
+    eq("7.6 the moved text keeps comments, quotes and spacing", moved, expected.join(""))
+    eq("7.7 and moving it again moves nothing",
+       "{cli.repins_for(moved).len()}", "0")
+    let path_only: string = "module shop\nrequire path \"../latte\"\n"
+    eq("7.8 a project on a checkout by path has no pin to move",
+       "{cli.repins_for(path_only).len()} {cli.required_ref(path_only, cli.LATTE_REMOTE)}", "0 ")
+
+    rule("8. where a canvas page comes from")
+    let checkout: cli.PageKit = cli.checkout_kit("/src/latte")
+    eq("8.1 a checkout's three folders",
+       "{checkout.scripts} {checkout.canvaskit} {checkout.fonts}",
+       "/src/latte/js /src/latte/node_modules/canvaskit-wasm/bin /src/latte/build/fonts")
+    let installed: cli.PageKit = cli.installed_kit("/home/u/.latte")
+    eq("8.2 an installation's three folders",
+       "{installed.scripts} {installed.canvaskit} {installed.fonts}",
+       "/home/u/.latte/share/latte/js /home/u/.latte/share/latte/canvaskit /home/u/.latte/share/latte/fonts")
+    let pinned: string = "v{cli.LATTE_VERSION}"
+    eq("8.3 a pin this latte's kit serves", cli.pin_mismatch(pinned, "/h", cli.LATTE_VERSION), "")
+    eq("8.4 a pin to another latte is refused, and says how to move",
+       "{cli.pin_mismatch("v0.1.1", "/h", "0.2.0").contains("requires latte v0.1.1, and this latte's page kit is for v0.2.0")} {cli.pin_mismatch("v0.1.1", "/h", "0.2.0").contains("latte upgrade --project")}",
+       "true true")
+    // A branch or a commit is not a version, so it can never be proven to match.
+    eq("8.5 a pin that is not a version tag is refused too",
+       "{cli.pin_mismatch("main", "/h", cli.LATTE_VERSION) != ""} {cli.pin_mismatch(cli.LATTE_VERSION, "/h", cli.LATTE_VERSION) != ""}",
+       "true true")
+    eq("8.6 no installation at all",
+       "{cli.pin_mismatch(pinned, "", "").contains("was not started from an installation")}", "true")
+    eq("8.7 an installation whose kit does not say its version",
+       "{cli.pin_mismatch(pinned, "/h", "").contains("/h/share/latte/VERSION is not there")}", "true")
+    let stamp: string = "latte=0.2.0\ncanvaskit=0.39.1\ntarget=arm64-apple-darwin\n"
+    eq("8.8 a VERSION file's fields",
+       "{cli.version_field(stamp, "latte")} {cli.version_field(stamp, "canvaskit")} [{cli.version_field(stamp, "skia")}]",
+       "0.2.0 0.39.1 []")
+
+    rule("9. doctor")
+    eq("9.1 a newer patch", "{cli.version_at_least("0.1.49", "0.1.44")}", "true")
+    eq("9.2 the floor itself", "{cli.version_at_least("0.1.44", "0.1.44")}", "true")
+    eq("9.3 an older one", "{cli.version_at_least("0.1.43", "0.1.44")}", "false")
+    // Compared as numbers: as text, 0.1.100 sorts before 0.1.44.
+    eq("9.4 three digits beat two", "{cli.version_at_least("0.1.100", "0.1.44")}", "true")
+    eq("9.5 a minor that moves", "{cli.version_at_least("0.2.0", "0.1.44")}", "true")
+    eq("9.6 a major that is behind", "{cli.version_at_least("0.0.99", "0.1.44")}", "false")
+    eq("9.7 beansc's answer",
+       cli.beansc_version_of("beansc 0.1.49 (language 1.0, runtime ABI 20)\n"), "0.1.49")
+    eq("9.8 something that is not beansc", cli.beansc_version_of("clang version 18"), "")
+    let files: List<string> = cli.kit_files()
+    eq("9.9 an installed kit holds its stamp, the page, CanvasKit and the fonts",
+       "{files.len()} {files[0]} {files.contains("js/latte-page.js")} {files.contains("canvaskit/canvaskit.wasm")} {files.contains("fonts/latte-bold.ttf")}",
+       "14 VERSION true true true")
 }

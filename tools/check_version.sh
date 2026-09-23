@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The version the binary prints, the changelog heading and the release tag
-# must agree, or a release ships whatever LATTE_VERSION last happened to say.
+# The version the binary prints, the changelog heading, the release tag, and the
+# espresso/barista pins the CLI writes must each agree with what they mirror.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -38,6 +38,20 @@ if ! grep -qE "^## \[$version\]" CHANGELOG.md; then
     status=1
 fi
 
+# An application pins what latte pins, or beansc refuses two refs in one graph.
+pin_of() { sed -n "s/^pub const $1: string = \"\(.*\)\"$/\1/p" cli/version.b; }
+row_of() { sed -n "s|^require github.com/beans-lang/$2 \([^ ]*\).*|\1|p" "$1"; }
+for check in "ESPRESSO_PIN espresso beans.pot" "ESPRESSO_PIN espresso app/beans.pot" \
+             "BARISTA_PIN barista app/beans.pot"; do
+    set -- $check
+    want=$(pin_of "$1")
+    have=$(row_of "$3" "$2")
+    if [[ -z "$want" || "$want" != "$have" ]]; then
+        echo "--- version FAILED: cli/version.b's $1 is '${want:-?}', $3 requires $2 at '${have:-?}' ---" >&2
+        status=1
+    fi
+done
+
 if [[ -n "$tag" ]]; then
     tagged=${tag#v}
     if [[ "$tagged" != "$version" ]]; then
@@ -48,9 +62,9 @@ fi
 
 if [[ $status -eq 0 ]]; then
     if [[ -n "$tag" ]]; then
-        echo "ok version — latte $version, with a changelog heading and tag $tag"
+        echo "ok version — latte $version, with a changelog heading, its pins, and tag $tag"
     else
-        echo "ok version — latte $version, with a changelog heading"
+        echo "ok version — latte $version, with a changelog heading and its pins"
     fi
 fi
 exit $status

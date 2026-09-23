@@ -6,6 +6,8 @@ commands:
   check          regenerate and type-check; nothing is compiled
   generate       compile the markup and stop
   clean          remove the build directory
+  doctor         say what this machine can build, and what is missing
+  upgrade        replace this installation with the latest release
   vocabulary     print latte's .bx surface as JSON, for an editor
   version        print the version and stop
 
@@ -21,6 +23,10 @@ options:
                                         (build) compile it into a
                                         WebAssembly bundle, for an
                                         application with a client region
+      --force                           (upgrade) reinstall the same version
+      --project                         (upgrade) move this project's latte,
+                                        espresso and barista pins to this
+                                        latte's, and its lock with them
 
 An application does not need latte to build: generated/ is checked in, so a
 clone compiles with plain beansc and no latte binary present at all. This is

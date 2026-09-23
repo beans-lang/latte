@@ -1,19 +1,5 @@
-// generate.b — the `.bx` compiler's driver.
-//
-// Two rules, both about not missing a file.
-//
-// **A markup folder stands for every `.bx` under it, however deep.** A shell
-// glob is not recursive: `site/*.bx` silently misses `site/parts/`, and what
-// that produces is a *stale* generated file that still compiles, still renders
-// last week's screen, and says nothing. A markup folder with no `.bx` in it is
-// an error rather than no work.
-//
-// **A source is always named relative to the project root.** The path goes into
-// the generated file's header, so spelling it `./site/home.bx` from inside the
-// project and `myapp/site/home.bx` from above it would write two different
-// files and a drift check would call one of them stale. The file is read at its
-// full path and compiled under its short one, so where the command was run
-// never reaches the output.
+// generate.b — the `.bx` compiler's driver. A markup folder means every `.bx`
+// under it, however deep, and a source is named relative to the project root.
 
 package cli
 
@@ -39,25 +25,18 @@ pub class Unit {
 pub const MIRROR_ROOT: string = "generated"
 
 /// Where one source's generated half goes: `site/home.bx` becomes
-/// `generated/site/home.b`, and the folders under a markup root are kept.
-///
-/// The mirror rather than a `_gen.b` beside the source, for both targets: a
-/// folder holding only markup can be read at a glance, and a generated file
-/// that is never in a source folder cannot be mistaken for one to edit.
+/// `generated/site/home.b`, so a generated file never sits in a source folder.
 pub fn mirror_for(relative_source: string) -> string {
-    // `path.parent`, not `bx.folder_of`: the latter answers the last segment of
-    // the directory because it names a package, so `site/parts/row.bx` would
-    // mirror to `generated/parts/` and collide with a `parts/` beside `site/`.
+    // `path.parent`, not `bx.folder_of`, which answers only the last segment and
+    // would mirror `site/parts/row.bx` onto a `parts/` beside `site/`.
     let folder: string = path.parent(relative_source)
     let stem: string = bx.stem_of(relative_source)
     if folder == "" { return path.join(MIRROR_ROOT, "{stem}.b") }
     return path.join(path.join(MIRROR_ROOT, folder), "{stem}.b")
 }
 
-/// Every `.bx` under a project's markup folders, sorted, relative to the root.
-///
-/// `Dir.walk` answers a sorted list, so the order two machines generate in is
-/// the same one — which a drift check depends on for its output to be diffable.
+/// Every `.bx` under a project's markup folders, relative to the root, sorted
+/// so two machines generate in one order and a drift report diffs.
 pub fn markup_units(project: Project) -> Result<List<Unit>> {
     var units: List<Unit> = []
     for folder: string in project.markup {
@@ -70,19 +49,22 @@ pub fn markup_units(project: Project) -> Result<List<Unit>> {
             found += 1
         }
         if found == 0 {
-            // Not a skip. A markup folder that is empty means the layout moved,
-            // and a generator that shrugged would leave a drift check comparing
-            // nothing against nothing, green forever.
+            // Not a skip: an empty markup folder means the layout moved, and a drift
+            // check comparing nothing against nothing would be green forever.
             return err("{folder}/ has no .bx files in it", "no_markup")
         }
     }
     return ok(move units)
 }
 
-/// The `bx` options a project compiles its markup with.
+/// The `bx` options a project compiles its markup with, its imports spelled
+/// the way its `beans.pot` reaches latte.
 pub fn bx_options(project: Project) -> bx.Options {
     var options: bx.Options = new bx.Options()
     options.target = project.manifest.target
+    options.latte_module = project.import_of("")
+    options.canvas_module = project.import_of("compose")
+    options.canvas_events_module = project.import_of("input")
     return move options
 }
 
@@ -100,12 +82,8 @@ pub fn compile_unit(project: Project, unit: Unit,
     return ok(compiled.source)
 }
 
-/// Generate every markup file in the project, writing only what changed.
-///
-/// Answers how many files were written. Unchanged files are left alone so a
-/// build does not touch a mtime the compiler's object cache keys on — a
-/// regenerate that rewrote every file identically would make every build a
-/// full rebuild.
+/// Generate every markup file, writing only what changed so an unchanged
+/// file keeps the mtime the object cache keys on. Answers how many were written.
 pub fn generate_project(project: Project) -> Result<int> {
     let units: List<Unit> = markup_units(project)?
     let options: bx.Options = bx_options(project)
@@ -132,11 +110,8 @@ pub fn generate_project(project: Project) -> Result<int> {
     return ok(written)
 }
 
-/// Generate into a scratch root and report which files differ from what is
-/// checked in. Nothing in the project is written.
-///
-/// A check that "fixed" the drift would hide exactly the change it exists to
-/// report, so this one cannot write.
+/// Report which generated files differ from what their markup says. Writes
+/// nothing: a check that fixed the drift would hide what it exists to report.
 pub fn drifted_files(project: Project) -> Result<List<string>> {
     let units: List<Unit> = markup_units(project)?
     let options: bx.Options = bx_options(project)

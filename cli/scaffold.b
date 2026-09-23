@@ -1,15 +1,5 @@
-// scaffold.b — what `latte init` writes.
-//
-// A project that renders on the first build, for either of latte's two targets:
-// the manifests, an entry, a layout, a page, and nothing else. `generated/` is
-// not written here — the first build writes it, and a scaffolder that wrote it
-// too would be a second implementation of the mirror rule.
-//
-// **The templates are raw literals with `__NAME__` in them, not interpolations.**
-// Every one of these files is markup or Beans, and both are mostly braces; an
-// interpolated template would need every brace escaped, and an escape missed
-// inside a scaffold is a syntax error in somebody's new project rather than in
-// this file.
+// scaffold.b — what `latte init` writes. Templates are raw literals with
+// `__NAME__`-style holes, because markup and Beans are mostly braces.
 
 package cli
 
@@ -38,23 +28,21 @@ fn beans_pot(name: string, target: bx.Target, latte_path: string) -> string {
         "",
     ]
     if latte_path != "" {
-        // A path row, for working on latte itself: a project built this way
-        // sees uncommitted changes. `latte init` asks for the path rather than
-        // guessing one, because a row pointing at a directory that is not there
-        // fails later with a message about a missing package, not about the row.
+        // A path row, for working on latte itself: the project sees uncommitted
+        // changes. The path is asked for, never guessed.
         rows.push("require path \"{latte_path}\"")
         match target {
             html => { rows.push("require path \"{latte_path}/app\"") }
             canvas => {}
         }
     } else {
-        rows.push("require github.com/beans-lang/latte v{LATTE_VERSION}")
+        rows.push("require {LATTE_REMOTE} v{LATTE_VERSION}")
     }
     match target {
         html => {
             // The composition root names both halves of latte and wires them
             // onto espresso; a canvas application needs neither.
-            rows.push("require github.com/beans-lang/espresso v0.3.0")
+            rows.push("require {ESPRESSO_REMOTE} {ESPRESSO_PIN}")
         }
         canvas => {}
     }
@@ -106,7 +94,7 @@ fn canvas_main() -> string {
 // --runtime freestanding and --emit shared, and writes a page beside it.
 package main
 
-import latte.browser
+import __LATTE_BROWSER__
 import __NAME__.generated.site
 
 pub extern "C" fn boot() -> i32 as "latte_boot" {
@@ -202,8 +190,8 @@ fn canvas_shell() -> string {
 // the canvas.
 package site
 
-import latte.compose
-import {view} from latte.annotations
+import __LATTE_COMPOSE__
+import {view} from __LATTE_ANNOTATIONS__
 
 @view
 pub partial class Shell extends compose.Component {
@@ -233,8 +221,8 @@ fn canvas_page() -> string {
 // in one file the compiler keeps in step.
 package site
 
-import latte.compose
-import {view} from latte.annotations
+import __LATTE_COMPOSE__
+import {view} from __LATTE_ANNOTATIONS__
 
 @view
 pub partial class Counter extends compose.Component {
@@ -269,13 +257,13 @@ fn html_main() -> string {
     return r##"// The application. Everything it needs is in `options()`; `latte_app` does
 // the assembling that every main.b used to hand-write.
 //
-//     latte build && ./build/debug/__NAME__ serve 8080
+//     latte build && cd build/debug && ./__NAME__ serve 8080
 package main
 
 import github.com/beans-lang/espresso
 import std.io
 import std.os
-import {LatteApp, LatteOptions, build} from latte_app
+import {LatteApp, LatteOptions, build} from __LATTE_APP__
 // Nothing calls these two. The import is what puts them in the executable, so
 // the page scan can find their `@page` annotations — latte has no registry and
 // `reflect.types()` is the registry.
@@ -344,7 +332,7 @@ fn html_shell() -> string {
 // replacing the page the script driving it is running inside.
 package site
 
-import {Layout} from latte
+import {Layout} from __LATTE__
 
 pub partial class Shell extends Layout {
     pub fn init() { super.init() }
@@ -367,7 +355,7 @@ fn html_page() -> string {
 // would re-render.
 package site
 
-import {page, layout} from latte
+import {page, layout} from __LATTE__
 
 @page(route: r"/")
 @layout(name: "Shell")
@@ -426,7 +414,7 @@ fn client_pieces(name: string, latte_path: string) -> List<Piece> {
     if latte_path != "" {
         rows.push("require path \"{latte_path}/client\"")
     } else {
-        rows.push("require github.com/beans-lang/latte v{LATTE_VERSION}")
+        rows.push("require {LATTE_REMOTE} v{LATTE_VERSION}")
     }
     rows.push("")
     return [new Piece("browser/beans.pot", rows.join("\n")),
@@ -452,7 +440,7 @@ import __NAME__.generated.site
 import {action_cancel_raw, action_result_raw, actions_in_flight,
         boot_raw, catalogue_raw, event_raw, install_action_transport,
         last_error_raw, mount_raw, props_raw, take_raw,
-        unmount_raw} from latte_client
+        unmount_raw} from __LATTE_CLIENT__
 
 // The page's half of a server action. Declared HERE, in a module that only
 // ever builds for a browser, and installed into the region runtime at boot:
@@ -562,9 +550,8 @@ fn pieces_for(name: string, target: bx.Target, latte_path: string,
     return move pieces
 }
 
-/// Whether a name can be a Beans module: the compiler's own rule, asked here so
-/// the refusal names the argument rather than arriving from `beansc` later,
-/// about a manifest the person did not write.
+/// Whether a name can be a Beans module — the compiler's rule, asked here so
+/// the refusal names the argument, not a manifest the person did not write.
 pub fn is_module_name(name: string) -> bool {
     if name == "" { return false }
     var index: int = 0
@@ -581,6 +568,18 @@ pub fn is_module_name(name: string) -> bool {
     return true
 }
 
+/// A template with its name and latte's packages filled in, spelled the way
+/// the project's `beans.pot` reaches latte.
+pub fn fill(body: string, name: string, latte_root: string) -> string {
+    return body.replace("__LATTE_BROWSER__", latte_import(latte_root, "browser"))
+               .replace("__LATTE_COMPOSE__", latte_import(latte_root, "compose"))
+               .replace("__LATTE_ANNOTATIONS__", latte_import(latte_root, "annotations"))
+               .replace("__LATTE_APP__", latte_import(latte_root, "app"))
+               .replace("__LATTE_CLIENT__", latte_import(latte_root, "client"))
+               .replace("__LATTE__", latte_import(latte_root, ""))
+               .replace("__NAME__", name)
+}
+
 /// Write a project into `<name>/`, or into `.` when `here` is set.
 pub fn init_project(name: string, target: bx.Target, latte_path: string,
                     here: bool, with_client: bool = false) -> Result<string> {
@@ -595,9 +594,10 @@ pub fn init_project(name: string, target: bx.Target, latte_path: string,
                    "exists")
     }
     let pieces: List<Piece> = pieces_for(name, target, latte_path, with_client)
-    // Every path is checked before anything is written. A scaffold that wrote
-    // three files and then found the fourth in the way would leave a directory
-    // that is neither the old thing nor a project.
+    var latte_root: string = LATTE_REMOTE
+    if latte_path != "" { latte_root = "latte" }
+    // Every path is checked before anything is written, so a refusal never
+    // leaves a half-written project behind.
     for piece: Piece in pieces {
         let full: string = path.join(root, piece.where)
         if fs.exists(full) {
@@ -613,7 +613,7 @@ pub fn init_project(name: string, target: bx.Target, latte_path: string,
                 err(problem) => { return err("cannot make {folder}: {problem.msg}", "init") }
             }
         }
-        fs.write(full, piece.body.replace("__NAME__", name))?
+        fs.write(full, fill(piece.body, name, latte_root))?
     }
     return ok(root)
 }

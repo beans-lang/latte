@@ -1,7 +1,7 @@
 name: latte cli
 
 # Build the `latte` command line for every platform a Beans toolchain runs on,
-# prove each binary works on the machine it was built for, then publish.
+# with its Skia page kit, prove each archive works where it was built, publish.
 
 on:
   push:
@@ -37,15 +37,40 @@ jobs:
           set -euo pipefail
           tag=""
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then tag="$GITHUB_REF_NAME"; fi
-          bash tools/check_version.sh $tag
+          bash tools/check_version.sh ${tag:+"$tag"}
           echo "version=$(bash tools/check_version.sh --print)" >> "$GITHUB_OUTPUT"
+
+  # --- the page kit: platform-independent, so built once and every archive
+  # carries the same bytes of CanvasKit (Skia), js/ and fonts.
+  kit:
+    name: page kit (CanvasKit / Skia)
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Fetch CanvasKit and the fonts
+        run: npm install --omit=dev --no-audit --no-fund
+      - name: Prepare the fonts CanvasKit can read
+        run: node tools/font_prepare.mjs
+      - name: Assemble the kit
+        run: bash tools/make_kit.sh dist/kit
+      - uses: actions/upload-artifact@v5
+        with:
+          name: latte-kit
+          path: dist/kit
+          if-no-files-found: error
+          retention-days: 7
 
   # ------------------------------------------------------- native per platform
   build:
     name: ${{ matrix.label }}
-    needs: version
+    needs: [version, kit]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -67,15 +92,45 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install a C toolchain
+      - uses: actions/download-artifact@v5
+        with:
+          name: latte-kit
+          path: kit
+
+      - name: Install a C toolchain with a wasm32 backend
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends clang lld llvm
+          # Debian ships wasm-ld versioned; a canvas build asks for the plain name.
+          if ! command -v wasm-ld >/dev/null; then
+              sudo ln -s "$(find /usr/lib -path '*/llvm-*/bin/wasm-ld' | sort -V | tail -1)" /usr/local/bin/wasm-ld
+          fi
+          wasm-ld --version
 
-      # The user's install path, verbatim, and no fallback to a checkout: if a
-      # compiler cannot be installed the job fails here rather than going quiet.
+      # Apple's Clang has no wasm32 backend; a canvas build needs Homebrew's.
+      - name: Install a Clang with a wasm32 backend
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew install llvm lld
+          /opt/homebrew/opt/llvm/bin/clang --print-targets | grep -q wasm32
+          /opt/homebrew/opt/lld/bin/wasm-ld --version
+
+      # The full gate's checkout legs stage the page from this tree, as a person
+      # working on latte does, so it needs the tree's own npm packages.
+      - uses: actions/setup-node@v7
+        if: matrix.gate == 'full'
+        with:
+          node-version: 22
+      - name: Prepare this tree's page (the checkout legs use it)
+        if: matrix.gate == 'full'
+        run: |
+          npm install --omit=dev --no-audit --no-fund
+          node tools/font_prepare.mjs
+
+      # The user's install path, verbatim, and no fallback to a checkout.
       - name: Install the published Beans toolchain
         if: runner.os != 'Windows'
         run: |
@@ -115,17 +170,16 @@ jobs:
           "${BEANSC:-beansc}" --version
           "${BEANSC:-beansc}" doctor
 
-      # `dist` is relative on purpose: every path handed to the compiler stays
-      # relative, so Git Bash never has to rewrite one into a Windows path.
+      # `dist` and `kit` stay relative, so Git Bash never rewrites a path.
       - name: Build and package the command line
         shell: bash
         env:
           BEANS_ROOT: ""
-        run: bash tools/package_cli.sh dist --expect ${{ matrix.label }}
+        run: bash tools/package_cli.sh dist --kit kit --expect ${{ matrix.label }}
 
-      # Run from the staged tree, not from an unpacked archive: no runner has
-      # one extractor that reads both a .tar.gz and a .zip.
-      - name: Smoke — the binary scaffolds and generates
+      # Through the launcher, from the staged tree: no runner has one extractor
+      # that reads both a .tar.gz and a .zip.
+      - name: Smoke — the launcher, the kit, init and generate
         shell: bash
         env:
           BEANS_ROOT: ""
@@ -133,28 +187,54 @@ jobs:
         run: |
           set -euo pipefail
           version=$(bash tools/check_version.sh --print)
-          exe=""
-          if [[ "$RUNNER_OS" == Windows ]]; then exe=".exe"; fi
+          launcher="latte"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+              launcher="latte.cmd"
+              # latte.real.exe reads BEANSC itself, so it needs the Windows spelling.
+              BEANSC="$(cygpath -w "$BEANSC")"
+              export BEANSC
+          fi
           root="$PWD"
-          latte="$root/dist/stage/latte-v$version-$LABEL/latte$exe"
-          "$latte" version
-          mkdir -p smoke
-          (cd smoke && "$latte" init demo --latte "$root")
-          # `generate` compiles the markup and links nothing, so this stays a
-          # check of the shipped binary rather than of the C toolchain.
-          (cd smoke/demo && "$latte" generate)
-          test -d smoke/demo/generated
+          latte="$root/dist/stage/latte-v$version-$LABEL/bin/$launcher"
+          test "$("$latte" version | tr -d '\r')" = "latte $version"
+          # Outside the checkout, whose own beans.pot doctor would find.
+          outside="$RUNNER_TEMP/latte-empty"
+          if [[ "$RUNNER_OS" == Windows ]]; then outside="$(cygpath -u "$RUNNER_TEMP")/latte-empty"; fi
+          mkdir -p "$outside" smoke
+          (cd "$outside" && "$latte" doctor)
+          # Both import spellings: a checkout by path, and latte pinned by git.
+          (cd smoke && "$latte" init demo --latte "$root" && cd demo && "$latte" generate)
+          (cd smoke && "$latte" init padkit --target canvas && cd padkit && "$latte" generate)
+          grep -q 'github.com/beans-lang/latte/compose' smoke/padkit/generated/site/counter.b
 
-      # The other half: does a scaffolded project really compile? It needs a C
-      # toolchain and the dependency fetch, so only the fast native hosts run it.
-      - name: Gate — latte init writes a project latte build builds
+      - name: Smoke — the Windows installer and upgrade path
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = ([regex]::Match((Get-Content cli\version.b -Raw), 'LATTE_VERSION: string = "([^"]+)"')).Groups[1].Value
+          if (-not $version) { throw 'cli/version.b declares no LATTE_VERSION' }
+          $base = Join-Path $env:RUNNER_TEMP 'release'
+          New-Item -ItemType Directory -Force -Path $base | Out-Null
+          Copy-Item dist\*.zip $base
+          Get-Content dist\*.zip.sha256 | Set-Content (Join-Path $base 'SHA256SUMS')
+          $env:LATTE_INSTALL_BASE_URL = $base
+          $prefix = Join-Path $env:RUNNER_TEMP 'latte-home'
+          & .\tools\latte-install.ps1 -Prefix $prefix -NoModifyPath
+          $got = (& (Join-Path $prefix 'bin\latte.cmd') version) -join ''
+          if ($got -ne "latte $version") { throw "the installed latte said '$got'" }
+          if (-not (Test-Path (Join-Path $prefix 'share\latte\canvaskit\canvaskit.wasm'))) { throw 'no kit' }
+
+      # The whole CLI gate, against the archive this job ships.
+      - name: Gate — install the archive, build and run pinned projects
         if: matrix.gate == 'full'
         shell: bash
         env:
           BEANS_ROOT: ""
+          LATTE_DIST: dist
         run: bash tools/check_cli.sh
 
-      # The staged tree stays out: only what a person downloads is an artifact.
+      # Only what a person downloads is an artifact.
       - uses: actions/upload-artifact@v5
         with:
           name: cli-${{ matrix.label }}
@@ -168,7 +248,7 @@ jobs:
   # -------------------------------------------------------- static Linux (musl)
   musl:
     name: ${{ matrix.label }}
-    needs: version
+    needs: [version, kit]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -182,14 +262,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: actions/download-artifact@v5
+        with:
+          name: latte-kit
+          path: kit
+
       - uses: docker/setup-qemu-action@v3
         if: matrix.platform != 'linux/amd64'
         with:
           platforms: arm64
 
-      # Built inside the musl host rather than cross-linked, so the binary is
-      # run by its own smoke test instead of shipping unexecuted.
-      - name: Build and package inside Alpine
+      # Built inside the musl host rather than cross-linked, so the archive is
+      # installed and run by busybox sh there instead of shipping unexecuted.
+      - name: Build, package, install and run inside Alpine
         run: |
           set -euo pipefail
           mkdir -p artifacts
@@ -208,7 +293,13 @@ jobs:
               export PATH="$HOME/.beans/bin:$PATH"
               export BEANS_ROOT=""
               beansc doctor
-              bash tools/package_cli.sh dist --expect ${{ matrix.label }}
+              bash tools/package_cli.sh dist --kit kit --expect ${{ matrix.label }}
+              mkdir -p /tmp/release /tmp/empty
+              cp dist/*.tar.gz /tmp/release/
+              cat dist/*.tar.gz.sha256 > /tmp/release/SHA256SUMS
+              LATTE_INSTALL_BASE_URL=/tmp/release sh tools/latte-install.sh \
+                --prefix /tmp/latte-home --no-modify-path
+              (cd /tmp/empty && /tmp/latte-home/bin/latte doctor)
               cp dist/*.tar.gz dist/*.sha256 /artifacts/
             '
 
@@ -239,8 +330,7 @@ jobs:
           path: incoming
           merge-multiple: true
 
-      # A release missing a platform is worse than a late one, so the set is
-      # named here and a gap stops the publish.
+      # A release missing a platform is worse than a late one.
       - name: Verify every expected platform is present
         run: |
           set -euo pipefail
@@ -261,8 +351,11 @@ jobs:
               ls assets >&2
               exit 1
           fi
+          # The installers are what `curl … | sh` and `irm … | iex` fetch.
+          cp tools/latte-install.sh tools/latte-install.ps1 assets/
           ls -la assets
 
+      # The installers read this list: it is their only index of the release.
       - name: Write the checksum list
         run: |
           set -euo pipefail
@@ -270,8 +363,7 @@ jobs:
             LC_ALL=C sort | xargs sha256sum) > assets/SHA256SUMS
           cat assets/SHA256SUMS
 
-      # The tag arrives as an environment value, never spliced into the script:
-      # a tag name is attacker-shaped text the moment anyone can push one.
+      # The tag arrives as an environment value, never spliced into the script.
       - name: Create the GitHub Release
         env:
           REF_TYPE: ${{ github.ref_type }}
@@ -280,16 +372,28 @@ jobs:
           set -euo pipefail
           tag="v$VERSION"
           if [[ "$REF_TYPE" == tag ]]; then tag="$REF_NAME"; fi
-          notes="The \`latte\` command line for six platforms. Unpack, then put \`latte\` on your PATH.
+          cat > notes.md <<EOF
+          The \`latte\` command line for six platforms, with its page kit:
+          CanvasKit (Skia, as WebAssembly), latte's browser scripts and fonts.
 
-          Verify a download against \`SHA256SUMS\` before running it."
-          # A re-run must land on its feet rather than fail on the release it
-          # created the first time.
+          \`\`\`sh
+          curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/latte-install.sh | sh
+          \`\`\`
+
+          \`\`\`powershell
+          irm https://github.com/$GITHUB_REPOSITORY/releases/latest/download/latte-install.ps1 | iex
+          \`\`\`
+
+          Then \`latte doctor\`. An existing install moves here with \`latte upgrade\`,
+          and a project with \`latte upgrade --project\`. Every archive is listed in
+          \`SHA256SUMS\`, which the installers check before they replace anything.
+          EOF
+          # A re-run must land on its feet rather than fail on the release it made.
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               gh release upload "$tag" assets/* --repo "$GITHUB_REPOSITORY" --clobber
           else
               gh release create "$tag" assets/* \
                 --repo "$GITHUB_REPOSITORY" \
                 --title "latte $VERSION" \
-                --notes "$notes"
+                --notes-file notes.md
           fi

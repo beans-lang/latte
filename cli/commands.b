@@ -1,34 +1,5 @@
-// commands.b — the `latte` command line.
-//
-// One binary, the way `dotnet` is one binary: the project is found by walking
-// up from where you are, the configuration is named rather than spelled out in
-// compiler flags, and every command that compiles anything regenerates the
-// markup first so the two halves of a screen cannot be built out of step.
-//
-//     latte init myapp                a project, with a page in it
-//     latte init myapp --target canvas   the same, drawn on a canvas
-//     latte build                     Debug, into build/debug/
-//     latte build -c Release          -O3, NDEBUG, into build/release/
-//     latte build --client            and the browser half, from browser/main.b
-//     latte check                     build nothing; --drift for a gate
-//     latte generate                  the markup only
-//     latte clean                     remove build/
-//
-// **Everything this tool says about its own progress goes to stderr.** Only
-// data goes to stdout — the JSON `vocabulary` prints, and nothing else. That is
-// the ordinary Unix split, and here it is load-bearing rather than tidy:
-// `io.println` is block-buffered when stdout is not a terminal, so a command
-// that printed progress there would show nothing until it finished.
-//
-// **There is no `run` and no `watch`, and that is a decision rather than a
-// gap.** Both mean "start the thing and keep it alive", and latte's two targets
-// disagree about what the thing is: an html application is a server this tool
-// would have to own the lifetime of, and a canvas application is a directory
-// that needs an HTTP server in front of it — which latte has (`latte.web`, over
-// espresso) but this tool deliberately does not link, so that `latte build`
-// works on a machine that cannot build espresso at all. Adding them means
-// choosing to depend on espresso here, and that is the change to make when
-// somebody needs it rather than an empty mechanism to carry until then.
+// commands.b — the `latte` command line: parse once, dispatch, and turn every
+// refusal into one line on stderr and a non-zero exit. Data alone goes to stdout.
 
 package cli
 
@@ -46,6 +17,8 @@ pub fn usage() {
     io.eprintln("  check          regenerate and type-check; nothing is compiled")
     io.eprintln("  generate       compile the markup and stop")
     io.eprintln("  clean          remove the build directory")
+    io.eprintln("  doctor         say what this machine can build, and what is missing")
+    io.eprintln("  upgrade        replace this installation with the latest release")
     io.eprintln("  vocabulary     print latte's .bx surface as JSON, for an editor")
     io.eprintln("  version        print the version and stop")
     io.eprintln("")
@@ -61,6 +34,10 @@ pub fn usage() {
     io.eprintln("                                        (build) compile it into a")
     io.eprintln("                                        WebAssembly bundle, for an")
     io.eprintln("                                        application with a client region")
+    io.eprintln("      --force                           (upgrade) reinstall the same version")
+    io.eprintln("      --project                         (upgrade) move this project's latte,")
+    io.eprintln("                                        espresso and barista pins to this")
+    io.eprintln("                                        latte's, and its lock with them")
     io.eprintln("")
     io.eprintln("An application does not need latte to build: generated/ is checked in, so a")
     io.eprintln("clone compiles with plain beansc and no latte binary present at all. This is")
@@ -79,6 +56,8 @@ class Args {
     pub generated: bool = false
     /// `--client`: build the browser half too, or (on init) scaffold it.
     pub client: bool = false
+    pub force: bool = false
+    pub project: bool = false
 
     pub fn init() {}
 }
@@ -122,6 +101,8 @@ fn parse_args(words: List<string>) -> Result<Args> {
         if word == "--drift" { parsed.drift = true; index += 1; continue }
         if word == "--generated" { parsed.generated = true; index += 1; continue }
         if word == "--client" { parsed.client = true; index += 1; continue }
+        if word == "--force" { parsed.force = true; index += 1; continue }
+        if word == "--project" { parsed.project = true; index += 1; continue }
         if word.starts_with("-") {
             return err("{word} is not an option latte has", "usage")
         }
@@ -177,14 +158,14 @@ fn do_init(parsed: Args) -> Result<bool> {
     match target {
         canvas => {
             io.eprintln("")
-            io.eprintln("Then serve build/debug/ — every path in its page is relative, so any")
-            io.eprintln("static file server will do.")
+            io.eprintln("The build is a folder: open it with any static file server, e.g.")
+            io.eprintln("  python3 -m http.server -d build/debug 8000")
         }
         html => {
             if parsed.client {
                 io.eprintln("  latte build --client")
             }
-            io.eprintln("  ./build/debug/{name} serve 8080")
+            io.eprintln("  cd build/debug && ./{name} serve 8080")
         }
     }
     return ok(true)
@@ -197,6 +178,8 @@ fn do_build(parsed: Args) -> Result<bool> {
     io.eprintln("{built.profile}: {built.output}")
     if built.is_page {
         io.eprintln("the page is {path.join(built.folder, "index.html")} — serve {built.folder}/")
+    } else {
+        io.eprintln("run it: cd {built.folder} && ./{project.output_name()} serve 8080")
     }
     if parsed.client {
         if project.manifest.is_canvas() {
@@ -245,6 +228,31 @@ fn do_clean(parsed: Args) -> Result<bool> {
     return ok(true)
 }
 
+/// `latte upgrade` replaces an installation, and the launcher in its `bin/`
+/// does it; this binary only answers `--project`, or says where to go.
+fn do_upgrade(parsed: Args) -> Result<bool> {
+    if parsed.project {
+        if parsed.force {
+            return err("--force reinstalls latte itself; --project moves a project's pins — run them one at a time",
+                       "usage")
+        }
+        let moved: int = upgrade_project(".")?
+        if moved == 0 {
+            io.eprintln("already on latte v{LATTE_VERSION}: nothing to move")
+        } else {
+            io.eprintln("moved {moved} pin(s) to latte v{LATTE_VERSION}")
+        }
+        return ok(true)
+    }
+    let home: string = latte_home()
+    if home != "" {
+        return err("run {home}/bin/latte upgrade — the launcher replaces the installation, and this binary was started without it",
+                   "upgrade")
+    }
+    return err("this latte is not an installation, so there is nothing to upgrade — install a release with the one-line installer in latte's README",
+               "upgrade")
+}
+
 fn do_vocabulary(parsed: Args) -> Result<bool> {
     var target: bx.Target = bx.Target.html
     if parsed.target != "" {
@@ -287,6 +295,10 @@ pub fn run_cli() {
             else if command == "generate" { answered = do_generate() }
             else if command == "clean" { answered = do_clean(parsed) }
             else if command == "vocabulary" { answered = do_vocabulary(parsed) }
+            else if command == "upgrade" { answered = do_upgrade(parsed) }
+            else if command == "doctor" {
+                if !run_doctor() { os.exit(1) }
+            }
             else {
                 io.eprintln("latte: {command} is not a command latte has")
                 usage()
