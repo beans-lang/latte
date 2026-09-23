@@ -11,3 +11,6 @@
 # altogether, rather than trade one wrong answer for another.
 *.b  linguist-language=Swift linguist-detectable=false
 *.bx linguist-language=Swift linguist-detectable=false
+
+# Shell scripts run under bash on every runner, Windows included: never CRLF.
+*.sh text eol=lf

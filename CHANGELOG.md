@@ -2,7 +2,7 @@
 
 This file records user-facing changes in each latte release.
 
-## [0.2.0] - unreleased
+## [0.2.0] - 2026-09-23
 
 ### Added — render modes: where a component runs
 
