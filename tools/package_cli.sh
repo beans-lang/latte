@@ -33,7 +33,11 @@ if [[ -z ${BEANS_ROOT:-} && -x "$ROOT/../../beans/build/beansc" ]]; then
 fi
 BEANSC=${BEANSC:-${BEANS_ROOT:+$BEANS_ROOT/build/beansc}}
 BEANSC=${BEANSC:-$(command -v beansc || true)}
-if [[ -z "$BEANSC" || ! -x "$BEANSC" ]]; then
+# Git Bash never marks a `.cmd` executable; cmd.exe runs it, so existing is enough.
+runnable=0
+[[ -n "$BEANSC" && -x "$BEANSC" ]] && runnable=1
+[[ "$BEANSC" == *.cmd && -f "$BEANSC" ]] && runnable=1
+if [[ $runnable -eq 0 ]]; then
     echo "beansc not found: set BEANSC, set BEANS_ROOT, or put beansc on PATH" >&2
     exit 1
 fi
