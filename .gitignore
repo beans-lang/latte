@@ -29,3 +29,7 @@ test-results/
 # workflow scaffolds to prove the packaged binary runs.
 dist/
 smoke/
+
+# Kept on disk, out of the repository and its history.
+docs/
+probes/
