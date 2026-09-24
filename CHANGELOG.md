@@ -2,6 +2,19 @@
 
 This file records user-facing changes in each latte release.
 
+## [0.2.1] - 2026-09-24
+
+### Fixed — the README in every archive linked to files that are not there
+
+`docs/` and `probes/` left the repository after 0.2.0 was cut, and the README
+0.2.0 shipped in each archive still linked into both. It no longer does; a
+project scaffolded by this release pins `v0.2.1`.
+
+### Removed — the `recorded-refusals` leg of `test.sh`
+
+It re-ran `probes/check_refusals.sh` and failed when that file was missing,
+which is every fresh clone now. The refusal-coverage leg is unchanged.
+
 ## [0.2.0] - 2026-09-23
 
 ### Added — render modes: where a component runs

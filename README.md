@@ -109,7 +109,7 @@ with it — you name those only when your own source does:
 module myapp
 kind application
 
-require github.com/beans-lang/latte v0.2.0
+require github.com/beans-lang/latte v0.2.1
 
 # and only if this module's own source names their types. Pin them at the refs
 # latte pins, or the build refuses two refs for one dependency:

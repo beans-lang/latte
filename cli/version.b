@@ -2,7 +2,7 @@
 // it mirrors: CHANGELOG.md's heading, and the rows in beans.pot and app/beans.pot.
 package cli
 
-pub const LATTE_VERSION: string = "0.2.0"
+pub const LATTE_VERSION: string = "0.2.1"
 
 /// The refs latte itself requires. An application must pin the same ones, or
 /// beansc refuses a graph holding two refs for one dependency.
