@@ -1,0 +1,90 @@
+name: showcase pages
+
+# Build the canvas showcase with the published Beans toolchain, check the staged
+# site in Chromium, and deploy it to GitHub Pages.
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a deployment half way; a newer push waits its turn.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build and check the showcase
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BEANS_ROOT: ""
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install a C toolchain with a wasm32 backend
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang lld llvm
+          # Debian ships wasm-ld versioned; a canvas build asks for the plain name.
+          if ! command -v wasm-ld >/dev/null; then
+              sudo ln -s "$(find /usr/lib -path '*/llvm-*/bin/wasm-ld' | sort -V | tail -1)" /usr/local/bin/wasm-ld
+          fi
+          wasm-ld --version
+
+      - name: Install the published Beans toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/beans-lang/beans/releases/latest/download/beans-install.sh | sh
+          echo "$HOME/.beans/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Fetch CanvasKit, the fonts and Playwright
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Build the showcase
+        run: |
+          set -euo pipefail
+          beansc --version
+          node tools/font_prepare.mjs
+          bash tools/generate.sh
+          bash tools/wasm_build.sh examples/showcase/main.b build/browser/showcase.wasm
+
+      - name: Stage the site
+        run: bash tools/stage_showcase.sh _site
+
+      # Served from _site itself, so a file the staging missed is a 404 and a failure.
+      - name: Check the staged site in Chromium
+        env:
+          LATTE_SERVE_ROOT: _site
+          LATTE_ENGINES: chromium
+        run: node tools/ui_check.mjs
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    name: deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
