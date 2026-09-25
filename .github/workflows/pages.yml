@@ -59,7 +59,9 @@ jobs:
           beansc --version
           node tools/font_prepare.mjs
           bash tools/generate.sh
-          bash tools/wasm_build.sh examples/showcase/main.b build/browser/showcase.wasm
+          # Release, as `latte publish` builds: clang 18 at -O0 gives one function
+          # 94k locals, and browsers refuse any function over 50k.
+          bash tools/wasm_build.sh examples/showcase/main.b build/browser/showcase.wasm --release
 
       - name: Stage the site
         run: bash tools/stage_showcase.sh _site

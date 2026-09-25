@@ -20,8 +20,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-source_file=${1:?usage: wasm_build.sh <file.b> <output.wasm>}
-output=${2:?usage: wasm_build.sh <file.b> <output.wasm>}
+source_file=${1:?usage: wasm_build.sh <file.b> <output.wasm> [beansc build flags]}
+output=${2:?usage: wasm_build.sh <file.b> <output.wasm> [beansc build flags]}
 
 if [[ -z ${BEANS_ROOT:-} && -x "$ROOT/../../beans/build/beansc" ]]; then
     BEANS_ROOT=$(cd "$ROOT/../../beans" && pwd)
@@ -71,4 +71,4 @@ fi
 mkdir -p "$(dirname "$output")"
 cd "$ROOT"
 "$BEANSC" build --target wasm32-unknown-unknown --runtime freestanding \
-    --emit shared --cc "$wasm_cc" "$source_file" -o "$output"
+    --emit shared --cc "$wasm_cc" "${@:3}" "$source_file" -o "$output"
