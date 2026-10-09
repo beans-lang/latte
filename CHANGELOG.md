@@ -2,6 +2,17 @@
 
 This file records user-facing changes in each latte release.
 
+## [0.2.2] - 2026-10-09
+
+### Fixed — `circuit.b` no longer compiles on Beans 0.1.52
+
+Beans 0.1.52 refuses `move(...)` of a match binding, because the binding
+borrows the matched value and the closure would share it rather than own it.
+`Circuit.drain` moved the job it received into the closure it hands the
+guard. The guard runs that closure before it returns, so the closure now
+borrows the job from the match arm instead (#1). The change also compiles on
+Beans 0.1.51. A project scaffolded by this release pins `v0.2.2`.
+
 ## [0.2.1] - 2026-09-24
 
 ### Fixed — the README in every archive linked to files that are not there
