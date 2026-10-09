@@ -736,10 +736,10 @@ pub class Circuit {
             match self.jobs.try_receive() {
                 some(job) => {
                     let g: fn(fn() -> bool) -> string = self.guard
-                    // `move(job)` because the element type is move-only: the
-                    // closure has to OWN the job, and a field could not hand
-                    // it back out again ("binding cannot move a field yet").
-                    let report: string = g(fn() move(job) -> bool {
+                    // The closure borrows `job` from this arm, and the guard
+                    // runs it before it returns. `move(job)` is refused: a
+                    // match binding borrows the value it was matched from.
+                    let report: string = g(fn() -> bool {
                         job(self)
                         return true
                     })
