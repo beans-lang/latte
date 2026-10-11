@@ -33,7 +33,7 @@ pub fn text_out(text: string, out: RawPtr<i8>, cap: int) -> int {
     if bytes.len() > cap { return bytes.len() }
     unsafe {
         let target: RawPtr<u8> = RawPtr.from_address(out.address())
-        for index: int in 0..bytes.len() { target.offset(index).write(bytes.get(index) as u8) }
+        for index: int in 0..bytes.len() { target.offset(index).write(bytes.get_u8(index) as u8) }
     }
     return bytes.len()
 }

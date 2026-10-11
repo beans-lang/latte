@@ -257,7 +257,7 @@ fn client_frame(body: string) -> Bytes {
     let mask: List<int> = [18, 52, 86, 120]
     for index: int in 0..4 { frame.push(mask[index]) }
     for index: int in 0..payload.len() {
-        frame.push(payload.get(index) ^ mask[index % 4])
+        frame.push(payload.get_u8(index) ^ mask[index % 4])
     }
     return move frame
 }
@@ -404,19 +404,19 @@ fn run_raw(port: int, path: string, offer: bool, slot: int, read_ms: int) -> Run
 /// extended length. Nothing here reads the payload.
 fn whole_frame_size(data: Bytes) -> int {
     if data.len() < 2 { return 0 }
-    let flag: int = data.get(1)
+    let flag: int = data.get_u8(1)
     if flag >= 128 { return -1 }
     var header: int = 2
     var length: int = flag
     if flag == 126 {
         if data.len() < 4 { return 0 }
         header = 4
-        length = data.get(2) * 256 + data.get(3)
+        length = data.get_u8(2) * 256 + data.get_u8(3)
     } else if flag == 127 {
         if data.len() < 10 { return 0 }
         header = 10
         length = 0
-        for index: int in 2..10 { length = length * 256 + data.get(index) }
+        for index: int in 2..10 { length = length * 256 + data.get_u8(index) }
     }
     if data.len() < header + length { return 0 }
     return header + length
@@ -430,9 +430,9 @@ fn whole_frame_size(data: Bytes) -> int {
 /// hello is one frame, and it is well under 126 bytes either way.
 fn first_frame_body(data: Bytes) -> string {
     if data.len() < 2 { return "" }
-    let first: int = data.get(0)
+    let first: int = data.get_u8(0)
     let compressed: bool = (first & 64) != 0
-    let length: int = data.get(1)
+    let length: int = data.get_u8(1)
     if length >= 126 { return "" }
     if data.len() < 2 + length { return "" }
     var payload: Bytes = data.slice(2, 2 + length)

@@ -317,7 +317,7 @@ pub fn fresh_id() -> Result<string> {
     let digits: string = "0123456789abcdef"
     var out: string = ""
     for index: int in 0..raw.len() {
-        let byte: int = raw.get(index)
+        let byte: int = raw.get_u8(index)
         out = "{out}{digits.slice(byte / 16, byte / 16 + 1)}{digits.slice(byte % 16, byte % 16 + 1)}"
     }
     return ok(out)

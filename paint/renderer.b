@@ -54,8 +54,8 @@ pub class Pixels {
     pub fn at(x: int, y: int) -> Option<List<int>> {
         if x < 0 || y < 0 || x >= self.width || y >= self.height { return none }
         let start: int = (y * self.width + x) * 4
-        return some([self.rgba.get(start), self.rgba.get(start + 1),
-                     self.rgba.get(start + 2), self.rgba.get(start + 3)])
+        return some([self.rgba.get_u8(start), self.rgba.get_u8(start + 1),
+                     self.rgba.get_u8(start + 2), self.rgba.get_u8(start + 3)])
     }
 
     pub fn show() -> string {
